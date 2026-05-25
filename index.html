@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Transcritor">
+<title>Transcritor Isis</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #F5F2EC;
+    --card: #FDFCF9;
+    --border: #E2DDD5;
+    --text: #1C1A17;
+    --muted: #8A857C;
+    --accent: #C4591A;
+    --accent-light: #F5E8DF;
+    --success: #2D6A4F;
+    --success-light: #D8EDDF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  header {
+    padding: 48px 24px 24px;
+    text-align: center;
+  }
+
+  header h1 {
+    font-family: 'Lora', serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+
+  header p {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 6px;
+    font-weight: 300;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    margin: 0 16px 16px;
+    padding: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .upload-zone:active, .upload-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+
+  .upload-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+
+  .upload-zone h3 {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+
+  .upload-zone p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  #file-input { display: none; }
+
+  /* File selected */
+  .file-selected {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: var(--success-light);
+    border-radius: 12px;
+    margin-top: 14px;
+    border: 1px solid #B7DFCA;
+  }
+
+  .file-selected.show { display: flex; }
+  .file-icon { font-size: 28px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+
+  .file-info .name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--success);
+  }
+
+  .file-info .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .change-btn {
+    background: none;
+    border: 1px solid #B7DFCA;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--success);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    white-space: nowrap;
+  }
+
+  /* Main button */
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    padding: 18px;
+    font-size: 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 14px;
+    letter-spacing: 0.2px;
+    transition: all 0.15s;
+    box-shadow: 0 2px 8px rgba(196,89,26,0.25);
+  }
+
+  .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* Progress */
+  .progress { display: none; margin-top: 16px; }
+  .progress.show { display: block; }
+
+  .progress-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .progress-step:last-child { border-bottom: none; }
+
+  .step-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    transition: all 0.3s;
+    margin-top: 1px;
+  }
+
+  .step-dot.active {
+    border-color: var(--accent);
+    background: var(--accent-light);
+    color: var(--accent);
+    animation: pulse 1.2s infinite;
+  }
+
+  .step-dot.done {
+    border-color: var(--success);
+    background: var(--success-light);
+    color: var(--success);
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+
+  .step-content { flex: 1; }
+  .step-label { font-size: 14px; color: var(--muted); line-height: 1.4; }
+  .step-label.active { color: var(--accent); font-weight: 500; }
+  .step-label.done { color: var(--success); }
+
+  /* Upload progress bar */
+  .progress-bar-wrap {
+    background: var(--border);
+    border-radius: 99px;
+    height: 5px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  .progress-bar-info {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Error */
+  .error-msg {
+    display: none;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #B91C1C;
+    margin-top: 14px;
+    line-height: 1.5;
+  }
+
+  .error-msg.show { display: block; }
+
+  .retry-btn {
+    background: #B91C1C;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 10px;
+    display: none;
+  }
+
+  .retry-btn.show { display: inline-block; }
+
+  /* Results */
+  .result-section { display: none; }
+  .result-section.show { display: block; }
+
+  .result-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+
+  .result-tag.blue { background: #EEF2FF; color: #4338CA; }
+  .result-tag.orange { background: var(--accent-light); color: var(--accent); }
+
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .result-header h2 {
+    font-family: 'Lora', serif;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .result-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .copy-btn:active { background: var(--border); }
+  .copy-btn.copied { border-color: var(--success); color: var(--success); }
+
+  .transcript-box {
+    background: var(--bg);
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.75;
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-style: italic;
+    color: #5A5650;
+    border: 1px solid var(--border);
+  }
+
+  .summary-box {
+    font-size: 15px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+  }
+
+  .summary-box strong { color: var(--accent); font-weight: 600; }
+
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  /* Copy all button */
+  .copy-all-btn {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 15px;
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all 0.15s;
+  }
+
+  .copy-all-btn:active { background: var(--border); }
+
+  /* New transcription button */
+  .new-btn {
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.15s;
+  }
+
+  .new-btn:active { opacity: 0.85; }
+
+  /* PWA install hint */
+  .install-hint {
+    margin: 0 16px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .install-hint-icon { font-size: 22px; flex-shrink: 0; }
+
+  .install-hint-text { flex: 1; }
+  .install-hint-text strong { font-size: 13px; font-weight: 600; display: block; }
+  .install-hint-text span { font-size: 12px; color: var(--muted); }
+
+  .install-hint-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Transcritor Isis ✨</h1>
+  <p>Transcreva e resuma qualquer gravação</p>
+</header>
+
+<div class="install-hint" id="install-hint">
+  <span class="install-hint-icon">📱</span>
+  <div class="install-hint-text">
+    <strong>Adicione à tela inicial</strong>
+    <span>Toque em <b>Compartilhar</b> → "Adicionar à Tela Inicial"</span>
+  </div>
+  <button class="install-hint-close" onclick="dismissHint()">✕</button>
+</div>
+
+<div class="card">
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <span class="upload-icon">🎙️</span>
+    <h3>Toque para escolher o áudio</h3>
+    <p>Notas de Voz, M4A, MP3, WAV<br>Sem limite de tamanho — fatiamento automático</p>
+  </div>
+  <input type="file" id="file-input" accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg,.flac,.mp4" />
+
+  <div class="file-selected" id="file-selected">
+    <span class="file-icon">🎵</span>
+    <div class="file-info">
+      <div class="name" id="file-name">arquivo.m4a</div>
+      <div class="meta" id="file-meta">0 MB</div>
+    </div>
+    <button class="change-btn" onclick="document.getElementById('file-input').click()">Trocar</button>
+  </div>
+
+  <div class="error-msg" id="error-msg"></div>
+  <button class="retry-btn" id="retry-btn" onclick="processAudio()">🔄 Tentar novamente</button>
+
+  <button class="btn-primary" id="process-btn" onclick="processAudio()" disabled>
+    Transcrever e Resumir
+  </button>
+
+  <div class="progress" id="progress">
+    <div class="progress-step">
+      <div class="step-dot" id="dot-1">1</div>
+      <div class="step-content">
+        <div class="step-label" id="label-1">Enviando áudio...</div>
+        <div id="upload-bar-wrap" style="display:none">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progress-bar"></div>
+          </div>
+          <div class="progress-bar-info">
+            <span id="upload-pct">0%</span>
+            <span id="upload-kb">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="progress-step">
+      <div class="step-dot" id="dot-2">2</div>
+      <div class="step-content">
+        <div class="step-label" id="label-2">Transcrevendo com Whisper</div>
+      </div>
+    </div>
+    <div class="progress-step">
+      <div class="step-dot" id="dot-3">3</div>
+      <div class="step-content">
+        <div class="step-label" id="label-3">Gerando resumo com Claude</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card result-section" id="result-section">
+  <span class="result-tag blue">Transcrição completa</span>
+  <div class="result-header">
+    <h2>📝 Texto</h2>
+    <button class="copy-btn" id="copy-transcript-btn" onclick="copySingle('transcript')">Copiar</button>
+  </div>
+  <div class="result-meta" id="result-meta"></div>
+  <div class="transcript-box" id="transcript-box"></div>
+
+  <div class="divider"></div>
+
+  <span class="result-tag orange">Resumo inteligente</span>
+  <div class="result-header">
+    <h2>✨ Resumo</h2>
+    <button class="copy-btn" id="copy-summary-btn" onclick="copySingle('summary')">Copiar</button>
+  </div>
+  <div class="summary-box" id="summary-box"></div>
+
+  <div class="divider"></div>
+
+  <button class="copy-all-btn" onclick="copyAll()">📋 Copiar tudo (transcrição + resumo)</button>
+  <button class="new-btn" onclick="newTranscription()">+ Nova transcrição</button>
+</div>
+
+<script>
+  const BACKEND_URL = "https://transcritor-backend.onrender.com";
+  let selectedFile = null;
+  let lastTranscript = "";
+  let lastSummary = "";
+
+  // Hint de instalação
+  function dismissHint() {
+    document.getElementById('install-hint').style.display = 'none';
+    localStorage.setItem('hint_dismissed', '1');
+  }
+
+  if (localStorage.getItem('hint_dismissed') || !navigator.userAgent.includes('Safari')) {
+    document.getElementById('install-hint').style.display = 'none';
+  }
+
+  // Seleção de arquivo
+  document.getElementById('file-input').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    selectedFile = file;
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    const chunks = Math.ceil(file.size / (24 * 1024 * 1024));
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-meta').textContent = mb + ' MB' + (chunks > 1 ? ` · será dividido em ${chunks} partes` : '');
+    document.getElementById('file-selected').classList.add('show');
+    document.getElementById('process-btn').disabled = false;
+    document.getElementById('error-msg').classList.remove('show');
+    document.getElementById('retry-btn').classList.remove('show');
+    document.getElementById('result-section').classList.remove('show');
+    resetProgress();
+  });
+
+  // Drag and drop
+  const zone = document.getElementById('upload-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      document.getElementById('file-input').files = e.dataTransfer.files;
+      document.getElementById('file-input').dispatchEvent(new Event('change'));
+    }
+  });
+
+  function setStep(n, state, label) {
+    const dot = document.getElementById('dot-' + n);
+    const lbl = document.getElementById('label-' + n);
+    dot.className = 'step-dot ' + state;
+    lbl.className = 'step-label ' + state;
+    if (label) lbl.textContent = label;
+    if (state === 'done') dot.textContent = '✓';
+  }
+
+  function resetProgress() {
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById('dot-' + i).className = 'step-dot';
+      document.getElementById('dot-' + i).textContent = i;
+      document.getElementById('label-' + i).className = 'step-label';
+    }
+    document.getElementById('upload-bar-wrap').style.display = 'none';
+    document.getElementById('progress-bar').style.width = '0%';
+  }
+
+  function showError(msg, retry) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('show');
+    document.getElementById('progress').classList.remove('show');
+    document.getElementById('process-btn').disabled = false;
+    if (retry) document.getElementById('retry-btn').classList.add('show');
+  }
+
+  function uploadWithProgress(file) {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          const mb = (e.loaded / 1024 / 1024).toFixed(1);
+          const total = (e.total / 1024 / 1024).toFixed(1);
+          document.getElementById('progress-bar').style.width = pct + '%';
+          document.getElementById('upload-pct').textContent = pct + '%';
+          document.getElementById('upload-kb').textContent = mb + ' / ' + total + ' MB';
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch(e) {
+            reject(new Error('Resposta inválida do servidor.'));
+          }
+        } else {
+          let msg = 'Erro no servidor.';
+          try { msg = JSON.parse(xhr.responseText).detail || msg; } catch(e) {}
+          reject(new Error(msg));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Sem conexão com o servidor. Verifique sua internet.')));
+      xhr.addEventListener('timeout', () => reject(new Error('Tempo esgotado. Tente novamente.')));
+
+      xhr.timeout = 300000; // 5 minutos para arquivos grandes
+      xhr.open('POST', BACKEND_URL + '/transcribe');
+      xhr.send(formData);
+    });
+  }
+
+  async function processAudio() {
+    if (!selectedFile) return;
+
+    document.getElementById('error-msg').classList.remove('show');
+    document.getElementById('retry-btn').classList.remove('show');
+    document.getElementById('result-section').classList.remove('show');
+    document.getElementById('process-btn').disabled = true;
+    document.getElementById('progress').classList.add('show');
+    resetProgress();
+
+    setStep(1, 'active', 'Enviando áudio...');
+    document.getElementById('upload-bar-wrap').style.display = 'block';
+
+    let result;
+    try {
+      result = await uploadWithProgress(selectedFile);
+    } catch(e) {
+      showError('❌ ' + e.message, true);
+      return;
+    }
+
+    setStep(1, 'done', 'Áudio enviado');
+    setStep(2, 'done', 'Transcrição concluída');
+    setStep(3, 'done', 'Resumo gerado');
+
+    lastTranscript = result.transcript;
+    lastSummary = result.summary;
+
+    document.getElementById('transcript-box').textContent = result.transcript;
+    document.getElementById('summary-box').innerHTML = formatSummary(result.summary);
+    document.getElementById('result-meta').textContent =
+      `Duração estimada: ${result.duration_estimate}` +
+      (result.chunks_used > 1 ? ` · processado em ${result.chunks_used} partes` : '');
+
+    document.getElementById('result-section').classList.add('show');
+    document.getElementById('process-btn').disabled = false;
+
+    setTimeout(() => {
+      document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
+    }, 200);
+  }
+
+  function formatSummary(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function copySingle(type) {
+    const text = type === 'transcript' ? lastTranscript : lastSummary;
+    const btnId = type === 'transcript' ? 'copy-transcript-btn' : 'copy-summary-btn';
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById(btnId);
+      btn.textContent = '✓ Copiado!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+
+  function copyAll() {
+    const text = `TRANSCRIÇÃO\n${'─'.repeat(40)}\n${lastTranscript}\n\nRESUMO\n${'─'.repeat(40)}\n${lastSummary}`;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      btn.textContent = '✓ Tudo copiado!';
+      setTimeout(() => btn.textContent = '📋 Copiar tudo (transcrição + resumo)', 2000);
+    });
+  }
+
+  function newTranscription() {
+    selectedFile = null;
+    document.getElementById('file-input').value = '';
+    document.getElementById('file-selected').classList.remove('show');
+    document.getElementById('process-btn').disabled = true;
+    document.getElementById('result-section').classList.remove('show');
+    document.getElementById('progress').classList.remove('show');
+    resetProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+</body>
+</html>
