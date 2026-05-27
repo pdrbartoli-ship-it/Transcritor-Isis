@@ -6,6 +6,7 @@ import httpx
 import tempfile
 import subprocess
 import json
+import imageio_ffmpeg
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -33,16 +34,18 @@ class TranscriptionResult(BaseModel):
 
 
 def extract_audio(input_path: str, output_path: str):
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     subprocess.run([
-        "ffmpeg", "-y", "-i", input_path,
+        ffmpeg, "-y", "-i", input_path,
         "-vn", "-acodec", "aac", "-b:a", "64k",
         output_path
     ], capture_output=True, check=True)
 
 
 def get_duration(input_path: str) -> float:
+    ffprobe = imageio_ffmpeg.get_ffprobe_exe()
     result = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", input_path],
+        [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", input_path],
         capture_output=True, text=True
     )
     info = json.loads(result.stdout)
@@ -50,13 +53,14 @@ def get_duration(input_path: str) -> float:
 
 
 def split_audio(input_path: str, tmpdir: str, num_chunks: int, total_seconds: float) -> list[str]:
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     chunk_duration = total_seconds / num_chunks
     chunk_paths = []
     for i in range(num_chunks):
         start = i * chunk_duration
         output_path = os.path.join(tmpdir, f"chunk_{i}.m4a")
         subprocess.run([
-            "ffmpeg", "-y", "-i", input_path,
+            ffmpeg, "-y", "-i", input_path,
             "-ss", str(start), "-t", str(chunk_duration),
             "-acodec", "aac", "-b:a", "64k",
             output_path
