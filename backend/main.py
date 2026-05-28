@@ -289,25 +289,32 @@ async def process_url(
     if is_video_url(url):
         if is_youtube_url(url):
             # YouTube: use transcript API (avoids bot detection from yt-dlp)
-            from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+            import youtube_transcript_api as _yta
             video_id = extract_youtube_id(url)
             if not video_id:
                 raise HTTPException(status_code=400, detail="URL do YouTube inválida.")
             try:
-                transcript_data = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages=["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"],
-                )
-                full_transcript = " ".join(t["text"] for t in transcript_data)
+                LANGS = ["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"]
+                # Support both API versions: >=0.7 (instance) and <0.7 (classmethod)
+                if hasattr(_yta.YouTubeTranscriptApi, "get_transcript"):
+                    transcript_data = _yta.YouTubeTranscriptApi.get_transcript(video_id, languages=LANGS)
+                    full_transcript = " ".join(t["text"] for t in transcript_data)
+                else:
+                    api = _yta.YouTubeTranscriptApi()
+                    fetched = api.fetch(video_id, languages=LANGS)
+                    full_transcript = " ".join(
+                        (t.text if hasattr(t, "text") else t["text"]) for t in fetched
+                    )
                 num_chunks = 1
                 total_words = len(full_transcript.split())
                 duration_str = f"~{max(1, total_words // 150)} min"
-            except (NoTranscriptFound, TranscriptsDisabled):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Este vídeo não tem legendas/captions disponíveis. Baixe o arquivo de vídeo e envie diretamente.",
-                )
             except Exception as e:
+                err = str(e).lower()
+                if "no transcript" in err or "disabled" in err or "not available" in err:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Este vídeo não tem legendas/captions disponíveis. Baixe o arquivo de vídeo e envie diretamente.",
+                    )
                 raise HTTPException(status_code=400, detail=f"Não foi possível obter a transcrição do YouTube: {str(e)[:300]}")
         else:
             # Instagram, TikTok, Vimeo, etc. — download via yt-dlp
