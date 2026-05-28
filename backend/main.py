@@ -276,6 +276,7 @@ async def process_url(
                         "--extract-audio", "--audio-format", "m4a",
                         "--audio-quality", "64K",
                         "--no-playlist",
+                        "--extractor-args", "youtube:player_client=ios,android",
                         "-o", output_template,
                         url,
                     ],
