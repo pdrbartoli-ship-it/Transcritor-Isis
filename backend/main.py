@@ -7,11 +7,12 @@ import tempfile
 import subprocess
 import json
 import imageio_ffmpeg
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from urllib.parse import urlparse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="Transcritor Isis")
+app = FastAPI(title="Escreve")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,12 +26,22 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 MAX_CHUNK_BYTES = 23 * 1024 * 1024
 
+VIDEO_HOSTS = [
+    "youtube.com", "youtu.be", "instagram.com", "tiktok.com",
+    "vimeo.com", "twitter.com", "x.com", "facebook.com", "fb.watch",
+]
+
 
 class TranscriptionResult(BaseModel):
     transcript: str
     summary: str
     chunks_used: int
     duration_estimate: str
+
+
+def is_video_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower().replace("www.", "")
+    return any(h in host for h in VIDEO_HOSTS)
 
 
 def extract_audio(input_path: str, output_path: str):
@@ -50,6 +61,18 @@ def get_duration(input_path: str) -> float:
     )
     info = json.loads(result.stdout)
     return float(info["format"]["duration"])
+
+
+def format_duration(total_seconds: float) -> str:
+    minutes = total_seconds / 60
+    if minutes < 1:
+        return "menos de 1 minuto"
+    elif minutes < 60:
+        return f"~{int(minutes)} minutos"
+    else:
+        hours = int(minutes // 60)
+        mins = int(minutes % 60)
+        return f"~{hours}h{mins:02d}min"
 
 
 def split_audio(input_path: str, tmpdir: str, num_chunks: int, total_seconds: float) -> list[str]:
@@ -87,20 +110,39 @@ async def transcribe_chunk(client: httpx.AsyncClient, audio_bytes: bytes, chunk_
     return response.text.strip()
 
 
-async def summarize(client: httpx.AsyncClient, transcript: str) -> str:
-    response = await client.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 1024,
-            "messages": [{
-                "role": "user",
-                "content": f"""Você recebeu a transcrição de um áudio gravado no iPhone. Crie um resumo estruturado em português com:
+def build_summary_prompt(transcript: str, detailed: bool, prefs: dict) -> str:
+    pref_block = ""
+    tone_map = {"Formal": "formal e profissional", "Casual": "casual e acessível", "Técnico": "técnico e preciso"}
+    style_map = {"Tópicos": "use listas com marcadores (bullet points)", "Parágrafos": "use parágrafos corridos"}
+
+    if prefs.get("tone"):
+        pref_block += f"\n- Tom: {tone_map.get(prefs['tone'], prefs['tone'])}"
+    if prefs.get("style"):
+        pref_block += f"\n- Estilo: {style_map.get(prefs['style'], prefs['style'])}"
+
+    pref_instruction = f"\n\nPreferências do usuário:{pref_block}" if pref_block else ""
+
+    if detailed:
+        return f"""Você recebeu uma transcrição. Crie um resumo DETALHADO E EXTENSO em português.{pref_instruction}
+
+**🎯 Tema principal** — uma frase resumindo o assunto
+
+**📌 Pontos principais** — lista completa de todos os tópicos abordados, com sub-pontos quando necessário
+
+**🔍 Análise aprofundada** — desenvolvimento dos temas mais relevantes, com contexto e nuances importantes
+
+**✅ Conclusões / Ações** — o que foi decidido, combinado ou concluído
+
+**💬 Citações relevantes** — trechos importantes ou falas marcantes (se houver)
+
+**📎 Observações** — contexto adicional, ressalvas ou detalhes complementares
+
+Seja abrangente e detalhado. Não omita informações relevantes.
+
+Transcrição:
+{transcript}"""
+    else:
+        return f"""Você recebeu uma transcrição. Crie um resumo estruturado e conciso em português.{pref_instruction}
 
 **🎯 Tema principal** — uma frase resumindo o assunto
 
@@ -114,28 +156,36 @@ Seja direto e use linguagem natural.
 
 Transcrição:
 {transcript}"""
+
+
+async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool = False, prefs: dict = {}) -> str:
+    model = "claude-sonnet-4-6" if detailed else "claude-haiku-4-5-20251001"
+    max_tokens = 3000 if detailed else 1024
+
+    response = await client.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{
+                "role": "user",
+                "content": build_summary_prompt(transcript, detailed, prefs),
             }]
         },
-        timeout=60.0,
+        timeout=120.0,
     )
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar resumo: {response.text}")
     return response.json()["content"][0]["text"]
 
 
-@app.get("/")
-async def health():
-    return {"status": "ok", "service": "Transcritor Isis"}
-
-
-@app.post("/transcribe", response_model=TranscriptionResult)
-async def transcribe(file: UploadFile = File(...)):
-    if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
-
-    audio_bytes = await file.read()
-    filename = file.filename or "audio.m4a"
-
+async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, int, str]:
+    """Returns (full_transcript, num_chunks, duration_str)"""
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, filename)
         with open(input_path, "wb") as f:
@@ -149,16 +199,7 @@ async def transcribe(file: UploadFile = File(...)):
 
         audio_size = os.path.getsize(audio_path)
         total_seconds = get_duration(audio_path)
-
-        minutes = total_seconds / 60
-        if minutes < 1:
-            duration_str = "menos de 1 minuto"
-        elif minutes < 60:
-            duration_str = f"~{int(minutes)} minutos"
-        else:
-            hours = int(minutes // 60)
-            mins = int(minutes % 60)
-            duration_str = f"~{hours}h{mins:02d}min"
+        duration_str = format_duration(total_seconds)
 
         num_chunks = max(1, math.ceil(audio_size / MAX_CHUNK_BYTES))
         chunk_paths = [audio_path] if num_chunks == 1 else split_audio(audio_path, tmpdir, num_chunks, total_seconds)
@@ -171,8 +212,107 @@ async def transcribe(file: UploadFile = File(...)):
     async with httpx.AsyncClient() as client:
         tasks = [transcribe_chunk(client, chunk, i) for i, chunk in enumerate(chunks_bytes)]
         transcripts = await asyncio.gather(*tasks)
-        full_transcript = " ".join(transcripts)
-        summary = await summarize(client, full_transcript)
+
+    return " ".join(transcripts), num_chunks, duration_str
+
+
+@app.get("/")
+async def health():
+    return {"status": "ok", "service": "Escreve"}
+
+
+@app.post("/transcribe", response_model=TranscriptionResult)
+async def transcribe(
+    file: UploadFile = File(...),
+    detailed: bool = Form(False),
+    preferences: str = Form("{}"),
+):
+    if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
+
+    try:
+        prefs = json.loads(preferences)
+    except Exception:
+        prefs = {}
+
+    audio_bytes = await file.read()
+    filename = file.filename or "audio.m4a"
+
+    full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, filename)
+
+    async with httpx.AsyncClient() as client:
+        summary = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+
+    return TranscriptionResult(
+        transcript=full_transcript,
+        summary=summary,
+        chunks_used=num_chunks,
+        duration_estimate=duration_str,
+    )
+
+
+@app.post("/process-url", response_model=TranscriptionResult)
+async def process_url(
+    url: str = Form(...),
+    detailed: bool = Form(False),
+    preferences: str = Form("{}"),
+):
+    if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
+
+    try:
+        prefs = json.loads(preferences)
+    except Exception:
+        prefs = {}
+
+    if is_video_url(url):
+        # Download audio via yt-dlp
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_template = os.path.join(tmpdir, "video.%(ext)s")
+            try:
+                result = subprocess.run(
+                    [
+                        "yt-dlp",
+                        "--extract-audio", "--audio-format", "m4a",
+                        "--audio-quality", "64K",
+                        "--no-playlist",
+                        "-o", output_template,
+                        url,
+                    ],
+                    capture_output=True, text=True, timeout=300
+                )
+                if result.returncode != 0:
+                    raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
+
+            audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
+            if not audio_files:
+                raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
+
+            audio_path = os.path.join(tmpdir, audio_files[0])
+            with open(audio_path, "rb") as f:
+                audio_bytes = f.read()
+
+        full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
+
+    else:
+        # Extract text from article/news page
+        import trafilatura
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            raise HTTPException(status_code=400, detail="Não foi possível acessar a página.")
+
+        text = trafilatura.extract(downloaded, include_comments=False, include_tables=False)
+        if not text or len(text.strip()) < 100:
+            raise HTTPException(status_code=400, detail="Não foi possível extrair conteúdo legível desta página.")
+
+        full_transcript = text.strip()
+        num_chunks = 1
+        duration_str = f"~{len(full_transcript.split()) // 200} min de leitura"
+
+    async with httpx.AsyncClient() as client:
+        summary = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
 
     return TranscriptionResult(
         transcript=full_transcript,

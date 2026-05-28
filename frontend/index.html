@@ -5,66 +5,174 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Transcritor">
-<title>Transcritor Isis</title>
+<meta name="apple-mobile-web-app-title" content="Escreve">
+<title>Escreve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
-
   :root {
-    --bg: #F5F2EC;
-    --card: #FDFCF9;
-    --border: #E2DDD5;
-    --text: #1C1A17;
-    --muted: #8A857C;
-    --accent: #C4591A;
-    --accent-light: #F5E8DF;
-    --success: #2D6A4F;
-    --success-light: #D8EDDF;
+    --bg: #F8FAFC;
+    --card: #FFFFFF;
+    --border: #E2E8F0;
+    --text: #0F172A;
+    --muted: #64748B;
+    --primary: #2563EB;
+    --primary-light: #EFF6FF;
+    --primary-dark: #1D4ED8;
+    --success: #059669;
+    --success-light: #ECFDF5;
+    --success-border: #A7F3D0;
+    --danger: #DC2626;
+    --danger-light: #FEF2F2;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
   body {
     background: var(--bg);
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     color: var(--text);
     min-height: 100vh;
-    padding: 0 0 80px;
+    padding-bottom: 80px;
   }
 
+  /* ── Header ── */
   header {
-    padding: 48px 24px 24px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .header-logo {
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+
+  .header-logo svg { width: 16px; height: 16px; }
 
   header h1 {
-    font-family: 'Lora', serif;
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text);
   }
 
-  header p {
-    font-size: 14px;
+  .header-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: none;
+    background: none;
     color: var(--muted);
-    margin-top: 6px;
-    font-weight: 300;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
   }
 
+  .icon-btn:active, .icon-btn:hover { background: var(--bg); color: var(--text); }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  /* ── Cards ── */
   .card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    margin: 0 16px 16px;
-    padding: 24px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    border-radius: 16px;
+    margin: 16px 16px 0;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
 
-  /* Upload zone */
+  /* ── Install hint ── */
+  .install-hint {
+    margin: 16px 16px 0;
+    background: var(--primary-light);
+    border: 1px solid #BFDBFE;
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .install-hint svg { width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; }
+
+  .install-hint-text { flex: 1; }
+  .install-hint-text strong { font-size: 13px; font-weight: 600; display: block; color: var(--primary-dark); }
+  .install-hint-text span { font-size: 12px; color: #3B82F6; }
+
+  .install-hint-close {
+    background: none;
+    border: none;
+    color: #93C5FD;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .install-hint-close svg { width: 16px; height: 16px; }
+
+  /* ── Tabs ── */
+  .input-tabs {
+    display: flex;
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 3px;
+    margin-bottom: 16px;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .tab-btn svg { width: 15px; height: 15px; }
+  .tab-btn.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  /* ── Upload zone ── */
   .upload-zone {
     border: 2px dashed var(--border);
-    border-radius: 14px;
-    padding: 40px 20px;
+    border-radius: 12px;
+    padding: 32px 20px;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s;
@@ -72,87 +180,208 @@
   }
 
   .upload-zone:active, .upload-zone.dragover {
-    border-color: var(--accent);
-    background: var(--accent-light);
+    border-color: var(--primary);
+    background: var(--primary-light);
   }
 
-  .upload-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+  .upload-zone-icon {
+    width: 44px;
+    height: 44px;
+    background: var(--primary-light);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+    color: var(--primary);
+  }
+
+  .upload-zone-icon svg { width: 22px; height: 22px; }
 
   .upload-zone h3 {
-    font-size: 16px;
-    font-weight: 500;
-    margin-bottom: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
   }
 
   .upload-zone p {
     font-size: 13px;
     color: var(--muted);
     line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  .format-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .format-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    color: var(--muted);
   }
 
   #file-input { display: none; }
 
-  /* File selected */
+  /* ── File selected ── */
   .file-selected {
     display: none;
     align-items: center;
-    gap: 14px;
-    padding: 14px;
+    gap: 12px;
+    padding: 12px 14px;
     background: var(--success-light);
-    border-radius: 12px;
-    margin-top: 14px;
-    border: 1px solid #B7DFCA;
+    border-radius: 10px;
+    margin-top: 12px;
+    border: 1px solid var(--success-border);
   }
 
   .file-selected.show { display: flex; }
-  .file-icon { font-size: 28px; flex-shrink: 0; }
+
+  .file-icon-wrap {
+    width: 36px;
+    height: 36px;
+    background: #D1FAE5;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--success);
+  }
+
+  .file-icon-wrap svg { width: 18px; height: 18px; }
+
   .file-info { flex: 1; min-width: 0; }
 
   .file-info .name {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--success);
+    color: #065F46;
   }
 
   .file-info .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
   .change-btn {
     background: none;
-    border: 1px solid #B7DFCA;
-    border-radius: 8px;
-    padding: 6px 10px;
+    border: 1px solid var(--success-border);
+    border-radius: 7px;
+    padding: 5px 10px;
     font-size: 12px;
+    font-weight: 500;
     color: var(--success);
     cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
-  /* Main button */
+  /* ── URL input ── */
+  .url-input-wrap { display: none; }
+  .url-input-wrap.show { display: block; }
+
+  .url-field {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .url-field:focus { border-color: var(--primary); background: var(--card); }
+  .url-field::placeholder { color: var(--muted); }
+
+  .url-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .url-hint svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  /* ── Summary mode toggle ── */
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  .mode-toggle {
+    display: flex;
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 3px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .mode-btn svg { width: 14px; height: 14px; }
+  .mode-btn.active { background: var(--card); color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  /* ── Main button ── */
   .btn-primary {
     width: 100%;
-    background: var(--accent);
+    background: var(--primary);
     color: white;
     border: none;
-    border-radius: 14px;
-    padding: 18px;
-    font-size: 16px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     cursor: pointer;
     margin-top: 14px;
-    letter-spacing: 0.2px;
+    letter-spacing: -0.1px;
     transition: all 0.15s;
-    box-shadow: 0 2px 8px rgba(196,89,26,0.25);
+    box-shadow: 0 1px 4px rgba(37,99,235,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
   }
 
-  .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
-  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-primary svg { width: 17px; height: 17px; }
+  .btn-primary:active { background: var(--primary-dark); transform: scale(0.99); }
+  .btn-primary:disabled { opacity: 0.38; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  /* Progress */
+  /* ── Progress ── */
   .progress { display: none; margin-top: 16px; }
   .progress.show { display: block; }
 
@@ -176,15 +405,16 @@
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.3s;
     margin-top: 1px;
+    color: var(--muted);
   }
 
   .step-dot.active {
-    border-color: var(--accent);
-    background: var(--accent-light);
-    color: var(--accent);
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
     animation: pulse 1.2s infinite;
   }
 
@@ -194,28 +424,29 @@
     color: var(--success);
   }
 
+  .step-dot.done svg { width: 12px; height: 12px; }
+
   @keyframes pulse {
     0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.12); }
+    50% { transform: scale(1.1); }
   }
 
-  .step-content { flex: 1; }
+  .step-content { flex: 1; padding-top: 2px; }
   .step-label { font-size: 14px; color: var(--muted); line-height: 1.4; }
-  .step-label.active { color: var(--accent); font-weight: 500; }
-  .step-label.done { color: var(--success); }
+  .step-label.active { color: var(--primary); font-weight: 500; }
+  .step-label.done { color: var(--success); font-weight: 500; }
 
-  /* Upload progress bar */
   .progress-bar-wrap {
     background: var(--border);
     border-radius: 99px;
-    height: 5px;
+    height: 4px;
     overflow: hidden;
     margin-top: 8px;
   }
 
   .progress-bar-fill {
     height: 100%;
-    background: var(--accent);
+    background: var(--primary);
     border-radius: 99px;
     transition: width 0.3s;
     width: 0%;
@@ -229,66 +460,70 @@
     justify-content: space-between;
   }
 
-  /* Error */
+  /* ── Error ── */
   .error-msg {
     display: none;
-    background: #FEF2F2;
+    background: var(--danger-light);
     border: 1px solid #FECACA;
-    border-radius: 12px;
-    padding: 14px 16px;
+    border-radius: 10px;
+    padding: 12px 14px;
     font-size: 13px;
-    color: #B91C1C;
-    margin-top: 14px;
+    color: var(--danger);
+    margin-top: 12px;
     line-height: 1.5;
   }
 
   .error-msg.show { display: block; }
 
   .retry-btn {
-    background: #B91C1C;
+    background: var(--danger);
     color: white;
     border: none;
-    border-radius: 8px;
-    padding: 8px 16px;
+    border-radius: 7px;
+    padding: 7px 14px;
     font-size: 13px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 500;
     cursor: pointer;
     margin-top: 10px;
     display: none;
   }
 
-  .retry-btn.show { display: inline-block; }
+  .retry-btn.show { display: inline-flex; align-items: center; gap: 6px; }
+  .retry-btn svg { width: 14px; height: 14px; }
 
-  /* Results */
+  /* ── Results ── */
   .result-section { display: none; }
   .result-section.show { display: block; }
 
   .result-tag {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.8px;
     padding: 4px 10px;
-    border-radius: 20px;
-    margin-bottom: 12px;
+    border-radius: 99px;
+    margin-bottom: 10px;
   }
 
-  .result-tag.blue { background: #EEF2FF; color: #4338CA; }
-  .result-tag.orange { background: var(--accent-light); color: var(--accent); }
+  .result-tag svg { width: 11px; height: 11px; }
+  .result-tag.blue { background: #EFF6FF; color: var(--primary); }
+  .result-tag.green { background: var(--success-light); color: var(--success); }
 
   .result-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
 
   .result-header h2 {
-    font-family: 'Lora', serif;
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
   }
 
   .result-meta {
@@ -300,143 +535,411 @@
   .copy-btn {
     background: none;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 7px 14px;
-    font-size: 13px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
     color: var(--muted);
     cursor: pointer;
     transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
   }
 
-  .copy-btn:active { background: var(--border); }
+  .copy-btn svg { width: 13px; height: 13px; }
+  .copy-btn:active { background: var(--bg); }
   .copy-btn.copied { border-color: var(--success); color: var(--success); }
 
   .transcript-box {
     background: var(--bg);
-    border-radius: 12px;
-    padding: 16px;
-    font-size: 14px;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 13px;
     line-height: 1.75;
-    max-height: 220px;
+    max-height: 200px;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-style: italic;
-    color: #5A5650;
+    color: var(--muted);
     border: 1px solid var(--border);
+    font-style: italic;
   }
 
   .summary-box {
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.8;
     white-space: pre-wrap;
+    color: var(--text);
   }
 
-  .summary-box strong { color: var(--accent); font-weight: 600; }
+  .summary-box strong { color: var(--primary); font-weight: 600; }
 
-  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .divider { height: 1px; background: var(--border); margin: 18px 0; }
 
-  /* Copy all button */
   .copy-all-btn {
     width: 100%;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 15px;
-    font-size: 15px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
     font-weight: 500;
     color: var(--text);
     cursor: pointer;
-    margin-top: 4px;
     transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
   }
 
+  .copy-all-btn svg { width: 15px; height: 15px; }
   .copy-all-btn:active { background: var(--border); }
 
-  /* New transcription button */
   .new-btn {
     width: 100%;
-    background: var(--accent);
+    background: var(--primary);
     color: white;
     border: none;
-    border-radius: 14px;
-    padding: 16px;
-    font-size: 15px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     cursor: pointer;
     margin-top: 8px;
     transition: all 0.15s;
-  }
-
-  .new-btn:active { opacity: 0.85; }
-
-  /* PWA install hint */
-  .install-hint {
-    margin: 0 16px 16px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 16px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
+    gap: 8px;
   }
 
-  .install-hint-icon { font-size: 22px; flex-shrink: 0; }
+  .new-btn svg { width: 15px; height: 15px; }
+  .new-btn:active { background: var(--primary-dark); }
 
-  .install-hint-text { flex: 1; }
-  .install-hint-text strong { font-size: 13px; font-weight: 600; display: block; }
-  .install-hint-text span { font-size: 12px; color: var(--muted); }
+  /* ── History sidebar ── */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 40;
+  }
 
-  .install-hint-close {
+  .sidebar-overlay.show { display: block; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 300px;
+    max-width: 85vw;
+    background: var(--card);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+  }
+
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-header {
+    padding: 20px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sidebar-header h2 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .sidebar-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .sidebar-empty svg { width: 32px; height: 32px; margin-bottom: 8px; opacity: 0.4; }
+
+  .history-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .history-item:hover { background: var(--bg); }
+
+  .history-item-content { flex: 1; min-width: 0; }
+
+  .history-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  .history-item-date {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .history-item-del {
     background: none;
     border: none;
     color: var(--muted);
-    font-size: 18px;
     cursor: pointer;
-    padding: 4px;
+    padding: 2px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+
+  .history-item-del:hover { opacity: 1; color: var(--danger); }
+  .history-item-del svg { width: 14px; height: 14px; }
+
+  /* ── Modal (preferences / onboarding) ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 60;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: var(--card);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 480px;
+    padding: 24px 20px 32px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 99px;
+    margin: 0 auto 20px;
+  }
+
+  .modal-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .modal-subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .pref-group { margin-bottom: 20px; }
+
+  .pref-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .pref-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .pref-opt {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--bg);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .pref-opt.selected {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
+  }
+
+  .modal-save-btn {
+    width: 100%;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+
+  .modal-save-btn:active { background: var(--primary-dark); }
+
+  .onboarding-badge {
+    display: inline-block;
+    background: var(--primary-light);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 99px;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Transcritor Isis ✨</h1>
-  <p>Transcreva e resuma qualquer gravação</p>
+  <div class="header-brand">
+    <div class="header-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+    </div>
+    <h1>Escreve</h1>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" onclick="openSidebar()" title="Histórico">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><polyline points="12 7 12 12 15 15"/></svg>
+    </button>
+    <button class="icon-btn" onclick="openPrefs()" title="Preferências">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+  </div>
 </header>
 
 <div class="install-hint" id="install-hint">
-  <span class="install-hint-icon">📱</span>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="12" x="8.5" y="2" rx="1"/><path d="M5 19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3H5v3Z"/><path d="M12 10v5"/><path d="M9 13l3 3 3-3"/></svg>
   <div class="install-hint-text">
-    <strong>Adicione à tela inicial</strong>
-    <span>Toque em <b>Compartilhar</b> → "Adicionar à Tela Inicial"</span>
+    <strong>Instalar no iPhone</strong>
+    <span>Toque em Compartilhar → "Adicionar à Tela Inicial"</span>
   </div>
-  <button class="install-hint-close" onclick="dismissHint()">✕</button>
+  <button class="install-hint-close" onclick="dismissHint()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
 </div>
 
 <div class="card">
-  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-    <span class="upload-icon">🎙️</span>
-    <h3>Toque para escolher o áudio</h3>
-    <p>Áudio ou vídeo: M4A, MP3, MOV, MP4...<br>Fatiamento automático · Sem limite de tamanho</p>
+  <div class="input-tabs">
+    <button class="tab-btn active" id="tab-file" onclick="switchTab('file')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Arquivo
+    </button>
+    <button class="tab-btn" id="tab-url" onclick="switchTab('url')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Link
+    </button>
   </div>
-  <input type="file" id="file-input" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.ogg,.flac,.mp4,.mov,.avi,.mkv" />
 
-  <div class="file-selected" id="file-selected">
-    <span class="file-icon">🎵</span>
-    <div class="file-info">
-      <div class="name" id="file-name">arquivo.m4a</div>
-      <div class="meta" id="file-meta">0 MB</div>
+  <!-- File upload tab -->
+  <div id="file-tab-content">
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+      <div class="upload-zone-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <h3>Toque para selecionar arquivo</h3>
+      <p>Arraste ou toque para escolher um arquivo de áudio ou vídeo</p>
+      <div class="format-badges">
+        <span class="format-badge">MP3</span>
+        <span class="format-badge">M4A</span>
+        <span class="format-badge">WAV</span>
+        <span class="format-badge">MP4</span>
+        <span class="format-badge">MOV</span>
+        <span class="format-badge">+ mais</span>
+      </div>
     </div>
-    <button class="change-btn" onclick="document.getElementById('file-input').click()">Trocar</button>
+    <input type="file" id="file-input" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.ogg,.flac,.mp4,.mov,.avi,.mkv" />
+
+    <div class="file-selected" id="file-selected">
+      <div class="file-icon-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      <div class="file-info">
+        <div class="name" id="file-name">arquivo.m4a</div>
+        <div class="meta" id="file-meta">0 MB</div>
+      </div>
+      <button class="change-btn" onclick="document.getElementById('file-input').click()">Trocar</button>
+    </div>
+  </div>
+
+  <!-- URL tab -->
+  <div class="url-input-wrap" id="url-tab-content">
+    <input
+      type="url"
+      class="url-field"
+      id="url-input"
+      placeholder="Cole um link do YouTube, Instagram, TikTok ou artigo..."
+      oninput="onUrlInput()"
+    />
+    <div class="url-hint">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      YouTube, Instagram, TikTok, Vimeo e artigos de qualquer site
+    </div>
   </div>
 
   <div class="error-msg" id="error-msg"></div>
-  <button class="retry-btn" id="retry-btn" onclick="processAudio()">🔄 Tentar novamente</button>
+  <button class="retry-btn" id="retry-btn" onclick="retryProcess()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+    Tentar novamente
+  </button>
 
-  <button class="btn-primary" id="process-btn" onclick="processAudio()" disabled>
+  <div class="section-label">Tipo de resumo</div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="mode-quick" onclick="setMode('quick')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      Rápido
+    </button>
+    <button class="mode-btn" id="mode-detailed" onclick="setMode('detailed')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Detalhado
+    </button>
+  </div>
+
+  <button class="btn-primary" id="process-btn" onclick="processInput()" disabled>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
     Transcrever e Resumir
   </button>
 
@@ -444,74 +947,160 @@
     <div class="progress-step">
       <div class="step-dot" id="dot-1">1</div>
       <div class="step-content">
-        <div class="step-label" id="label-1">Enviando áudio...</div>
+        <div class="step-label" id="label-1">Enviando...</div>
         <div id="upload-bar-wrap" style="display:none">
-          <div class="progress-bar-wrap">
-            <div class="progress-bar-fill" id="progress-bar"></div>
-          </div>
-          <div class="progress-bar-info">
-            <span id="upload-pct">0%</span>
-            <span id="upload-kb">—</span>
-          </div>
+          <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-bar"></div></div>
+          <div class="progress-bar-info"><span id="upload-pct">0%</span><span id="upload-kb">—</span></div>
         </div>
       </div>
     </div>
     <div class="progress-step">
       <div class="step-dot" id="dot-2">2</div>
-      <div class="step-content">
-        <div class="step-label" id="label-2">Transcrevendo com Whisper</div>
-      </div>
+      <div class="step-content"><div class="step-label" id="label-2">Transcrevendo com Whisper</div></div>
     </div>
     <div class="progress-step">
       <div class="step-dot" id="dot-3">3</div>
-      <div class="step-content">
-        <div class="step-label" id="label-3">Gerando resumo com Claude</div>
-      </div>
+      <div class="step-content"><div class="step-label" id="label-3">Gerando resumo com Claude</div></div>
     </div>
   </div>
 </div>
 
 <div class="card result-section" id="result-section">
-  <span class="result-tag blue">Transcrição completa</span>
+  <div class="result-tag blue">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+    Transcrição
+  </div>
   <div class="result-header">
-    <h2>📝 Texto</h2>
-    <button class="copy-btn" id="copy-transcript-btn" onclick="copySingle('transcript')">Copiar</button>
+    <h2>Texto</h2>
+    <button class="copy-btn" id="copy-transcript-btn" onclick="copySingle('transcript')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      Copiar
+    </button>
   </div>
   <div class="result-meta" id="result-meta"></div>
   <div class="transcript-box" id="transcript-box"></div>
 
   <div class="divider"></div>
 
-  <span class="result-tag orange">Resumo inteligente</span>
+  <div class="result-tag green">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    Resumo
+  </div>
   <div class="result-header">
-    <h2>✨ Resumo</h2>
-    <button class="copy-btn" id="copy-summary-btn" onclick="copySingle('summary')">Copiar</button>
+    <h2>Resumo</h2>
+    <button class="copy-btn" id="copy-summary-btn" onclick="copySingle('summary')">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      Copiar
+    </button>
   </div>
   <div class="summary-box" id="summary-box"></div>
 
   <div class="divider"></div>
 
-  <button class="copy-all-btn" onclick="copyAll()">📋 Copiar tudo (transcrição + resumo)</button>
-  <button class="new-btn" onclick="newTranscription()">+ Nova transcrição</button>
+  <button class="copy-all-btn" onclick="copyAll()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+    Copiar tudo (transcrição + resumo)
+  </button>
+  <button class="new-btn" onclick="newTranscription()">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nova transcrição
+  </button>
+</div>
+
+<!-- History sidebar -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>Histórico</h2>
+    <button class="icon-btn" onclick="closeSidebar()">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="sidebar-list" id="sidebar-list"></div>
+</div>
+
+<!-- Preferences modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="handleModalOverlayClick(event)">
+  <div class="modal" id="modal">
+    <div class="modal-handle"></div>
+    <div class="onboarding-badge" id="modal-badge">Configurações</div>
+    <div class="modal-title" id="modal-title">Suas preferências</div>
+    <div class="modal-subtitle" id="modal-subtitle">Personalize como o Escreve gera seus resumos.</div>
+
+    <div class="pref-group">
+      <span class="pref-label">Tom</span>
+      <div class="pref-options" id="pref-tone">
+        <button class="pref-opt" data-val="Formal" onclick="selectPref('tone', 'Formal')">Formal</button>
+        <button class="pref-opt" data-val="Casual" onclick="selectPref('tone', 'Casual')">Casual</button>
+        <button class="pref-opt" data-val="Técnico" onclick="selectPref('tone', 'Técnico')">Técnico</button>
+      </div>
+    </div>
+
+    <div class="pref-group">
+      <span class="pref-label">Estilo</span>
+      <div class="pref-options" id="pref-style">
+        <button class="pref-opt" data-val="Tópicos" onclick="selectPref('style', 'Tópicos')">Tópicos</button>
+        <button class="pref-opt" data-val="Parágrafos" onclick="selectPref('style', 'Parágrafos')">Parágrafos</button>
+      </div>
+    </div>
+
+    <button class="modal-save-btn" onclick="savePrefs()">Salvar preferências</button>
+  </div>
 </div>
 
 <script>
   const BACKEND_URL = "https://transcritor-backend.onrender.com";
   let selectedFile = null;
+  let activeTab = 'file';
+  let detailedMode = false;
   let lastTranscript = "";
   let lastSummary = "";
+  let currentPrefs = {};
+  let pendingRetry = null;
 
-  // Hint de instalação
+  // ── Init ──
+  function init() {
+    currentPrefs = JSON.parse(localStorage.getItem('escreve_prefs') || '{}');
+
+    if (localStorage.getItem('hint_dismissed') || !navigator.userAgent.includes('Safari')) {
+      document.getElementById('install-hint').style.display = 'none';
+    }
+
+    if (!localStorage.getItem('escreve_prefs')) {
+      setTimeout(() => openOnboarding(), 800);
+    }
+
+    renderHistory();
+  }
+
+  // ── Install hint ──
   function dismissHint() {
     document.getElementById('install-hint').style.display = 'none';
     localStorage.setItem('hint_dismissed', '1');
   }
 
-  if (localStorage.getItem('hint_dismissed') || !navigator.userAgent.includes('Safari')) {
-    document.getElementById('install-hint').style.display = 'none';
+  // ── Tabs ──
+  function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById('tab-file').classList.toggle('active', tab === 'file');
+    document.getElementById('tab-url').classList.toggle('active', tab === 'url');
+    document.getElementById('file-tab-content').style.display = tab === 'file' ? 'block' : 'none';
+    document.getElementById('url-tab-content').classList.toggle('show', tab === 'url');
+    document.getElementById('process-btn').disabled = true;
+    document.getElementById('error-msg').classList.remove('show');
+    document.getElementById('retry-btn').classList.remove('show');
+    if (tab === 'url') {
+      document.getElementById('label-1').textContent = 'Processando link...';
+      document.getElementById('label-2').textContent = 'Transcrevendo conteúdo';
+      document.getElementById('url-input').focus();
+    } else {
+      document.getElementById('label-1').textContent = 'Enviando arquivo...';
+      document.getElementById('label-2').textContent = 'Transcrevendo com Whisper';
+    }
+    updateProcessBtn();
   }
 
-  // Seleção de arquivo
+  // ── File input ──
   document.getElementById('file-input').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -519,16 +1108,15 @@
     const mb = (file.size / 1024 / 1024).toFixed(1);
     const chunks = Math.ceil(file.size / (24 * 1024 * 1024));
     document.getElementById('file-name').textContent = file.name;
-    document.getElementById('file-meta').textContent = mb + ' MB' + (chunks > 1 ? ` · será dividido em ${chunks} partes` : '');
+    document.getElementById('file-meta').textContent = mb + ' MB' + (chunks > 1 ? ` · ${chunks} partes` : '');
     document.getElementById('file-selected').classList.add('show');
-    document.getElementById('process-btn').disabled = false;
     document.getElementById('error-msg').classList.remove('show');
     document.getElementById('retry-btn').classList.remove('show');
     document.getElementById('result-section').classList.remove('show');
     resetProgress();
+    updateProcessBtn();
   });
 
-  // Drag and drop
   const zone = document.getElementById('upload-zone');
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
@@ -542,13 +1130,37 @@
     }
   });
 
+  function onUrlInput() {
+    updateProcessBtn();
+  }
+
+  function updateProcessBtn() {
+    const btn = document.getElementById('process-btn');
+    if (activeTab === 'file') {
+      btn.disabled = !selectedFile;
+    } else {
+      const url = document.getElementById('url-input').value.trim();
+      btn.disabled = !url || !url.startsWith('http');
+    }
+  }
+
+  // ── Summary mode ──
+  function setMode(mode) {
+    detailedMode = mode === 'detailed';
+    document.getElementById('mode-quick').classList.toggle('active', !detailedMode);
+    document.getElementById('mode-detailed').classList.toggle('active', detailedMode);
+  }
+
+  // ── Progress helpers ──
   function setStep(n, state, label) {
     const dot = document.getElementById('dot-' + n);
     const lbl = document.getElementById('label-' + n);
     dot.className = 'step-dot ' + state;
     lbl.className = 'step-label ' + state;
     if (label) lbl.textContent = label;
-    if (state === 'done') dot.textContent = '✓';
+    if (state === 'done') {
+      dot.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
   }
 
   function resetProgress() {
@@ -570,11 +1182,9 @@
     if (retry) document.getElementById('retry-btn').classList.add('show');
   }
 
-  function uploadWithProgress(file) {
+  // ── XHR upload with progress ──
+  function uploadWithProgress(formData) {
     return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('file', file);
-
       const xhr = new XMLHttpRequest();
 
       xhr.upload.addEventListener('progress', e => {
@@ -585,16 +1195,18 @@
           document.getElementById('progress-bar').style.width = pct + '%';
           document.getElementById('upload-pct').textContent = pct + '%';
           document.getElementById('upload-kb').textContent = mb + ' / ' + total + ' MB';
+          if (pct === 100) {
+            setStep(1, 'done', 'Arquivo enviado');
+            setStep(2, 'active', 'Transcrevendo com Whisper...');
+            startTranscribeTimer();
+          }
         }
       });
 
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            resolve(JSON.parse(xhr.responseText));
-          } catch(e) {
-            reject(new Error('Resposta inválida do servidor.'));
-          }
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch(e) { reject(new Error('Resposta inválida do servidor.')); }
         } else {
           let msg = 'Erro no servidor.';
           try { msg = JSON.parse(xhr.responseText).detail || msg; } catch(e) {}
@@ -602,18 +1214,37 @@
         }
       });
 
-      xhr.addEventListener('error', () => reject(new Error('Sem conexão com o servidor. Verifique sua internet.')));
-      xhr.addEventListener('timeout', () => reject(new Error('Tempo esgotado. Tente novamente.')));
+      xhr.addEventListener('error', () => reject(new Error('Sem conexão com o servidor.')));
+      xhr.addEventListener('timeout', () => reject(new Error('Tempo esgotado. Tente novamente com um arquivo menor.')));
 
-      xhr.timeout = 300000; // 5 minutos para arquivos grandes
-      xhr.open('POST', BACKEND_URL + '/transcribe');
+      const endpoint = activeTab === 'file' ? '/transcribe' : '/process-url';
+      xhr.timeout = 600000;
+      xhr.open('POST', BACKEND_URL + endpoint);
       xhr.send(formData);
     });
   }
 
-  async function processAudio() {
-    if (!selectedFile) return;
+  let transcribeTimer = null;
 
+  function startTranscribeTimer() {
+    let elapsed = 0;
+    clearInterval(transcribeTimer);
+    transcribeTimer = setInterval(() => {
+      elapsed += 1;
+      if (elapsed > 10) {
+        setStep(2, 'done', 'Transcrição concluída');
+        setStep(3, 'active', 'Gerando resumo com Claude...');
+        clearInterval(transcribeTimer);
+      }
+    }, 1500);
+  }
+
+  // ── Main process ──
+  function retryProcess() {
+    if (pendingRetry) pendingRetry();
+  }
+
+  async function processInput() {
     document.getElementById('error-msg').classList.remove('show');
     document.getElementById('retry-btn').classList.remove('show');
     document.getElementById('result-section').classList.remove('show');
@@ -621,18 +1252,36 @@
     document.getElementById('progress').classList.add('show');
     resetProgress();
 
-    setStep(1, 'active', 'Enviando áudio...');
-    document.getElementById('upload-bar-wrap').style.display = 'block';
+    const formData = new FormData();
+    formData.append('detailed', detailedMode ? 'true' : 'false');
+    formData.append('preferences', JSON.stringify(currentPrefs));
+
+    if (activeTab === 'file') {
+      if (!selectedFile) return;
+      formData.append('file', selectedFile);
+      setStep(1, 'active', 'Enviando arquivo...');
+      document.getElementById('upload-bar-wrap').style.display = 'block';
+      pendingRetry = processInput;
+    } else {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) return;
+      formData.append('url', url);
+      setStep(1, 'active', 'Baixando conteúdo...');
+      setStep(2, 'active');
+      pendingRetry = processInput;
+    }
 
     let result;
     try {
-      result = await uploadWithProgress(selectedFile);
+      result = await uploadWithProgress(formData);
     } catch(e) {
-      showError('❌ ' + e.message, true);
+      clearInterval(transcribeTimer);
+      showError(e.message, true);
       return;
     }
 
-    setStep(1, 'done', 'Áudio enviado');
+    clearInterval(transcribeTimer);
+    setStep(1, 'done');
     setStep(2, 'done', 'Transcrição concluída');
     setStep(3, 'done', 'Resumo gerado');
 
@@ -642,14 +1291,16 @@
     document.getElementById('transcript-box').textContent = result.transcript;
     document.getElementById('summary-box').innerHTML = formatSummary(result.summary);
     document.getElementById('result-meta').textContent =
-      `Duração estimada: ${result.duration_estimate}` +
-      (result.chunks_used > 1 ? ` · processado em ${result.chunks_used} partes` : '');
+      `Duração: ${result.duration_estimate}` +
+      (result.chunks_used > 1 ? ` · ${result.chunks_used} partes` : '');
 
     document.getElementById('result-section').classList.add('show');
     document.getElementById('process-btn').disabled = false;
 
+    saveToHistory(result);
+
     setTimeout(() => {
-      document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
+      document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 200);
   }
 
@@ -659,23 +1310,26 @@
       .replace(/\n/g, '<br>');
   }
 
+  // ── Copy ──
   function copySingle(type) {
     const text = type === 'transcript' ? lastTranscript : lastSummary;
     const btnId = type === 'transcript' ? 'copy-transcript-btn' : 'copy-summary-btn';
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById(btnId);
-      btn.textContent = '✓ Copiado!';
+      const prev = btn.innerHTML;
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copiado!';
       btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'Copiar'; btn.classList.remove('copied'); }, 2000);
+      setTimeout(() => { btn.innerHTML = prev; btn.classList.remove('copied'); }, 2000);
     });
   }
 
   function copyAll() {
     const text = `TRANSCRIÇÃO\n${'─'.repeat(40)}\n${lastTranscript}\n\nRESUMO\n${'─'.repeat(40)}\n${lastSummary}`;
     navigator.clipboard.writeText(text).then(() => {
-      const btn = event.target;
-      btn.textContent = '✓ Tudo copiado!';
-      setTimeout(() => btn.textContent = '📋 Copiar tudo (transcrição + resumo)', 2000);
+      const btn = event.currentTarget;
+      const prev = btn.innerHTML;
+      btn.innerHTML = prev.replace('Copiar tudo (transcrição + resumo)', 'Copiado!');
+      setTimeout(() => { btn.innerHTML = prev; }, 2000);
     });
   }
 
@@ -686,9 +1340,144 @@
     document.getElementById('process-btn').disabled = true;
     document.getElementById('result-section').classList.remove('show');
     document.getElementById('progress').classList.remove('show');
+    document.getElementById('url-input').value = '';
     resetProgress();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  // ── History ──
+  function saveToHistory(result) {
+    const history = JSON.parse(localStorage.getItem('escreve_history') || '[]');
+    const firstLine = result.summary.split('\n')[0].replace(/\*\*/g, '').replace(/[🎯📌✅💬🔍📎]/g, '').trim();
+    const entry = {
+      id: Date.now(),
+      title: firstLine.substring(0, 60) || 'Sem título',
+      date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      transcript: result.transcript,
+      summary: result.summary,
+      duration: result.duration_estimate,
+    };
+    history.unshift(entry);
+    if (history.length > 50) history.pop();
+    localStorage.setItem('escreve_history', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const history = JSON.parse(localStorage.getItem('escreve_history') || '[]');
+    const list = document.getElementById('sidebar-list');
+
+    if (history.length === 0) {
+      list.innerHTML = `<div class="sidebar-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><polyline points="12 7 12 12 15 15"/></svg>
+        <div>Nenhuma transcrição ainda.<br>Seus resumos aparecerão aqui.</div>
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = history.map(entry => `
+      <div class="history-item" onclick="loadHistoryEntry(${entry.id})">
+        <div class="history-item-content">
+          <div class="history-item-title">${escHtml(entry.title)}</div>
+          <div class="history-item-date">${entry.date} · ${entry.duration || ''}</div>
+        </div>
+        <button class="history-item-del" onclick="deleteHistoryEntry(event, ${entry.id})">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  function loadHistoryEntry(id) {
+    const history = JSON.parse(localStorage.getItem('escreve_history') || '[]');
+    const entry = history.find(e => e.id === id);
+    if (!entry) return;
+
+    lastTranscript = entry.transcript;
+    lastSummary = entry.summary;
+
+    document.getElementById('transcript-box').textContent = entry.transcript;
+    document.getElementById('summary-box').innerHTML = formatSummary(entry.summary);
+    document.getElementById('result-meta').textContent = entry.date + (entry.duration ? ` · ${entry.duration}` : '');
+    document.getElementById('result-section').classList.add('show');
+
+    closeSidebar();
+    setTimeout(() => {
+      document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+  }
+
+  function deleteHistoryEntry(e, id) {
+    e.stopPropagation();
+    let history = JSON.parse(localStorage.getItem('escreve_history') || '[]');
+    history = history.filter(e => e.id !== id);
+    localStorage.setItem('escreve_history', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Sidebar ──
+  function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('show');
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('show');
+  }
+
+  // ── Preferences ──
+  function openPrefs() {
+    document.getElementById('modal-badge').textContent = 'Configurações';
+    document.getElementById('modal-title').textContent = 'Suas preferências';
+    document.getElementById('modal-subtitle').textContent = 'Personalize como o Escreve gera seus resumos.';
+    applyPrefsToModal();
+    document.getElementById('modal-overlay').classList.add('show');
+  }
+
+  function openOnboarding() {
+    document.getElementById('modal-badge').textContent = 'Bem-vindo';
+    document.getElementById('modal-title').textContent = 'Como você gosta de estudar?';
+    document.getElementById('modal-subtitle').textContent = 'Personalize o Escreve para o seu estilo. Você pode mudar isso depois nas configurações.';
+    applyPrefsToModal();
+    document.getElementById('modal-overlay').classList.add('show');
+  }
+
+  function applyPrefsToModal() {
+    ['tone', 'style'].forEach(key => {
+      document.querySelectorAll(`#pref-${key} .pref-opt`).forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.val === currentPrefs[key]);
+      });
+    });
+  }
+
+  function selectPref(key, val) {
+    currentPrefs[key] = currentPrefs[key] === val ? undefined : val;
+    document.querySelectorAll(`#pref-${key} .pref-opt`).forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.val === val && currentPrefs[key] === val);
+    });
+  }
+
+  function savePrefs() {
+    const cleaned = {};
+    if (currentPrefs.tone) cleaned.tone = currentPrefs.tone;
+    if (currentPrefs.style) cleaned.style = currentPrefs.style;
+    currentPrefs = cleaned;
+    localStorage.setItem('escreve_prefs', JSON.stringify(currentPrefs));
+    document.getElementById('modal-overlay').classList.remove('show');
+  }
+
+  function handleModalOverlayClick(e) {
+    if (e.target === document.getElementById('modal-overlay')) {
+      document.getElementById('modal-overlay').classList.remove('show');
+    }
+  }
+
+  init();
 </script>
 </body>
 </html>

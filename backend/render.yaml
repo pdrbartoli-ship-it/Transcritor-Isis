@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: transcritor-isis
+    name: escreve-backend
     runtime: python
     rootDir: backend
     buildCommand: apt-get install -y ffmpeg && pip install -r requirements.txt
