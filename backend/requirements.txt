@@ -6,3 +6,4 @@ pydantic==2.9.2
 imageio[ffmpeg]
 yt-dlp>=2024.12.13
 trafilatura
+youtube-transcript-api>=0.6.3

@@ -7,7 +7,7 @@ import tempfile
 import subprocess
 import json
 import imageio_ffmpeg
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -42,6 +42,27 @@ class TranscriptionResult(BaseModel):
 def is_video_url(url: str) -> bool:
     host = urlparse(url).netloc.lower().replace("www.", "")
     return any(h in host for h in VIDEO_HOSTS)
+
+
+def is_youtube_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower().replace("www.", "")
+    return host in ("youtube.com", "youtu.be", "m.youtube.com")
+
+
+def extract_youtube_id(url: str) -> str | None:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower().replace("www.", "").replace("m.", "")
+    if host == "youtu.be":
+        return parsed.path.lstrip("/").split("?")[0]
+    if "youtube.com" in host:
+        qs = parse_qs(parsed.query)
+        if "v" in qs:
+            return qs["v"][0]
+        parts = [p for p in parsed.path.split("/") if p]
+        for i, part in enumerate(parts):
+            if part in ("shorts", "embed", "live") and i + 1 < len(parts):
+                return parts[i + 1]
+    return None
 
 
 def extract_audio(input_path: str, output_path: str):
@@ -266,36 +287,59 @@ async def process_url(
         prefs = {}
 
     if is_video_url(url):
-        # Download audio via yt-dlp
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_template = os.path.join(tmpdir, "video.%(ext)s")
+        if is_youtube_url(url):
+            # YouTube: use transcript API (avoids bot detection from yt-dlp)
+            from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+            video_id = extract_youtube_id(url)
+            if not video_id:
+                raise HTTPException(status_code=400, detail="URL do YouTube inválida.")
             try:
-                result = subprocess.run(
-                    [
-                        "yt-dlp",
-                        "--extract-audio", "--audio-format", "m4a",
-                        "--audio-quality", "64K",
-                        "--no-playlist",
-                        "--extractor-args", "youtube:player_client=ios,android",
-                        "-o", output_template,
-                        url,
-                    ],
-                    capture_output=True, text=True, timeout=300
+                transcript_data = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"],
                 )
-                if result.returncode != 0:
-                    raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
-            except subprocess.TimeoutExpired:
-                raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
+                full_transcript = " ".join(t["text"] for t in transcript_data)
+                num_chunks = 1
+                total_words = len(full_transcript.split())
+                duration_str = f"~{max(1, total_words // 150)} min"
+            except (NoTranscriptFound, TranscriptsDisabled):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Este vídeo não tem legendas/captions disponíveis. Baixe o arquivo de vídeo e envie diretamente.",
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Não foi possível obter a transcrição do YouTube: {str(e)[:300]}")
+        else:
+            # Instagram, TikTok, Vimeo, etc. — download via yt-dlp
+            with tempfile.TemporaryDirectory() as tmpdir:
+                output_template = os.path.join(tmpdir, "video.%(ext)s")
+                try:
+                    result = subprocess.run(
+                        [
+                            "yt-dlp",
+                            "--extract-audio", "--audio-format", "m4a",
+                            "--audio-quality", "64K",
+                            "--no-playlist",
+                            "--extractor-args", "youtube:player_client=ios,android",
+                            "-o", output_template,
+                            url,
+                        ],
+                        capture_output=True, text=True, timeout=300
+                    )
+                    if result.returncode != 0:
+                        raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+                except subprocess.TimeoutExpired:
+                    raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
 
-            audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
-            if not audio_files:
-                raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
+                audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
+                if not audio_files:
+                    raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
 
-            audio_path = os.path.join(tmpdir, audio_files[0])
-            with open(audio_path, "rb") as f:
-                audio_bytes = f.read()
+                audio_path = os.path.join(tmpdir, audio_files[0])
+                with open(audio_path, "rb") as f:
+                    audio_bytes = f.read()
 
-        full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
+            full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
 
     else:
         # Extract text from article/news page
