@@ -10,3 +10,5 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: YOUTUBE_COOKIES
+        sync: false
