@@ -24,6 +24,8 @@ app.add_middleware(
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
+WEBSHARE_PROXY_USERNAME = os.environ.get("WEBSHARE_PROXY_USERNAME", "")
+WEBSHARE_PROXY_PASSWORD = os.environ.get("WEBSHARE_PROXY_PASSWORD", "")
 
 MAX_CHUNK_BYTES = 23 * 1024 * 1024
 
@@ -293,8 +295,29 @@ async def process_url(
             if not video_id:
                 raise HTTPException(status_code=400, detail="URL do YouTube inválida.")
 
-            if YOUTUBE_COOKIES:
-                # Authenticated path: yt-dlp with cookies — works for any video
+            import youtube_transcript_api as _yta
+            LANGS = ["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"]
+            full_transcript = None
+            num_chunks = 1
+            duration_str = "–"
+
+            # Step 1: transcript API via Webshare proxy (maintenance-free, captions)
+            if WEBSHARE_PROXY_USERNAME and WEBSHARE_PROXY_PASSWORD:
+                try:
+                    from youtube_transcript_api.proxies import WebshareProxyConfig
+                    proxy_config = WebshareProxyConfig(WEBSHARE_PROXY_USERNAME, WEBSHARE_PROXY_PASSWORD)
+                    api = _yta.YouTubeTranscriptApi(proxy_config=proxy_config)
+                    fetched = api.fetch(video_id, languages=LANGS)
+                    full_transcript = " ".join(
+                        (t.text if hasattr(t, "text") else t["text"]) for t in fetched
+                    )
+                    total_words = len(full_transcript.split())
+                    duration_str = f"~{max(1, total_words // 150)} min"
+                except Exception:
+                    full_transcript = None  # fall through to yt-dlp
+
+            # Step 2: yt-dlp with cookies (fallback — any video, including no-captions)
+            if full_transcript is None and YOUTUBE_COOKIES:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     cookies_path = os.path.join(tmpdir, "yt_cookies.txt")
                     with open(cookies_path, "w") as f:
@@ -317,46 +340,20 @@ async def process_url(
                             raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
                     except subprocess.TimeoutExpired:
                         raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
-
                     audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
                     if not audio_files:
                         raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
                     audio_path = os.path.join(tmpdir, audio_files[0])
                     with open(audio_path, "rb") as f:
                         audio_bytes = f.read()
-
                 full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
 
-            else:
-                # Unauthenticated path: transcript API (captions only, may be blocked on cloud IPs)
-                import youtube_transcript_api as _yta
-                LANGS = ["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"]
-                try:
-                    if hasattr(_yta.YouTubeTranscriptApi, "get_transcript"):
-                        transcript_data = _yta.YouTubeTranscriptApi.get_transcript(video_id, languages=LANGS)
-                        full_transcript = " ".join(t["text"] for t in transcript_data)
-                    else:
-                        api = _yta.YouTubeTranscriptApi()
-                        fetched = api.fetch(video_id, languages=LANGS)
-                        full_transcript = " ".join(
-                            (t.text if hasattr(t, "text") else t["text"]) for t in fetched
-                        )
-                    num_chunks = 1
-                    total_words = len(full_transcript.split())
-                    duration_str = f"~{max(1, total_words // 150)} min"
-                except Exception as e:
-                    err = str(e).lower()
-                    if "blocking" in err or "ip" in err:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="O YouTube está bloqueando requisições deste servidor. Para usar links do YouTube, adicione a variável YOUTUBE_COOKIES no painel do Render (veja as instruções no README).",
-                        )
-                    if "no transcript" in err or "disabled" in err or "not available" in err:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="Este vídeo não tem legendas disponíveis. Adicione YOUTUBE_COOKIES no Render para transcrever qualquer vídeo via áudio.",
-                        )
-                    raise HTTPException(status_code=400, detail=f"Erro ao obter transcrição do YouTube: {str(e)[:200]}")
+            # Step 3: nothing configured — clear error with instructions
+            if full_transcript is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Para processar vídeos do YouTube configure no Render: WEBSHARE_PROXY_USERNAME + WEBSHARE_PROXY_PASSWORD (recomendado) ou YOUTUBE_COOKIES como alternativa.",
+                )
         else:
             # Instagram, TikTok, Vimeo, etc. — download via yt-dlp
             with tempfile.TemporaryDirectory() as tmpdir:
