@@ -24,8 +24,7 @@ app.add_middleware(
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
-WEBSHARE_PROXY_USERNAME = os.environ.get("WEBSHARE_PROXY_USERNAME", "")
-WEBSHARE_PROXY_PASSWORD = os.environ.get("WEBSHARE_PROXY_PASSWORD", "")
+SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
 
 MAX_CHUNK_BYTES = 23 * 1024 * 1024
 
@@ -295,26 +294,28 @@ async def process_url(
             if not video_id:
                 raise HTTPException(status_code=400, detail="URL do YouTube inválida.")
 
-            import youtube_transcript_api as _yta
-            LANGS = ["pt", "pt-BR", "pt-PT", "en", "es", "fr", "de"]
             full_transcript = None
             num_chunks = 1
             duration_str = "–"
 
-            # Step 1: transcript API via Webshare proxy (maintenance-free, captions)
-            if WEBSHARE_PROXY_USERNAME and WEBSHARE_PROXY_PASSWORD:
+            # Step 1: Supadata API (no proxy needed, covers videos with captions)
+            if SUPADATA_API_KEY:
                 try:
-                    from youtube_transcript_api.proxies import WebshareProxyConfig
-                    proxy_config = WebshareProxyConfig(WEBSHARE_PROXY_USERNAME, WEBSHARE_PROXY_PASSWORD)
-                    api = _yta.YouTubeTranscriptApi(proxy_config=proxy_config)
-                    fetched = api.fetch(video_id, languages=LANGS)
-                    full_transcript = " ".join(
-                        (t.text if hasattr(t, "text") else t["text"]) for t in fetched
-                    )
-                    total_words = len(full_transcript.split())
-                    duration_str = f"~{max(1, total_words // 150)} min"
+                    async with httpx.AsyncClient() as sup_client:
+                        resp = await sup_client.get(
+                            "https://api.supadata.ai/v1/youtube/transcript",
+                            headers={"x-api-key": SUPADATA_API_KEY},
+                            params={"videoId": video_id, "text": "true"},
+                            timeout=30.0,
+                        )
+                    if resp.status_code == 200:
+                        content = resp.json().get("content", "")
+                        if content:
+                            full_transcript = content
+                            total_words = len(full_transcript.split())
+                            duration_str = f"~{max(1, total_words // 150)} min"
                 except Exception:
-                    full_transcript = None  # fall through to yt-dlp
+                    pass  # fall through to yt-dlp
 
             # Step 2: yt-dlp with cookies (fallback — any video, including no-captions)
             if full_transcript is None and YOUTUBE_COOKIES:
@@ -352,7 +353,7 @@ async def process_url(
             if full_transcript is None:
                 raise HTTPException(
                     status_code=400,
-                    detail="Para processar vídeos do YouTube configure no Render: WEBSHARE_PROXY_USERNAME + WEBSHARE_PROXY_PASSWORD (recomendado) ou YOUTUBE_COOKIES como alternativa.",
+                    detail="Para processar vídeos do YouTube configure no Render: SUPADATA_API_KEY (recomendado, supadata.ai) ou YOUTUBE_COOKIES como alternativa.",
                 )
         else:
             # Instagram, TikTok, Vimeo, etc. — download via yt-dlp

@@ -12,7 +12,5 @@ services:
         sync: false
       - key: YOUTUBE_COOKIES
         sync: false
-      - key: WEBSHARE_PROXY_USERNAME
-        sync: false
-      - key: WEBSHARE_PROXY_PASSWORD
+      - key: SUPADATA_API_KEY
         sync: false
