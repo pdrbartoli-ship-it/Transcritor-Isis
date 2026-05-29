@@ -1071,6 +1071,16 @@
     }
 
     renderHistory();
+    warmupBackend();
+  }
+
+  // ── Backend warmup (Render free tier sleeps after inactivity) ──
+  async function warmupBackend() {
+    try {
+      await fetch(BACKEND_URL + '/', { method: 'GET', signal: AbortSignal.timeout(30000) });
+    } catch(e) {
+      // silently ignore — just trying to wake the server up
+    }
   }
 
   // ── Install hint ──
@@ -1214,7 +1224,7 @@
         }
       });
 
-      xhr.addEventListener('error', () => reject(new Error('Sem conexão com o servidor.')));
+      xhr.addEventListener('error', () => reject(new Error('Servidor indisponível. Se for o primeiro uso do dia, o servidor pode estar acordando — aguarde 30 segundos e tente novamente.')));
       xhr.addEventListener('timeout', () => reject(new Error('Tempo esgotado. Tente novamente com um arquivo menor.')));
 
       const endpoint = activeTab === 'file' ? '/transcribe' : '/process-url';
