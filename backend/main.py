@@ -8,8 +8,9 @@ import subprocess
 import json
 import imageio_ffmpeg
 from urllib.parse import urlparse, parse_qs
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="Escreve")
@@ -20,6 +21,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Erro interno: {type(exc).__name__}: {str(exc)}"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -77,13 +86,16 @@ def extract_audio(input_path: str, output_path: str):
 
 
 def get_duration(input_path: str) -> float:
-    ffprobe = imageio_ffmpeg.get_ffprobe_exe()
-    result = subprocess.run(
-        [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", input_path],
-        capture_output=True, text=True
-    )
-    info = json.loads(result.stdout)
-    return float(info["format"]["duration"])
+    try:
+        ffprobe = imageio_ffmpeg.get_ffprobe_exe()
+        result = subprocess.run(
+            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", input_path],
+            capture_output=True, text=True
+        )
+        info = json.loads(result.stdout)
+        return float(info["format"]["duration"])
+    except Exception:
+        return 0.0
 
 
 def format_duration(total_seconds: float) -> str:
@@ -122,12 +134,17 @@ async def transcribe_chunk(client: httpx.AsyncClient, audio_bytes: bytes, chunk_
         "response_format": (None, "text"),
         "language": (None, "pt"),
     }
-    response = await client.post(
-        "https://api.groq.com/openai/v1/audio/transcriptions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-        files=files,
-        timeout=180.0,
-    )
+    try:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            files=files,
+            timeout=180.0,
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Tempo esgotado na transcrição (parte {chunk_index + 1}). Tente um arquivo menor.")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Erro de conexão com serviço de transcrição: {e}")
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Erro na transcrição (parte {chunk_index + 1}): {response.text}")
     return response.text.strip()
