@@ -50,6 +50,23 @@ class TranscriptionResult(BaseModel):
     duration_estimate: str
 
 
+class SessionContext(BaseModel):
+    title: str
+    date: str
+    transcript: str | None = None
+    summary: str | None = None
+
+
+class ChatRequest(BaseModel):
+    question: str
+    client_name: str
+    sessions: list[SessionContext]
+
+
+class ChatResponse(BaseModel):
+    answer: str
+
+
 def is_video_url(url: str) -> bool:
     host = urlparse(url).netloc.lower().replace("www.", "")
     return any(h in host for h in VIDEO_HOSTS)
@@ -428,3 +445,47 @@ async def process_url(
         chunks_used=num_chunks,
         duration_estimate=duration_str,
     )
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chave de API não configurada.")
+
+    sessions_text = ""
+    for i, s in enumerate(request.sessions, 1):
+        sessions_text += f"\n### Sessão {i}: {s.title} ({s.date})\n"
+        if s.summary:
+            sessions_text += f"Resumo: {s.summary}\n"
+        elif s.transcript:
+            excerpt = s.transcript[:2000] + "..." if len(s.transcript) > 2000 else s.transcript
+            sessions_text += f"Transcrição: {excerpt}\n"
+
+    prompt = f"""Você é um assistente especializado que ajuda profissionais a consultar e analisar suas sessões com o cliente "{request.client_name}".
+
+Sessões disponíveis:{sessions_text}
+
+Responda em português de forma clara e objetiva. Se a resposta envolver algo de uma sessão específica, mencione-a pelo título. Se não souber a resposta com base nas informações disponíveis, diga isso claramente.
+
+Pergunta: {request.question}"""
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1024,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60.0,
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {response.text}")
+        answer = response.json()["content"][0]["text"]
+
+    return ChatResponse(answer=answer)

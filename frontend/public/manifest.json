@@ -1,0 +1,10 @@
+{
+  "name": "Escreve",
+  "short_name": "Escreve",
+  "description": "Transcrição e análise de sessões profissionais",
+  "start_url": "/transcritor-isis/",
+  "display": "standalone",
+  "background_color": "#0a0a14",
+  "theme_color": "#0a0a14",
+  "icons": []
+}
