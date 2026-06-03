@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { suggestFolder } from '../lib/api'
@@ -9,6 +9,7 @@ import FolderSuggestionModal from '../components/FolderSuggestionModal'
 export default function Home() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const { folders, refreshFolders } = useOutletContext()
 
   const [pending, setPending] = useState(null)      // { result, sourceType, sourceName }
@@ -83,7 +84,7 @@ export default function Home() {
         <p className="text-muted">Grave uma conversa ou envie um arquivo — a gente organiza pra você.</p>
       </div>
 
-      <CapturePanel onResult={handleResult} variant="hero" />
+      <CapturePanel onResult={handleResult} variant="hero" autoStart={location.state?.autoRecord} />
 
       {suggestion && pending && (
         <FolderSuggestionModal

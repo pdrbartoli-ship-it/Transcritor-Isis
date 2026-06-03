@@ -47,7 +47,7 @@ export default function Auth() {
 
         <div className="auth-tabs">
           <button className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>
-            Entrar
+            Acessar
           </button>
           <button className={mode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')}>
             Criar conta

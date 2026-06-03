@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { transcribeFile, processUrl } from '../lib/api'
+import { getPrefs } from '../lib/prefs'
+import { IconMic, IconFile, IconLink } from './Icons'
 
 // Reusable capture surface: a central record button plus a secondary
 // file/link area. Calls onResult(result, sourceType, sourceName) when a
 // transcription finishes. `variant="hero"` enlarges the record button for the
 // home screen; "compact" is used inside a folder.
-export default function CapturePanel({ onResult, variant = 'hero' }) {
+export default function CapturePanel({ onResult, variant = 'hero', autoStart = null }) {
   const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,6 +28,12 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
       mediaRecorderRef.current.stop()
     }
   }, [])
+
+  // Start recording automatically when asked (e.g. the "Nova gravação" CTA).
+  useEffect(() => {
+    if (autoStart && !isRecording && !recordedBlob && !loading) startRecording()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart])
 
   function resetRecording() {
     setRecordedBlob(null)
@@ -78,26 +86,42 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
     }
   }
 
+  // Guard against empty/near-empty transcriptions (e.g. silent recording) so
+  // we don't create a useless session.
+  function isEmpty(result) {
+    return !result?.transcript || result.transcript.trim().length < 5
+  }
+
   async function handleRecording() {
     if (!recordedBlob) return
     const result = await runCapture(() => {
       const file = new File([recordedBlob], 'gravacao.webm', { type: 'audio/webm' })
-      return transcribeFile(file)
+      return transcribeFile(file, getPrefs())
     })
-    if (result) { onResult(result, 'file', 'Gravação de áudio'); resetRecording() }
+    if (!result) return
+    if (isEmpty(result)) {
+      setError('Não captamos áudio suficiente. Tente gravar novamente, mais perto do microfone.')
+      resetRecording()
+      return
+    }
+    onResult(result, 'file', 'Gravação de áudio'); resetRecording()
   }
 
   async function handleFile(file) {
     if (!file) return
-    const result = await runCapture(() => transcribeFile(file))
-    if (result) onResult(result, 'file', file.name)
+    const result = await runCapture(() => transcribeFile(file, getPrefs()))
+    if (!result) return
+    if (isEmpty(result)) { setError('Não conseguimos extrair áudio/texto deste arquivo.'); return }
+    onResult(result, 'file', file.name)
   }
 
   async function handleUrl(e) {
     e.preventDefault()
     if (!url.trim()) return
-    const result = await runCapture(() => processUrl(url.trim()))
-    if (result) { onResult(result, 'url', url.trim()); setUrl('') }
+    const result = await runCapture(() => processUrl(url.trim(), getPrefs()))
+    if (!result) return
+    if (isEmpty(result)) { setError('Não conseguimos extrair conteúdo deste link.'); return }
+    onResult(result, 'url', url.trim()); setUrl('')
   }
 
   function formatTime(s) {
@@ -117,7 +141,7 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
               disabled={loading}
               aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
             >
-              <span className="record-icon" />
+              <IconMic width={26} height={26} />
             </button>
             <p className="record-label">
               {loading ? (
@@ -146,8 +170,8 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
 
       <div className="capture-secondary">
         <div className="capture-tabs">
-          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>Arquivo</button>
-          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}>Link</button>
+          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><IconFile /> Arquivo</button>
+          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><IconLink /> Link</button>
         </div>
 
         {mode === 'file' ? (

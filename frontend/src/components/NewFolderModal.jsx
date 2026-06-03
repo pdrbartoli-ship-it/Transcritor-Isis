@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { IconClose } from './Icons'
 
 // Creates a folder (stored in the `clients` table). `initialName` lets the
 // folder-suggestion flow pre-fill a proposed name.
@@ -32,7 +33,7 @@ export default function NewFolderModal({ onClose, onCreated, initialName = '' })
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Nova pasta</h3>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+          <button className="btn-icon" onClick={onClose}><IconClose /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
