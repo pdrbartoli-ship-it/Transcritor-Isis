@@ -1,9 +1,9 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Auth from './pages/Auth'
-import Dashboard from './pages/Dashboard'
-import ClientView from './pages/ClientView'
-import SessionChat from './pages/SessionChat'
+import Layout from './components/Layout'
+import Home from './pages/Home'
+import FolderView from './pages/FolderView'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -23,9 +23,10 @@ export default function App() {
       <HashRouter>
         <Routes>
           <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/clients/:clientId" element={<ProtectedRoute><ClientView /></ProtectedRoute>} />
-          <Route path="/clients/:clientId/sessions/:sessionId" element={<ProtectedRoute><SessionChat /></ProtectedRoute>} />
+          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route path="/" element={<Home />} />
+            <Route path="/folders/:folderId" element={<FolderView />} />
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </HashRouter>

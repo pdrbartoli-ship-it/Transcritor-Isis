@@ -3,11 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a14" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Dito — capture, transcreva e organize suas conversas. Para profissionais." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="./manifest.json" />
-    <title>Escreve</title>
+    <title>Dito</title>
+    <script>
+      // Apply saved theme before render to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem('dito-theme') || 'light';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
