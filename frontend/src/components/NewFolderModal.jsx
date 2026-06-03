@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function NewClientModal({ onClose, onCreated }) {
+// Creates a folder (stored in the `clients` table). `initialName` lets the
+// folder-suggestion flow pre-fill a proposed name.
+export default function NewFolderModal({ onClose, onCreated, initialName = '' }) {
   const { user } = useAuth()
-  const [name, setName] = useState('')
+  const [name, setName] = useState(initialName)
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -29,7 +31,7 @@ export default function NewClientModal({ onClose, onCreated }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Novo Cliente</h3>
+          <h3>Nova pasta</h3>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit}>
@@ -39,7 +41,7 @@ export default function NewClientModal({ onClose, onCreated }) {
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Ex: João Silva"
+              placeholder="Ex: João Silva, Processo 0421, Pesquisa..."
               autoFocus
               required
             />
@@ -50,7 +52,7 @@ export default function NewClientModal({ onClose, onCreated }) {
               type="text"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Ex: Paciente, sessões semanais"
+              placeholder="Ex: paciente, sessões semanais"
             />
           </div>
           {error && <div className="alert alert-error">{error}</div>}

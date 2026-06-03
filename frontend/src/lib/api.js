@@ -37,3 +37,17 @@ export async function chatWithSessions(question, clientName, sessions) {
     body: JSON.stringify({ question, client_name: clientName, sessions }),
   }))
 }
+
+// Given a transcript and the list of existing folders, asks the backend to
+// suggest which folder it belongs to (or propose a new folder name).
+// Returns { folder_id, suggested_new_name, reason }.
+export async function suggestFolder(transcript, folders) {
+  return handleResponse(await fetch(`${API_URL}/suggest-folder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      transcript,
+      folders: folders.map(f => ({ id: f.id, name: f.name, description: f.description || null })),
+    }),
+  }))
+}

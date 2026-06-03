@@ -1,10 +1,10 @@
 {
-  "name": "Escreve",
-  "short_name": "Escreve",
-  "description": "Transcrição e análise de sessões profissionais",
+  "name": "Dito",
+  "short_name": "Dito",
+  "description": "Capture, transcreva e organize suas conversas",
   "start_url": "/Transcritor-Isis/",
   "display": "standalone",
-  "background_color": "#0a0a14",
-  "theme_color": "#0a0a14",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": []
 }

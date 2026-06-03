@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-app = FastAPI(title="Escreve")
+app = FastAPI(title="Dito")
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,6 +65,23 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+
+
+class FolderInfo(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+
+
+class SuggestFolderRequest(BaseModel):
+    transcript: str
+    folders: list[FolderInfo] = []
+
+
+class SuggestFolderResponse(BaseModel):
+    folder_id: str | None = None
+    suggested_new_name: str | None = None
+    reason: str = ""
 
 
 def is_video_url(url: str) -> bool:
@@ -275,7 +292,7 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, i
 
 @app.get("/")
 async def health():
-    return {"status": "ok", "service": "Escreve"}
+    return {"status": "ok", "service": "Dito"}
 
 
 @app.post("/transcribe", response_model=TranscriptionResult)
@@ -489,3 +506,75 @@ Pergunta: {request.question}"""
         answer = response.json()["content"][0]["text"]
 
     return ChatResponse(answer=answer)
+
+
+@app.post("/suggest-folder", response_model=SuggestFolderResponse)
+async def suggest_folder(request: SuggestFolderRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chave de API não configurada.")
+
+    excerpt = request.transcript[:4000]
+
+    folders_text = ""
+    for f in request.folders:
+        desc = f" — {f.description}" if f.description else ""
+        folders_text += f'\n- id: "{f.id}" | nome: "{f.name}"{desc}'
+    if not folders_text:
+        folders_text = "\n(nenhuma pasta existente)"
+
+    prompt = f"""Você organiza transcrições em pastas. Analise o conteúdo abaixo e decida em qual pasta ele se encaixa melhor.
+
+Pastas existentes:{folders_text}
+
+Conteúdo (trecho da transcrição):
+\"\"\"
+{excerpt}
+\"\"\"
+
+Regras:
+- Se o conteúdo claramente pertence a uma pasta existente (mesma pessoa, processo, tema ou contexto), retorne o id dela.
+- Se não houver pasta adequada, proponha um nome curto e claro para uma nova pasta (ex.: nome da pessoa/cliente, processo ou tema principal).
+- Nunca invente um id que não esteja na lista.
+
+Responda APENAS com um JSON válido, sem texto extra, no formato:
+{{"folder_id": "<id existente ou null>", "suggested_new_name": "<nome para nova pasta ou null>", "reason": "<uma frase curta explicando a escolha>"}}"""
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 300,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60.0,
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Erro ao sugerir pasta: {response.text}")
+        raw = response.json()["content"][0]["text"].strip()
+
+    # The model may wrap the JSON in ```json fences — strip them defensively.
+    if raw.startswith("```"):
+        raw = raw.split("```")[1] if "```" in raw[3:] else raw
+        raw = raw.replace("json", "", 1).strip().strip("`").strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return SuggestFolderResponse(folder_id=None, suggested_new_name=None, reason="")
+
+    folder_id = data.get("folder_id")
+    # Guard against hallucinated ids.
+    valid_ids = {f.id for f in request.folders}
+    if folder_id not in valid_ids:
+        folder_id = None
+
+    return SuggestFolderResponse(
+        folder_id=folder_id,
+        suggested_new_name=data.get("suggested_new_name") if not folder_id else None,
+        reason=data.get("reason", "") or "",
+    )

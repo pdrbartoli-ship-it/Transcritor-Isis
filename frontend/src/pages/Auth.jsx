@@ -41,9 +41,8 @@ export default function Auth() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <div className="auth-logo-icon">✍</div>
-          <h1>Escreve</h1>
-          <p>Transcrição inteligente para profissionais</p>
+          <span className="brand">Dito<span className="dot">.</span></span>
+          <p>Capture, transcreva e organize suas conversas</p>
         </div>
 
         <div className="auth-tabs">
