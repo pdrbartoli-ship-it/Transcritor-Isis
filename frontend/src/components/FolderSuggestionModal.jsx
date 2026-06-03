@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { IconFolder, IconPlus, IconClose } from './Icons'
 
 // Shown after a capture on the Home screen. Presents the AI's folder
 // suggestion and lets the user confirm, pick another existing folder, or
@@ -27,7 +28,7 @@ export default function FolderSuggestionModal({
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Onde salvar?</h3>
-          {!saving && <button className="btn-icon" onClick={onClose}>✕</button>}
+          {!saving && <button className="btn-icon" onClick={onClose}><IconClose /></button>}
         </div>
 
         {suggestion.reason && (
@@ -46,7 +47,7 @@ export default function FolderSuggestionModal({
             className={`suggestion-option ${selected === '__new__' ? 'selected' : ''}`}
             onClick={() => setSelected('__new__')}
           >
-            <span>＋</span>
+            <IconPlus width={16} height={16} />
             <span>Criar nova pasta: <span className="suggestion-pick">{suggestedName}</span></span>
           </button>
 
@@ -58,7 +59,7 @@ export default function FolderSuggestionModal({
               className={`suggestion-option ${selected === f.id ? 'selected' : ''}`}
               onClick={() => setSelected(f.id)}
             >
-              <span className="folder-ico">▤</span>
+              <IconFolder width={16} height={16} />
               <span>{f.name}{f.id === suggestion.folder_id ? ' · sugerida' : ''}</span>
             </button>
           ))}

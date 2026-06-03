@@ -4,3 +4,7 @@ frontend/dist/
 __pycache__/
 *.pyc
 .DS_Store
+
+# E2E test credentials — NEVER commit
+e2e/credentials.json
+.test-results/

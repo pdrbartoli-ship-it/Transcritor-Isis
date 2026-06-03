@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useOutletContext } from 'react-router-dom'
+import { useParams, useOutletContext, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { chatWithSessions } from '../lib/api'
 import CapturePanel from '../components/CapturePanel'
+import { IconSend, IconTrash } from '../components/Icons'
 
 export default function FolderView() {
   const { folderId } = useParams()
+  const location = useLocation()
   const { user } = useAuth()
   const { refreshFolders } = useOutletContext()
 
@@ -24,6 +26,15 @@ export default function FolderView() {
 
   useEffect(() => { fetchData() }, [folderId])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // When navigated here with a specific session (from the sidebar), open the
+  // panel and expand that session's transcript.
+  useEffect(() => {
+    const open = location.state?.openSession
+    if (open && !loading) {
+      setPanelOpen(true)
+      setExpanded(open)
+    }
+  }, [location.state, loading])
 
   async function fetchData() {
     setLoading(true)
@@ -59,6 +70,7 @@ export default function FolderView() {
     setAdding(false)
     if (!error && data) {
       setSessions(prev => [data, ...prev])
+      setPanelOpen(false) // collapse the capture panel so the chat takes over
       await refreshFolders()
     }
   }
@@ -126,7 +138,7 @@ export default function FolderView() {
                         {new Date(s.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </span>
                     </div>
-                    <button className="btn-icon danger" onClick={e => deleteSession(s.id, e)}>✕</button>
+                    <button className="btn-icon danger" onClick={e => deleteSession(s.id, e)} aria-label="Excluir sessão"><IconTrash width={15} height={15} /></button>
                   </div>
                   {expanded === s.id && (
                     <div className="session-transcript">{s.transcript}</div>
@@ -162,7 +174,9 @@ export default function FolderView() {
           placeholder={`Pergunte sobre ${folder?.name || 'esta pasta'}...`}
           disabled={sending}
         />
-        <button type="submit" className="btn-primary" disabled={sending || !input.trim()}>Enviar</button>
+        <button type="submit" className="btn-icon" disabled={sending || !input.trim()} aria-label="Enviar">
+          <IconSend width={18} height={18} />
+        </button>
       </form>
     </div>
   )
