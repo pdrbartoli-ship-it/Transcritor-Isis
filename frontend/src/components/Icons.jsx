@@ -58,6 +58,9 @@ export const IconEdit = (p) => (
 export const IconMore = (p) => (
   <svg {...base} {...p}><circle cx="12" cy="5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="12" cy="19" r="1.4" /></svg>
 )
+export const IconDownload = (p) => (
+  <svg {...base} {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+)
 export const IconCheck = (p) => (
   <svg {...base} {...p}><polyline points="20 6 9 17 4 12" /></svg>
 )
