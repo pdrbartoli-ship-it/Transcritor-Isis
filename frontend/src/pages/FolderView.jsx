@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useOutletContext, useLocation } from 'react-router-dom'
+import { useParams, useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { chatWithSessions } from '../lib/api'
 import CapturePanel from '../components/CapturePanel'
-import { IconSend, IconTrash } from '../components/Icons'
+import { IconSend, IconTrash, IconMore, IconEdit } from '../components/Icons'
 
 export default function FolderView() {
   const { folderId } = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { refreshFolders } = useOutletContext()
 
@@ -18,6 +19,9 @@ export default function FolderView() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [expanded, setExpanded] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
 
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -44,14 +48,24 @@ export default function FolderView() {
     ])
     setFolder(folderData)
     setSessions(sessionsData || [])
-    setMessages([{
-      role: 'assistant',
-      content: folderData
-        ? `**${folderData.name}**\n\n${(sessionsData?.length ?? 0) > 0
-            ? `Tenho ${sessionsData.length} sessão(ões) nesta pasta. Pergunte o que quiser sobre elas.`
-            : 'Esta pasta ainda não tem sessões. Grave ou envie um arquivo para começar.'}`
-        : '',
-    }])
+
+    // If we just arrived from a capture, surface that session's summary up front.
+    const ns = location.state?.newSession
+    if (ns?.summary) {
+      setMessages([{
+        role: 'assistant',
+        content: `✓ **Sessão salva: ${ns.title}**\n\n${ns.summary}\n\n---\n\nPergunte o que quiser sobre esta pasta.`,
+      }])
+    } else {
+      setMessages([{
+        role: 'assistant',
+        content: folderData
+          ? `**${folderData.name}**\n\n${(sessionsData?.length ?? 0) > 0
+              ? `Tenho ${sessionsData.length} sessão(ões) nesta pasta. Pergunte o que quiser sobre elas.`
+              : 'Esta pasta ainda não tem sessões. Grave ou envie um arquivo para começar.'}`
+          : '',
+      }])
+    }
     setExpanded(null)
     setLoading(false)
   }
@@ -71,6 +85,11 @@ export default function FolderView() {
     if (!error && data) {
       setSessions(prev => [data, ...prev])
       setPanelOpen(false) // collapse the capture panel so the chat takes over
+      // Surface the summary of what was just captured.
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `✓ **Sessão salva: ${data.title}**\n\n${data.summary}`,
+      }])
       await refreshFolders()
     }
   }
@@ -106,13 +125,58 @@ export default function FolderView() {
     }
   }
 
+  function startRename() {
+    setRenameValue(folder?.name || '')
+    setRenaming(true)
+    setMenuOpen(false)
+  }
+
+  async function saveRename() {
+    const name = renameValue.trim()
+    if (!name || name === folder.name) { setRenaming(false); return }
+    const { error } = await supabase.from('clients').update({ name }).eq('id', folderId)
+    if (!error) { setFolder(f => ({ ...f, name })); await refreshFolders() }
+    setRenaming(false)
+  }
+
+  async function deleteFolder() {
+    setMenuOpen(false)
+    if (!confirm(`Excluir a pasta "${folder.name}" e todas as suas sessões? Esta ação não pode ser desfeita.`)) return
+    await supabase.from('clients').delete().eq('id', folderId)
+    await refreshFolders()
+    navigate('/')
+  }
+
   if (loading) return <div className="empty-state"><div className="spinner" /></div>
 
   return (
     <div className="folder-view">
       <header className="folder-header">
         <div className="avatar">{folder?.name?.charAt(0).toUpperCase()}</div>
-        <h2>{folder?.name}</h2>
+        {renaming ? (
+          <input
+            className="folder-rename-input"
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setRenaming(false) }}
+            onBlur={saveRename}
+            autoFocus
+          />
+        ) : (
+          <h2>{folder?.name}</h2>
+        )}
+        <div className="folder-menu">
+          <button className="btn-icon" onClick={() => setMenuOpen(v => !v)} aria-label="Opções da pasta"><IconMore /></button>
+          {menuOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 20 }} onClick={() => setMenuOpen(false)} />
+              <div className="folder-menu-pop">
+                <button onClick={startRename}><IconEdit width={15} height={15} /> Renomear</button>
+                <button className="danger" onClick={deleteFolder}><IconTrash width={15} height={15} /> Excluir pasta</button>
+              </div>
+            </>
+          )}
+        </div>
         <button className="btn-secondary btn-sm" onClick={() => setPanelOpen(v => !v)}>
           {panelOpen ? 'Fechar' : `Sessões (${sessions.length})`}
         </button>

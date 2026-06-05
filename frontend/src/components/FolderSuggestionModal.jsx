@@ -17,9 +17,10 @@ export default function FolderSuggestionModal({
   const [selected, setSelected] = useState(
     suggestedFolder ? suggestedFolder.id : '__new__'
   )
+  const [newName, setNewName] = useState(suggestedName)
 
   function handleConfirm() {
-    if (selected === '__new__') onCreateNew(suggestedName)
+    if (selected === '__new__') onCreateNew(newName.trim() || suggestedName)
     else onConfirm(selected)
   }
 
@@ -42,14 +43,23 @@ export default function FolderSuggestionModal({
         </p>
 
         <div className="suggestion-options">
-          {/* New-folder option (pre-filled with the AI's proposed name) */}
+          {/* New-folder option (pre-filled with the AI's proposed name, editable) */}
           <button
             className={`suggestion-option ${selected === '__new__' ? 'selected' : ''}`}
             onClick={() => setSelected('__new__')}
           >
             <IconPlus width={16} height={16} />
-            <span>Criar nova pasta: <span className="suggestion-pick">{suggestedName}</span></span>
+            <span>Criar nova pasta</span>
           </button>
+          {selected === '__new__' && (
+            <input
+              className="suggestion-new-input"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Nome da nova pasta"
+              autoFocus
+            />
+          )}
 
           {folders.length > 0 && <div className="suggestion-sep">ou pasta existente</div>}
 
