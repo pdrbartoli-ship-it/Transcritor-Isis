@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import NewFolderModal from './NewFolderModal'
 import SettingsModal from './SettingsModal'
+import FeedbackModal from './FeedbackModal'
 import {
-  IconSidebar, IconPlus, IconHome, IconFolder, IconChevron, IconSettings, IconLogout, IconMic,
+  IconSidebar, IconPlus, IconHome, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
 } from './Icons'
 
 const PAGE = 5 // sessions shown per folder before "Mostrar mais"
@@ -21,6 +22,7 @@ export default function Layout() {
   const [showAll, setShowAll] = useState(() => new Set())
   const [showNew, setShowNew] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('dito-sidebar-collapsed') === '1' } catch { return false }
@@ -167,6 +169,9 @@ export default function Layout() {
           <button className="nav-item" onClick={() => setShowNew(true)}>
             <IconPlus /> Nova pasta
           </button>
+          <button className="nav-item" onClick={() => setShowFeedback(true)}>
+            <IconMessage /> Enviar sugestão
+          </button>
           <button className="nav-item" onClick={() => setShowSettings(true)}>
             <IconSettings /> Configurações
           </button>
@@ -199,6 +204,7 @@ export default function Layout() {
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   )
 }

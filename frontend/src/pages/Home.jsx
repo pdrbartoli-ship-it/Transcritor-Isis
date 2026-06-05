@@ -46,9 +46,9 @@ export default function Home() {
   async function handleConfirm(folderId) {
     setSaving(true)
     try {
-      await createSession(folderId)
+      const session = await createSession(folderId)
       await refreshFolders()
-      navigate(`/folders/${folderId}`)
+      navigate(`/folders/${folderId}`, { state: { newSession: session } })
     } catch (err) {
       alert(`Erro ao salvar: ${err.message}`)
       setSaving(false)
@@ -63,9 +63,9 @@ export default function Home() {
         name: name.trim() || `Pasta ${new Date().toLocaleDateString('pt-BR')}`,
       }).select().single()
       if (error) throw error
-      await createSession(folder.id)
+      const session = await createSession(folder.id)
       await refreshFolders()
-      navigate(`/folders/${folder.id}`)
+      navigate(`/folders/${folder.id}`, { state: { newSession: session } })
     } catch (err) {
       alert(`Erro ao criar pasta: ${err.message}`)
       setSaving(false)
@@ -83,6 +83,17 @@ export default function Home() {
         <h1>O que vamos registrar hoje?</h1>
         <p className="text-muted">Grave uma conversa ou envie um arquivo — a gente organiza pra você.</p>
       </div>
+
+      {folders.length === 0 && (
+        <div className="onboarding">
+          <h3>Como funciona</h3>
+          <ol>
+            <li>Grave uma conversa, envie um arquivo de áudio/vídeo ou cole um link.</li>
+            <li>O Dito transcreve e cria um resumo automaticamente.</li>
+            <li>Sugerimos uma pasta para guardar e você conversa com o conteúdo por ali.</li>
+          </ol>
+        </div>
+      )}
 
       <CapturePanel onResult={handleResult} variant="hero" autoStart={location.state?.autoRecord} />
 

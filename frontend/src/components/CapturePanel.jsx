@@ -14,6 +14,7 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
   const [error, setError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
 
+  const [elapsed, setElapsed] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -34,6 +35,15 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
     if (autoStart && !isRecording && !recordedBlob && !loading) startRecording()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart])
+
+  // Count elapsed seconds while processing + warn before leaving the tab.
+  useEffect(() => {
+    if (!loading) { setElapsed(0); return }
+    const t = setInterval(() => setElapsed(e => e + 1), 1000)
+    const warn = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => { clearInterval(t); window.removeEventListener('beforeunload', warn) }
+  }, [loading])
 
   function resetRecording() {
     setRecordedBlob(null)
@@ -130,6 +140,26 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
     return `${m}:${sec}`
   }
 
+  // While a capture is being transcribed/summarized, take over the UI with a
+  // reassuring progress box (transcription is synchronous and can be slow).
+  if (loading) {
+    return (
+      <div className="processing-box">
+        <div className="spinner" />
+        <div className="processing-title">Transcrevendo e resumindo…</div>
+        <div className="processing-hint">
+          Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo decorrido: {elapsed}s
+        </div>
+        {elapsed >= 12 && (
+          <div className="processing-warn">
+            O servidor pode ter hibernado — a primeira vez demora mais. Já estamos quase lá.
+          </div>
+        )}
+        <div className="processing-hint">⚠️ Não feche nem saia desta tela enquanto processa.</div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="hero-record">
@@ -152,6 +182,9 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
                 'Clique para gravar'
               )}
             </p>
+            {variant === 'hero' && !isRecording && (
+              <p className="mic-hint">Na primeira vez, o navegador vai pedir acesso ao microfone.</p>
+            )}
           </>
         ) : (
           <>
