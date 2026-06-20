@@ -1,0 +1,8 @@
+{
+  "appId": "com.dito.app",
+  "appName": "Dito",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  }
+}
