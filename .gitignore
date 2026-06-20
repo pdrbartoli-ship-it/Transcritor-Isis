@@ -8,3 +8,9 @@ __pycache__/
 # E2E test credentials — NEVER commit
 e2e/credentials.json
 .test-results/
+
+# Android — chave de assinatura e senhas (NUNCA commitar) + build
+*.keystore
+*.jks
+keystore.properties
+frontend/android/local.properties
