@@ -6,11 +6,17 @@ create table if not exists public.feedback (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users,
   email text,
-  message text not null,
+  message text,
+  mood text,            -- 'bad' | 'meh' | 'good' (carinha escolhida; pode vir sem texto)
   category text,
   context jsonb,
   created_at timestamptz default now()
 );
+
+-- Migração para tabelas que já existiam antes do feedback rápido (V0):
+-- mood passa a existir e o texto deixa de ser obrigatório (carinha sozinha já vale).
+alter table public.feedback add column if not exists mood text;
+alter table public.feedback alter column message drop not null;
 
 alter table public.feedback enable row level security;
 

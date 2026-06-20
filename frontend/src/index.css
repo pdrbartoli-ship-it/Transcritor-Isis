@@ -409,6 +409,37 @@ input::placeholder { color: var(--text-muted); }
   margin: 0 auto 14px;
 }
 
+/* ── Feedback rápido (V0): botão flutuante + carinhas + WhatsApp ── */
+.feedback-fab {
+  position: fixed; right: 20px; bottom: 20px;
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-text);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); z-index: 90;
+  transition: background 0.15s, transform 0.1s;
+}
+.feedback-fab:hover { background: var(--accent-hover); transform: translateY(-1px); }
+
+.mood-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 14px; }
+.mood-btn {
+  flex: 1; padding: 12px 0; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.mood-btn:hover { border-color: var(--text-muted); }
+.mood-btn.on { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+.mood-emoji { font-size: 26px; line-height: 1; filter: grayscale(0.45); opacity: 0.7; }
+.mood-btn.on .mood-emoji { filter: none; opacity: 1; }
+
+.btn-block { width: 100%; justify-content: center; margin-top: 14px; }
+
+.wa-link {
+  display: block; width: 100%; text-align: center; margin-top: 12px;
+  background: transparent; color: var(--text-muted); font-size: 13px; padding: 6px;
+}
+.wa-link:hover { color: var(--accent); }
+
 /* ── Capture processing (buffering reassurance) ─────────── */
 .processing-box {
   width: 100%; max-width: 460px;

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import NewFolderModal from './NewFolderModal'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
+import Toast from './Toast'
 import {
   IconSidebar, IconPlus, IconHome, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
 } from './Icons'
@@ -23,6 +24,7 @@ export default function Layout() {
   const [showNew, setShowNew] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [toast, setToast] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('dito-sidebar-collapsed') === '1' } catch { return false }
@@ -204,7 +206,26 @@ export default function Layout() {
         />
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showFeedback && (
+        <FeedbackModal
+          onClose={() => setShowFeedback(false)}
+          onSent={() => {
+            setShowFeedback(false)
+            setToast('Enviado, obrigado! 🙏')
+          }}
+        />
+      )}
+
+      <button
+        className="feedback-fab"
+        onClick={() => setShowFeedback(true)}
+        aria-label="Enviar feedback"
+        title="Como está sua experiência?"
+      >
+        <IconMessage />
+      </button>
+
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   )
 }
