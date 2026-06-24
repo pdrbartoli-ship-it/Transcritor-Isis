@@ -469,20 +469,25 @@ async def chat(request: ChatRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chave de API não configurada.")
 
+    # Each session carries the FULL transcript (the source of truth) plus the
+    # summary. The transcript is what the assistant must reason over — the
+    # summary is only an aid. Sending the whole transcript is what lets the
+    # model answer specific questions about a video/audio it transcribed.
     sessions_text = ""
     for i, s in enumerate(request.sessions, 1):
         sessions_text += f"\n### Sessão {i}: {s.title} ({s.date})\n"
         if s.summary:
             sessions_text += f"Resumo: {s.summary}\n"
-        elif s.transcript:
-            excerpt = s.transcript[:2000] + "..." if len(s.transcript) > 2000 else s.transcript
-            sessions_text += f"Transcrição: {excerpt}\n"
+        if s.transcript:
+            sessions_text += f"Transcrição completa:\n\"\"\"\n{s.transcript}\n\"\"\"\n"
 
     prompt = f"""Você é um assistente especializado que ajuda profissionais a consultar e analisar suas sessões com o cliente "{request.client_name}".
 
+Cada sessão abaixo inclui a TRANSCRIÇÃO COMPLETA do áudio/vídeo (entre aspas triplas) e, quando disponível, um resumo. A transcrição é a fonte de verdade: você TEM acesso ao conteúdo completo de cada gravação. Use a transcrição inteira para responder, não apenas o resumo. Nunca diga que não tem acesso ao conteúdo — ele está abaixo.
+
 Sessões disponíveis:{sessions_text}
 
-Responda em português de forma clara e objetiva. Se a resposta envolver algo de uma sessão específica, mencione-a pelo título. Se não souber a resposta com base nas informações disponíveis, diga isso claramente.
+Responda em português de forma clara e objetiva, baseando-se nas transcrições. Se a resposta envolver algo de uma sessão específica, mencione-a pelo título e, quando útil, cite o trecho relevante. Só diga que não encontrou a informação se ela realmente não estiver em nenhuma transcrição.
 
 Pergunta: {request.question}"""
 
@@ -496,10 +501,10 @@ Pergunta: {request.question}"""
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 1024,
+                "max_tokens": 2048,
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=60.0,
+            timeout=120.0,
         )
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {response.text}")

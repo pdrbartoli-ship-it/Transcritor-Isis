@@ -4,7 +4,33 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { chatWithSessions } from '../lib/api'
 import CapturePanel from '../components/CapturePanel'
-import { IconSend, IconTrash, IconMore, IconEdit } from '../components/Icons'
+import { IconSend, IconTrash, IconMore, IconEdit, IconFile, IconDownload } from '../components/Icons'
+
+// Builds the "official" document for a session: title, date, summary and the
+// full transcript. This is what gets offered as a downloadable .txt so the user
+// has everything in one place without it flooding the chat.
+function buildSessionDoc(session) {
+  const date = new Date(session.created_at || Date.now()).toLocaleDateString('pt-BR', {
+    day: '2-digit', month: 'long', year: 'numeric',
+  })
+  return [
+    session.title,
+    date,
+    '',
+    '═══ RESUMO ═══',
+    '',
+    (session.summary || '—').replace(/[#*_]/g, ''),
+    '',
+    '═══ TRANSCRIÇÃO ═══',
+    '',
+    session.transcript || '—',
+    '',
+  ].join('\n')
+}
+
+function attachmentFor(session) {
+  return { name: `${session.title}.txt`, content: buildSessionDoc(session) }
+}
 
 export default function FolderView() {
   const { folderId } = useParams()
@@ -54,7 +80,9 @@ export default function FolderView() {
     if (ns?.summary) {
       setMessages([{
         role: 'assistant',
-        content: `✓ **Sessão salva: ${ns.title}**\n\n${ns.summary}\n\n---\n\nPergunte o que quiser sobre esta pasta.`,
+        content: `✓ **Sessão salva: ${ns.title}**\n\n${ns.summary}\n\n---\n\nO documento completo (resumo + transcrição) está abaixo. Pergunte o que quiser sobre esta pasta.`,
+        attachment: attachmentFor(ns),
+        transcript: ns.transcript,
       }])
     } else {
       setMessages([{
@@ -85,10 +113,13 @@ export default function FolderView() {
     if (!error && data) {
       setSessions(prev => [data, ...prev])
       setPanelOpen(false) // collapse the capture panel so the chat takes over
-      // Surface the summary of what was just captured.
+      // Surface the summary of what was just captured + the full document as a
+      // downloadable .txt so the transcript doesn't flood the chat.
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `✓ **Sessão salva: ${data.title}**\n\n${data.summary}`,
+        content: `✓ **Sessão salva: ${data.title}**\n\n${data.summary}\n\n---\n\nO documento completo (resumo + transcrição) está abaixo.`,
+        attachment: attachmentFor(data),
+        transcript: data.transcript,
       }])
       await refreshFolders()
     }
@@ -205,7 +236,10 @@ export default function FolderView() {
                     <button className="btn-icon danger" onClick={e => deleteSession(s.id, e)} aria-label="Excluir sessão"><IconTrash width={15} height={15} /></button>
                   </div>
                   {expanded === s.id && (
-                    <div className="session-transcript">{s.transcript}</div>
+                    <>
+                      <FileAttachment attachment={attachmentFor(s)} />
+                      <div className="session-transcript">{s.transcript}</div>
+                    </>
                   )}
                   {expanded !== s.id && s.summary && (
                     <p className="session-preview text-muted text-sm">
@@ -222,7 +256,11 @@ export default function FolderView() {
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`message ${msg.role}`}>
-            <div className="bubble"><MarkdownText text={msg.content} /></div>
+            <div className="bubble">
+              <MarkdownText text={msg.content} />
+              {msg.transcript && <TranscriptToggle transcript={msg.transcript} />}
+              {msg.attachment && <FileAttachment attachment={msg.attachment} />}
+            </div>
           </div>
         ))}
         {sending && (
@@ -242,6 +280,47 @@ export default function FolderView() {
           <IconSend width={18} height={18} />
         </button>
       </form>
+    </div>
+  )
+}
+
+// A compact file card (like Claude's attachments) that downloads the session
+// document as a .txt on click — keeps the long transcript out of the chat flow.
+function FileAttachment({ attachment }) {
+  function download() {
+    const blob = new Blob([attachment.content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = attachment.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+  return (
+    <button className="file-chip" onClick={download} title="Baixar transcrição">
+      <span className="file-chip-icon"><IconFile width={18} height={18} /></span>
+      <span className="file-chip-info">
+        <span className="file-chip-name">{attachment.name}</span>
+        <span className="file-chip-meta">Documento · TXT</span>
+      </span>
+      <span className="file-chip-download"><IconDownload width={16} height={16} /></span>
+    </button>
+  )
+}
+
+// Lets the user reveal the full transcription inline in the chat (besides the
+// summary shown above and the downloadable document). Collapsed by default so
+// the long transcript doesn't flood the conversation.
+function TranscriptToggle({ transcript }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="transcript-toggle">
+      <button className="btn-ghost btn-sm" onClick={() => setOpen(v => !v)}>
+        <IconFile width={15} height={15} /> {open ? 'Ocultar transcrição' : 'Ver transcrição completa'}
+      </button>
+      {open && <div className="session-transcript">{transcript}</div>}
     </div>
   )
 }
