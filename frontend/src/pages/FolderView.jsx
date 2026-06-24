@@ -82,6 +82,7 @@ export default function FolderView() {
         role: 'assistant',
         content: `✓ **Sessão salva: ${ns.title}**\n\n${ns.summary}\n\n---\n\nO documento completo (resumo + transcrição) está abaixo. Pergunte o que quiser sobre esta pasta.`,
         attachment: attachmentFor(ns),
+        transcript: ns.transcript,
       }])
     } else {
       setMessages([{
@@ -118,6 +119,7 @@ export default function FolderView() {
         role: 'assistant',
         content: `✓ **Sessão salva: ${data.title}**\n\n${data.summary}\n\n---\n\nO documento completo (resumo + transcrição) está abaixo.`,
         attachment: attachmentFor(data),
+        transcript: data.transcript,
       }])
       await refreshFolders()
     }
@@ -256,6 +258,7 @@ export default function FolderView() {
           <div key={i} className={`message ${msg.role}`}>
             <div className="bubble">
               <MarkdownText text={msg.content} />
+              {msg.transcript && <TranscriptToggle transcript={msg.transcript} />}
               {msg.attachment && <FileAttachment attachment={msg.attachment} />}
             </div>
           </div>
@@ -304,6 +307,21 @@ function FileAttachment({ attachment }) {
       </span>
       <span className="file-chip-download"><IconDownload width={16} height={16} /></span>
     </button>
+  )
+}
+
+// Lets the user reveal the full transcription inline in the chat (besides the
+// summary shown above and the downloadable document). Collapsed by default so
+// the long transcript doesn't flood the conversation.
+function TranscriptToggle({ transcript }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="transcript-toggle">
+      <button className="btn-ghost btn-sm" onClick={() => setOpen(v => !v)}>
+        <IconFile width={15} height={15} /> {open ? 'Ocultar transcrição' : 'Ver transcrição completa'}
+      </button>
+      {open && <div className="session-transcript">{transcript}</div>}
+    </div>
   )
 }
 
