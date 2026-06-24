@@ -30,11 +30,11 @@ export async function processUrl(url, preferences = {}) {
   return handleResponse(await fetch(`${API_URL}/process-url`, { method: 'POST', body: formData }))
 }
 
-export async function chatWithSessions(question, clientName, sessions) {
+export async function chatWithSessions(question, clientName, sessions, { history = [], makeTitle = false } = {}) {
   return handleResponse(await fetch(`${API_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, client_name: clientName, sessions }),
+    body: JSON.stringify({ question, client_name: clientName, sessions, history, make_title: makeTitle }),
   }))
 }
 

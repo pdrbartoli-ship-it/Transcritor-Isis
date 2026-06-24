@@ -58,14 +58,22 @@ class SessionContext(BaseModel):
     summary: str | None = None
 
 
+class ChatTurn(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
     client_name: str
     sessions: list[SessionContext]
+    history: list[ChatTurn] = []
+    make_title: bool = False
 
 
 class ChatResponse(BaseModel):
     answer: str
+    title: str | None = None
 
 
 class FolderInfo(BaseModel):
@@ -512,15 +520,21 @@ async def chat(request: ChatRequest):
         if s.transcript:
             sessions_text += f"Transcrição completa:\n\"\"\"\n{s.transcript}\n\"\"\"\n"
 
-    prompt = f"""Você é um assistente especializado que ajuda profissionais a consultar e analisar suas sessões com o cliente "{request.client_name}".
+    system = f"""Você é um assistente especializado que ajuda profissionais a consultar e analisar suas sessões com o cliente "{request.client_name}".
 
 Cada sessão abaixo inclui a TRANSCRIÇÃO COMPLETA do áudio/vídeo (entre aspas triplas) e, quando disponível, um resumo. A transcrição é a fonte de verdade: você TEM acesso ao conteúdo completo de cada gravação. Use a transcrição inteira para responder, não apenas o resumo. Nunca diga que não tem acesso ao conteúdo — ele está abaixo.
 
 Sessões disponíveis:{sessions_text}
 
-Responda em português de forma clara e objetiva, baseando-se nas transcrições. Se a resposta envolver algo de uma sessão específica, mencione-a pelo título e, quando útil, cite o trecho relevante. Só diga que não encontrou a informação se ela realmente não estiver em nenhuma transcrição.
+Responda em português de forma clara e objetiva, baseando-se nas transcrições. Se a resposta envolver algo de uma sessão específica, mencione-a pelo título e, quando útil, cite o trecho relevante. Só diga que não encontrou a informação se ela realmente não estiver em nenhuma transcrição."""
 
-Pergunta: {request.question}"""
+    # Carry the prior turns of this conversation so follow-up questions work.
+    messages = [
+        {"role": t.role, "content": t.content}
+        for t in request.history
+        if t.role in ("user", "assistant") and t.content
+    ]
+    messages.append({"role": "user", "content": request.question})
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -533,7 +547,8 @@ Pergunta: {request.question}"""
             json={
                 "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 2048,
-                "messages": [{"role": "user", "content": prompt}],
+                "system": system,
+                "messages": messages,
             },
             timeout=120.0,
         )
@@ -541,7 +556,39 @@ Pergunta: {request.question}"""
             raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {response.text}")
         answer = response.json()["content"][0]["text"]
 
-    return ChatResponse(answer=answer)
+        # On the first turn, generate a short title for the conversation list.
+        title = None
+        if request.make_title:
+            title = await generate_chat_title(client, request.question, answer)
+
+    return ChatResponse(answer=answer, title=title)
+
+
+async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: str) -> str | None:
+    """Short 3-6 word title for a conversation, à la NotebookLM. Best-effort —
+    falls back to None so the caller can use the question itself."""
+    try:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 24,
+                "system": "Gere um título curto (3 a 6 palavras) em português que resuma o tema da conversa. Responda APENAS o título, sem aspas, sem pontuação final.",
+                "messages": [{"role": "user", "content": f"Pergunta: {question}\n\nResposta: {answer[:600]}"}],
+            },
+            timeout=30.0,
+        )
+        if resp.status_code == 200:
+            t = resp.json()["content"][0]["text"].strip().strip('"').strip()
+            return t[:80] or None
+    except Exception:
+        pass
+    return None
 
 
 @app.post("/suggest-folder", response_model=SuggestFolderResponse)
