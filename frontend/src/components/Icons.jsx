@@ -64,3 +64,9 @@ export const IconDownload = (p) => (
 export const IconCheck = (p) => (
   <svg {...base} {...p}><polyline points="20 6 9 17 4 12" /></svg>
 )
+export const IconPin = (p) => (
+  <svg {...base} {...p}><line x1="12" y1="17" x2="12" y2="22" /><path d="M9 2h6l-1 7 3 3v2H7v-2l3-3-1-7z" /></svg>
+)
+export const IconArchive = (p) => (
+  <svg {...base} {...p}><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><line x1="10" y1="12" x2="14" y2="12" /></svg>
+)

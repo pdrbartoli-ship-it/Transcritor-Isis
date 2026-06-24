@@ -131,7 +131,8 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
     const result = await runCapture(() => processUrl(url.trim(), getPrefs()))
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair conteúdo deste link.'); return }
-    onResult(result, 'url', url.trim()); setUrl('')
+    // Name the session after the video/page title when available, not the URL.
+    onResult(result, 'url', result.title?.trim() || url.trim()); setUrl('')
   }
 
   function formatTime(s) {

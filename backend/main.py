@@ -48,6 +48,7 @@ class TranscriptionResult(BaseModel):
     summary: str
     chunks_used: int
     duration_estimate: str
+    title: str | None = None
 
 
 class SessionContext(BaseModel):
@@ -92,6 +93,31 @@ def is_video_url(url: str) -> bool:
 def is_youtube_url(url: str) -> bool:
     host = urlparse(url).netloc.lower().replace("www.", "")
     return host in ("youtube.com", "youtu.be", "m.youtube.com")
+
+
+async def fetch_video_title(url: str) -> str | None:
+    """Best-effort fetch of a video's title via the provider's oEmbed endpoint.
+    Works for YouTube, Vimeo, etc. Returns None if unavailable so the caller
+    can fall back to the raw URL."""
+    host = urlparse(url).netloc.lower().replace("www.", "")
+    if "youtube.com" in host or "youtu.be" in host:
+        oembed = "https://www.youtube.com/oembed"
+    elif "vimeo.com" in host:
+        oembed = "https://vimeo.com/api/oembed.json"
+    else:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                oembed, params={"url": url, "format": "json"}, timeout=10.0,
+                follow_redirects=True,
+            )
+        if resp.status_code == 200:
+            title = (resp.json().get("title") or "").strip()
+            return title or None
+    except Exception:
+        pass
+    return None
 
 
 def extract_youtube_id(url: str) -> str | None:
@@ -456,11 +482,16 @@ async def process_url(
     async with httpx.AsyncClient() as client:
         summary = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
 
+    # Prefer the real video/page title (e.g. the YouTube title) so the session
+    # isn't named after a raw URL.
+    title = await fetch_video_title(url) if is_video_url(url) else None
+
     return TranscriptionResult(
         transcript=full_transcript,
         summary=summary,
         chunks_used=num_chunks,
         duration_estimate=duration_str,
+        title=title,
     )
 
 

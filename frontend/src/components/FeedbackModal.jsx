@@ -42,7 +42,7 @@ export default function FeedbackModal({ onClose }) {
           <div className="feedback-done">
             <div className="feedback-check"><IconCheck width={26} height={26} /></div>
             <h3>Obrigado! 🙏</h3>
-            <p className="text-muted">Recebemos sua sugestão. Ela nos ajuda a melhorar o Dito.</p>
+            <p className="text-muted">Recebemos sua mensagem. Ela nos ajuda a melhorar o Dito.</p>
             <div className="modal-actions">
               <button className="btn-primary" onClick={onClose}>Fechar</button>
             </div>
@@ -50,11 +50,11 @@ export default function FeedbackModal({ onClose }) {
         ) : (
           <>
             <div className="modal-header">
-              <h3>Enviar sugestão</h3>
+              <h3>Fale com a gente</h3>
               <button className="btn-icon" onClick={onClose}><IconClose /></button>
             </div>
             <p className="text-muted text-sm" style={{ marginBottom: 14 }}>
-              O que podemos melhorar? Toda ideia ou problema que você relatar é lido por nós.
+              Sugestão, problema ou reclamação — escreva e envie. A gente lê tudo.
             </p>
             <form onSubmit={submit}>
               <div className="settings-group">
@@ -68,7 +68,7 @@ export default function FeedbackModal({ onClose }) {
                 className="feedback-textarea"
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                placeholder="Escreva sua sugestão..."
+                placeholder="Escreva aqui sua sugestão, problema ou ideia..."
                 rows={5}
                 autoFocus
               />
