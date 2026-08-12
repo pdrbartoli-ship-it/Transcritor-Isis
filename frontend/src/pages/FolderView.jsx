@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { chatWithSessions } from '../lib/api'
+import { chatWithSessions, suggestFolder } from '../lib/api'
 import CapturePanel from '../components/CapturePanel'
-import { IconSend, IconTrash, IconMore, IconEdit, IconFile, IconDownload, IconChevron, IconMessage } from '../components/Icons'
+import { IconSend, IconTrash, IconMore, IconEdit, IconFile, IconDownload, IconChevron } from '../components/Icons'
 
 // Builds the "official" document for a session: title, date, summary and the
 // full transcript. Offered as a downloadable .txt so everything is in one place.
@@ -40,6 +40,7 @@ export default function FolderView() {
 
   const [activeChat, setActiveChat] = useState(null)
   const [messages, setMessages] = useState([])
+  const [msgsLoading, setMsgsLoading] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -53,13 +54,16 @@ export default function FolderView() {
   useEffect(() => { fetchData() }, [folderId])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  // Arriving from a capture or the sidebar opens the "Fontes" tab on that source.
+  // Arriving from the sidebar opens the source in "Fontes"; arriving from a
+  // capture drops the user straight into the chat that was just created.
   useEffect(() => {
     if (loading) return
     const open = location.state?.openSession
     const ns = location.state?.newSession
+    const chat = location.state?.openChat
     if (open) { setActiveChat(null); setTab('fontes'); setExpandedSource(open) }
-    else if (ns) { setActiveChat(null); setTab('fontes') }
+    else if (chat) { setTab('conversas'); setActiveChat(chat); setMessages([]) }
+    else if (ns) { setActiveChat(null); setTab('conversas') }
   }, [location.state, loading])
 
   const activeSources = sessions.filter(s => !s.archived)
@@ -96,9 +100,11 @@ export default function FolderView() {
   async function openChat(chat) {
     setActiveChat(chat)
     setMessages([])
+    setMsgsLoading(true)
     const { data } = await supabase
       .from('chat_messages').select('*').eq('chat_id', chat.id).order('created_at', { ascending: true })
     setMessages((data || []).map(m => ({ role: m.role, content: m.content })))
+    setMsgsLoading(false)
   }
 
   async function deleteChat(chat, e) {
@@ -143,7 +149,10 @@ export default function FolderView() {
   }
 
   async function continueChat(question) {
-    const history = messages.map(m => ({ role: m.role, content: m.content }))
+    // Transcrições inteiras podem virar mensagens (botões-gatilho do starter) e
+    // o backend já injeta todas as fontes no system prompt — truncar o histórico
+    // evita mandar o mesmo texto duas vezes.
+    const history = messages.map(m => ({ role: m.role, content: m.content.slice(0, 2000) }))
     setMessages(prev => [...prev, { role: 'user', content: question }])
     setSending(true)
     await supabase.from('chat_messages').insert({ chat_id: activeChat.id, user_id: user.id, role: 'user', content: question })
@@ -162,7 +171,15 @@ export default function FolderView() {
 
   async function handleNewCapture(result, sourceType, sourceName) {
     setAdding(true)
-    const title = sourceName || `Sessão ${new Date().toLocaleDateString('pt-BR')}`
+    let title = sourceName || `Sessão ${new Date().toLocaleDateString('pt-BR')}`
+    try {
+      // A pasta já está decidida aqui; aproveitamos só o assunto específico
+      // para dar à fonte um nome baseado no conteúdo, não no arquivo.
+      const s = await suggestFolder(result.transcript, folder ? [folder] : [])
+      if (s?.suggested_chat_name) title = s.suggested_chat_name
+    } catch {
+      // Sem sugestão, o nome do arquivo/vídeo continua servindo.
+    }
     const { data, error } = await supabase.from('sessions').insert({
       client_id: folderId, user_id: user.id, title, source_type: sourceType,
       transcript: result.transcript, summary: result.summary,
@@ -172,6 +189,41 @@ export default function FolderView() {
       setSessions(prev => [data, ...prev])
       setExpandedSource(data.id)
       await refreshFolders()
+    }
+  }
+
+  // Os botões-gatilho do starter apenas trazem para o chat a transcrição/resumo
+  // que já foram gerados na captura — nenhuma chamada nova à IA.
+  async function insertFromSource(kind) {
+    const source = activeSources[0]
+    const content = kind === 'transcript' ? source?.transcript : source?.summary
+    if (!content || sending) return
+    const question = kind === 'transcript' ? 'Gerar transcrição' : 'Gerar resumo'
+    setSending(true)
+    try {
+      let chat = activeChat
+      if (!chat) {
+        const label = kind === 'transcript' ? 'Transcrição' : 'Resumo'
+        const { data } = await supabase.from('chats').insert({
+          client_id: folderId, user_id: user.id,
+          title: `${label} — ${source.title}`.slice(0, 80),
+        }).select().single()
+        if (!data) { alert('Erro ao criar conversa.'); return }
+        chat = data
+        setActiveChat(chat)
+      }
+      await supabase.from('chat_messages').insert([
+        { chat_id: chat.id, user_id: user.id, role: 'user', content: question },
+        { chat_id: chat.id, user_id: user.id, role: 'assistant', content },
+      ])
+      setMessages(prev => [...prev, { role: 'user', content: question }, { role: 'assistant', content }])
+      await supabase.from('chats').update({
+        preview: content.replace(/[#*_]/g, '').slice(0, 120),
+        updated_at: new Date().toISOString(),
+      }).eq('id', chat.id)
+    } finally {
+      setSending(false)
+      refreshChats()
     }
   }
 
@@ -203,6 +255,46 @@ export default function FolderView() {
   if (loading) return <div className="empty-state"><div className="spinner" /></div>
 
   const showChatInput = tab === 'conversas'
+  // Estado inicial estilo Claude: vale para um chat ainda sem mensagens e para
+  // a aba Conversas quando a pasta ainda não tem nenhuma conversa.
+  const showStarter = !sending && (
+    activeChat ? (messages.length === 0 && !msgsLoading) : (tab === 'conversas' && chats.length === 0)
+  )
+
+  function renderChatInput() {
+    return (
+      <form className="chat-input" onSubmit={handleSend}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder={messages.length > 0 ? 'Continuar a conversa...' : `Perguntar sobre ${folder?.name || 'esta pasta'}...`}
+          disabled={sending}
+        />
+        <button type="submit" className="btn-icon" disabled={sending || !input.trim()} aria-label="Enviar">
+          <IconSend width={18} height={18} />
+        </button>
+      </form>
+    )
+  }
+
+  function renderStarter() {
+    return (
+      <div className="chat-starter">
+        <h2>O que deseja saber?</h2>
+        {renderChatInput()}
+        {activeSources.length > 0 && (
+          <div className="starter-actions">
+            <button className="starter-chip" onClick={() => insertFromSource('transcript')} disabled={sending}>
+              <IconFile width={16} height={16} /> Gerar transcrição
+            </button>
+            <button className="starter-chip" onClick={() => insertFromSource('summary')} disabled={sending}>
+              <IconEdit width={16} height={16} /> Gerar resumo
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="folder-view">
@@ -254,13 +346,25 @@ export default function FolderView() {
       )}
 
       {/* ── Active conversation thread ── */}
-      {activeChat ? (
+      {showStarter ? (
+        renderStarter()
+      ) : activeChat ? (
         <div className="chat-messages">
-          {messages.map((msg, i) => (
-            <div key={i} className={`message ${msg.role}`}>
-              <div className="bubble"><MarkdownText text={msg.content} /></div>
-            </div>
-          ))}
+          {messages.map((msg, i) => {
+            // Quando a mensagem é uma transcrição trazida pelo botão-gatilho,
+            // oferecemos o mesmo chip de download usado na aba Fontes.
+            const attached = msg.role === 'assistant'
+              ? activeSources.find(s => s.transcript && s.transcript === msg.content)
+              : null
+            return (
+              <div key={i} className={`message ${msg.role}`}>
+                <div className="bubble">
+                  <MarkdownText text={msg.content} />
+                  {attached && <FileAttachment attachment={attachmentFor(attached)} />}
+                </div>
+              </div>
+            )
+          })}
           {sending && <div className="message assistant"><div className="bubble thinking">Pensando...</div></div>}
           <div ref={endRef} />
         </div>
@@ -273,28 +377,20 @@ export default function FolderView() {
               <div className="chat-list-preview">{messages[0]?.content}</div>
             </div>
           )}
-          {chats.length === 0 && !sending ? (
-            <div className="list-empty">
-              <IconMessage width={26} height={26} />
-              <p><strong>Nenhuma conversa ainda</strong></p>
-              <p className="text-muted text-sm">Faça uma pergunta na barra abaixo para começar a conversar sobre esta pasta.</p>
-            </div>
-          ) : (
-            chats.map(c => (
-              <button key={c.id} className="chat-list-item" onClick={() => openChat(c)}>
-                <div className="chat-list-main">
-                  <div className="chat-list-title">{c.title}</div>
-                  {c.preview && <div className="chat-list-preview">{c.preview}</div>}
-                </div>
-                <span className="chat-list-date">
-                  {new Date(c.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                </span>
-                <span className="chat-list-del" onClick={e => deleteChat(c, e)} role="button" aria-label="Excluir conversa">
-                  <IconTrash width={15} height={15} />
-                </span>
-              </button>
-            ))
-          )}
+          {chats.map(c => (
+            <button key={c.id} className="chat-list-item" onClick={() => openChat(c)}>
+              <div className="chat-list-main">
+                <div className="chat-list-title">{c.title}</div>
+                {c.preview && <div className="chat-list-preview">{c.preview}</div>}
+              </div>
+              <span className="chat-list-date">
+                {new Date(c.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+              </span>
+              <span className="chat-list-del" onClick={e => deleteChat(c, e)} role="button" aria-label="Excluir conversa">
+                <IconTrash width={15} height={15} />
+              </span>
+            </button>
+          ))}
         </div>
       ) : (
         /* ── Sources (Fontes) ── */
@@ -335,19 +431,8 @@ export default function FolderView() {
         </div>
       )}
 
-      {(activeChat || showChatInput) && (
-        <form className="chat-input" onSubmit={handleSend}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder={activeChat ? 'Continuar a conversa...' : `Perguntar sobre ${folder?.name || 'esta pasta'}...`}
-            disabled={sending}
-          />
-          <button type="submit" className="btn-icon" disabled={sending || !input.trim()} aria-label="Enviar">
-            <IconSend width={18} height={18} />
-          </button>
-        </form>
-      )}
+      {/* O starter já traz a própria barra de pergunta, centralizada. */}
+      {!showStarter && (activeChat || showChatInput) && renderChatInput()}
     </div>
   )
 }

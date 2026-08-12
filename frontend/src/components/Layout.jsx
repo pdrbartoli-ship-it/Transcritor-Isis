@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useLocation, NavLink, Outlet, useParams } from 'react-router-dom'
+import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import NewFolderModal from './NewFolderModal'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import {
-  IconSidebar, IconPlus, IconHome, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
+  IconSidebar, IconPlus, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
   IconMore, IconEdit, IconTrash, IconPin, IconArchive,
 } from './Icons'
 
@@ -178,14 +178,14 @@ export default function Layout() {
           </button>
         </div>
 
-        <button className="sidebar-cta" onClick={() => navigate('/', { state: { autoRecord: Date.now() } })}>
+        <button className="sidebar-cta" onClick={() => navigate('/')}>
           <IconMic width={16} height={16} /> Nova gravação
         </button>
 
         <nav className="sidebar-nav">
-          <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <IconHome /> Início
-          </NavLink>
+          <button className="nav-item" onClick={() => setShowNew(true)}>
+            <IconPlus /> Nova pasta
+          </button>
         </nav>
 
         <div className="sidebar-section-label">Pastas</div>
@@ -355,9 +355,6 @@ export default function Layout() {
         </div>
 
         <div className="sidebar-foot">
-          <button className="nav-item" onClick={() => setShowNew(true)}>
-            <IconPlus /> Nova pasta
-          </button>
           <button className="nav-item" onClick={() => setShowSettings(true)}>
             <IconSettings /> Configurações
           </button>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { suggestFolder } from '../lib/api'
@@ -9,7 +9,6 @@ import FolderSuggestionModal from '../components/FolderSuggestionModal'
 export default function Home() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
   const { folders, refreshFolders } = useOutletContext()
 
   const [pending, setPending] = useState(null)      // { result, sourceType, sourceName }
@@ -28,9 +27,11 @@ export default function Home() {
     }
   }
 
-  async function createSession(folderId) {
+  // The chat name chosen in the modal titles both the source and the
+  // conversation the user lands on, so they read as one thing across the app.
+  async function createSession(folderId, chatName) {
     const { result, sourceType, sourceName } = pending
-    const title = sourceName || `Sessão ${new Date().toLocaleDateString('pt-BR')}`
+    const title = chatName?.trim() || sourceName || `Sessão ${new Date().toLocaleDateString('pt-BR')}`
     const { data, error } = await supabase.from('sessions').insert({
       client_id: folderId,
       user_id: user.id,
@@ -43,19 +44,30 @@ export default function Home() {
     return data
   }
 
-  async function handleConfirm(folderId) {
+  // Best-effort: a failure here shouldn't block the capture from being saved.
+  async function createChat(folderId, chatName, fallbackTitle) {
+    const { data } = await supabase.from('chats').insert({
+      client_id: folderId,
+      user_id: user.id,
+      title: chatName?.trim() || fallbackTitle,
+    }).select().single()
+    return data || null
+  }
+
+  async function handleConfirm(folderId, chatName) {
     setSaving(true)
     try {
-      const session = await createSession(folderId)
+      const session = await createSession(folderId, chatName)
+      const chat = await createChat(folderId, chatName, session.title)
       await refreshFolders()
-      navigate(`/folders/${folderId}`, { state: { newSession: session } })
+      navigate(`/folders/${folderId}`, { state: { newSession: session, openChat: chat } })
     } catch (err) {
       alert(`Erro ao salvar: ${err.message}`)
       setSaving(false)
     }
   }
 
-  async function handleCreateNew(name) {
+  async function handleCreateNew(name, chatName) {
     setSaving(true)
     try {
       const { data: folder, error } = await supabase.from('clients').insert({
@@ -63,9 +75,10 @@ export default function Home() {
         name: name.trim() || `Pasta ${new Date().toLocaleDateString('pt-BR')}`,
       }).select().single()
       if (error) throw error
-      const session = await createSession(folder.id)
+      const session = await createSession(folder.id, chatName)
+      const chat = await createChat(folder.id, chatName, session.title)
       await refreshFolders()
-      navigate(`/folders/${folder.id}`, { state: { newSession: session } })
+      navigate(`/folders/${folder.id}`, { state: { newSession: session, openChat: chat } })
     } catch (err) {
       alert(`Erro ao criar pasta: ${err.message}`)
       setSaving(false)
@@ -95,12 +108,13 @@ export default function Home() {
         </div>
       )}
 
-      <CapturePanel onResult={handleResult} variant="hero" autoStart={location.state?.autoRecord} />
+      <CapturePanel onResult={handleResult} variant="hero" />
 
       {suggestion && pending && (
         <FolderSuggestionModal
           suggestion={suggestion}
           folders={folders}
+          sourceName={pending.sourceName}
           saving={saving}
           onConfirm={handleConfirm}
           onCreateNew={handleCreateNew}

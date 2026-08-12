@@ -3,11 +3,54 @@ import { transcribeFile, processUrl } from '../lib/api'
 import { getPrefs } from '../lib/prefs'
 import { IconMic, IconFile, IconLink } from './Icons'
 
+// Coeficientes da estimativa de processamento — calibráveis conforme o backend
+// mudar de máquina/modelo. O backend só devolve a duração real depois de
+// processar, então a estimativa é calculada aqui, antes do envio.
+const BASE_OVERHEAD_S = 8      // rede + cold start do Render
+const AUDIO_RATIO = 0.12       // fração da duração gasta transcrevendo áudio
+const VIDEO_RATIO = 0.20       // vídeo custa a mais a extração da faixa de áudio
+const PER_MB_S = 1.5           // fallback quando não dá para ler a duração
+const LINK_ESTIMATE_S = 120    // links não expõem a duração antes do download
+const MIN_ESTIMATE_S = 15
+const MAX_ESTIMATE_S = 900
+
+// Lê a duração de um arquivo de mídia sem enviá-lo. Resolve null se o browser
+// não conseguir decodificar os metadados.
+function readMediaDuration(file) {
+  return new Promise(resolve => {
+    const el = document.createElement(file.type.startsWith('video/') ? 'video' : 'audio')
+    const url = URL.createObjectURL(file)
+    let done = false
+    const finish = value => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      URL.revokeObjectURL(url)
+      resolve(Number.isFinite(value) && value > 0 ? value : null)
+    }
+    // Ler só os metadados é rápido; o teto evita travar a UI num arquivo que o
+    // browser não decodifica (a estimativa então cai no tamanho em MB).
+    const timer = setTimeout(() => finish(null), 2500)
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => finish(el.duration)
+    el.onerror = () => finish(null)
+    el.src = url
+  })
+}
+
+function estimateSeconds({ kind, durationSec = null, bytes = 0 }) {
+  if (kind === 'link') return LINK_ESTIMATE_S
+  let seconds = BASE_OVERHEAD_S
+  if (durationSec) seconds += durationSec * (kind === 'video' ? VIDEO_RATIO : AUDIO_RATIO)
+  else seconds += (bytes / 1_000_000) * PER_MB_S
+  return Math.round(Math.min(MAX_ESTIMATE_S, Math.max(MIN_ESTIMATE_S, seconds)))
+}
+
 // Reusable capture surface: a central record button plus a secondary
 // file/link area. Calls onResult(result, sourceType, sourceName) when a
 // transcription finishes. `variant="hero"` enlarges the record button for the
 // home screen; "compact" is used inside a folder.
-export default function CapturePanel({ onResult, variant = 'hero', autoStart = null }) {
+export default function CapturePanel({ onResult, variant = 'hero' }) {
   const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -15,6 +58,7 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
   const [dragOver, setDragOver] = useState(false)
 
   const [elapsed, setElapsed] = useState(0)
+  const [estimate, setEstimate] = useState(null) // segundos previstos, null = desconhecido
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -29,12 +73,6 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
       mediaRecorderRef.current.stop()
     }
   }, [])
-
-  // Start recording automatically when asked (e.g. the "Nova gravação" CTA).
-  useEffect(() => {
-    if (autoStart && !isRecording && !recordedBlob && !loading) startRecording()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart])
 
   // Count elapsed seconds while processing + warn before leaving the tab.
   useEffect(() => {
@@ -83,7 +121,8 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
     clearInterval(timerRef.current)
   }
 
-  async function runCapture(fn) {
+  async function runCapture(fn, estimateSec = null) {
+    setEstimate(estimateSec)
     setLoading(true)
     setError(null)
     try {
@@ -93,6 +132,7 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
       return null
     } finally {
       setLoading(false)
+      setEstimate(null)
     }
   }
 
@@ -104,10 +144,12 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
 
   async function handleRecording() {
     if (!recordedBlob) return
+    // resetRecording() zera recordingTime mais adiante — ler a duração antes.
+    const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
     const result = await runCapture(() => {
       const file = new File([recordedBlob], 'gravacao.webm', { type: 'audio/webm' })
       return transcribeFile(file, getPrefs())
-    })
+    }, seconds)
     if (!result) return
     if (isEmpty(result)) {
       setError('Não captamos áudio suficiente. Tente gravar novamente, mais perto do microfone.')
@@ -119,7 +161,13 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
 
   async function handleFile(file) {
     if (!file) return
-    const result = await runCapture(() => transcribeFile(file, getPrefs()))
+    const durationSec = await readMediaDuration(file)
+    const seconds = estimateSeconds({
+      kind: file.type.startsWith('video/') ? 'video' : 'audio',
+      durationSec,
+      bytes: file.size,
+    })
+    const result = await runCapture(() => transcribeFile(file, getPrefs()), seconds)
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair áudio/texto deste arquivo.'); return }
     onResult(result, 'file', file.name)
@@ -128,7 +176,10 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
   async function handleUrl(e) {
     e.preventDefault()
     if (!url.trim()) return
-    const result = await runCapture(() => processUrl(url.trim(), getPrefs()))
+    const result = await runCapture(
+      () => processUrl(url.trim(), getPrefs()),
+      estimateSeconds({ kind: 'link' }),
+    )
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair conteúdo deste link.'); return }
     // Name the session after the video/page title when available, not the URL.
@@ -144,12 +195,17 @@ export default function CapturePanel({ onResult, variant = 'hero', autoStart = n
   // While a capture is being transcribed/summarized, take over the UI with a
   // reassuring progress box (transcription is synchronous and can be slow).
   if (loading) {
+    // Enquanto a estimativa se sustenta, mostramos quanto falta; se estourar,
+    // voltamos ao tempo decorrido em vez de exibir um contador travado em zero.
+    const remaining = estimate ? Math.max(0, estimate - elapsed) : 0
     return (
       <div className="processing-box">
         <div className="spinner" />
         <div className="processing-title">Transcrevendo e resumindo…</div>
         <div className="processing-hint">
-          Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo decorrido: {elapsed}s
+          {remaining > 0
+            ? <>Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo estimado: {formatTime(remaining)}</>
+            : <>Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo decorrido: {elapsed}s</>}
         </div>
         {elapsed >= 12 && (
           <div className="processing-warn">

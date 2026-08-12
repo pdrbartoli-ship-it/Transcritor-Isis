@@ -89,7 +89,8 @@ class SuggestFolderRequest(BaseModel):
 
 class SuggestFolderResponse(BaseModel):
     folder_id: str | None = None
-    suggested_new_name: str | None = None
+    suggested_new_name: str | None = None   # assunto macro → nome da pasta
+    suggested_chat_name: str | None = None  # assunto específico → nome do chat
     reason: str = ""
 
 
@@ -605,7 +606,7 @@ async def suggest_folder(request: SuggestFolderRequest):
     if not folders_text:
         folders_text = "\n(nenhuma pasta existente)"
 
-    prompt = f"""Você organiza transcrições em pastas. Analise o conteúdo abaixo e decida em qual pasta ele se encaixa melhor.
+    prompt = f"""Você organiza transcrições em pastas e conversas. Analise o conteúdo abaixo e decida onde ele se encaixa melhor.
 
 Pastas existentes:{folders_text}
 
@@ -614,13 +615,23 @@ Conteúdo (trecho da transcrição):
 {excerpt}
 \"\"\"
 
+Separe o conteúdo em dois níveis:
+- ASSUNTO MACRO: o tema abrangente que agrupa vários conteúdos relacionados → vira o nome da PASTA.
+  Ex.: "Egito Antigo", "Literatura Clássica", "Agronegócio SLC".
+- ASSUNTO ESPECÍFICO: o recorte tratado neste conteúdo em particular → vira o nome do CHAT.
+  Ex.: "Dinastia de Tutancâmon", "A Odisseia de Homero", "Safra 2026".
+
 Regras:
-- Se o conteúdo claramente pertence a uma pasta existente (mesma pessoa, processo, tema ou contexto), retorne o id dela.
-- Se não houver pasta adequada, proponha um nome curto e claro para uma nova pasta (ex.: nome da pessoa/cliente, processo ou tema principal).
+- Se o conteúdo pertence claramente a uma pasta existente (mesmo assunto macro, pessoa, processo ou contexto), retorne o id dela em folder_id e deixe suggested_new_name null.
+- Se não houver pasta adequada, deixe folder_id null e ponha o assunto macro em suggested_new_name.
+- SEMPRE preencha suggested_chat_name com o assunto específico, exista pasta adequada ou não.
+- O nome do chat NÃO deve repetir o nome da pasta: se a pasta é "Egito Antigo", o chat é "Dinastia de Tutancâmon", nunca "Egito Antigo - Tutancâmon".
+- Se o conteúdo não tiver um recorte claro, use uma descrição curta do que foi tratado.
+- Cada nome deve ter de 2 a 6 palavras, sem aspas e sem ponto final.
 - Nunca invente um id que não esteja na lista.
 
 Responda APENAS com um JSON válido, sem texto extra, no formato:
-{{"folder_id": "<id existente ou null>", "suggested_new_name": "<nome para nova pasta ou null>", "reason": "<uma frase curta explicando a escolha>"}}"""
+{{"folder_id": "<id existente ou null>", "suggested_new_name": "<assunto macro para nova pasta ou null>", "suggested_chat_name": "<assunto específico para o chat>", "reason": "<uma frase curta explicando a escolha>"}}"""
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -648,7 +659,7 @@ Responda APENAS com um JSON válido, sem texto extra, no formato:
     try:
         data = json.loads(raw)
     except Exception:
-        return SuggestFolderResponse(folder_id=None, suggested_new_name=None, reason="")
+        return SuggestFolderResponse()
 
     folder_id = data.get("folder_id")
     # Guard against hallucinated ids.
@@ -656,8 +667,16 @@ Responda APENAS com um JSON válido, sem texto extra, no formato:
     if folder_id not in valid_ids:
         folder_id = None
 
+    def clean(value: str | None) -> str | None:
+        if not isinstance(value, str):
+            return None
+        return value.strip().strip('"').strip()[:80] or None
+
     return SuggestFolderResponse(
         folder_id=folder_id,
-        suggested_new_name=data.get("suggested_new_name") if not folder_id else None,
+        # O nome da pasta só interessa quando nenhuma pasta existente serve; o
+        # nome do chat vale sempre, porque o chat é sempre novo.
+        suggested_new_name=clean(data.get("suggested_new_name")) if not folder_id else None,
+        suggested_chat_name=clean(data.get("suggested_chat_name")),
         reason=data.get("reason", "") or "",
     )

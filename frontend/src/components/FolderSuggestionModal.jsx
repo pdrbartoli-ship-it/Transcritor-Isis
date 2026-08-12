@@ -1,27 +1,31 @@
 import { useState } from 'react'
 import { IconFolder, IconPlus, IconClose } from './Icons'
 
-// Shown after a capture on the Home screen. Presents the AI's folder
-// suggestion and lets the user confirm, pick another existing folder, or
-// create a new one. Calls onConfirm({ folderId }) for an existing folder or
-// onCreateNew(name) to open the new-folder flow.
+// Shown after a capture on the Home screen. Presents the AI's suggestion split
+// in two levels — the macro subject becomes the folder, the specific subject
+// becomes the chat — and lets the user edit both. Calls
+// onConfirm(folderId, chatName) for an existing folder or
+// onCreateNew(folderName, chatName) to create a new one.
 export default function FolderSuggestionModal({
-  suggestion, folders, saving, onConfirm, onCreateNew, onClose,
+  suggestion, folders, sourceName, saving, onConfirm, onCreateNew, onClose,
 }) {
   const suggestedFolder = suggestion.folder_id
     ? folders.find(f => f.id === suggestion.folder_id)
     : null
   const suggestedName = suggestion.suggested_new_name || 'Nova pasta'
+  const suggestedChat = suggestion.suggested_chat_name || sourceName || 'Nova conversa'
 
   // Default selection: the suggested existing folder, else the "new folder" option.
   const [selected, setSelected] = useState(
     suggestedFolder ? suggestedFolder.id : '__new__'
   )
   const [newName, setNewName] = useState(suggestedName)
+  const [chatName, setChatName] = useState(suggestedChat)
 
   function handleConfirm() {
-    if (selected === '__new__') onCreateNew(newName.trim() || suggestedName)
-    else onConfirm(selected)
+    const chat = chatName.trim() || suggestedChat
+    if (selected === '__new__') onCreateNew(newName.trim() || suggestedName, chat)
+    else onConfirm(selected, chat)
   }
 
   return (
@@ -42,8 +46,10 @@ export default function FolderSuggestionModal({
             : 'Não encontramos uma pasta existente. Sugerimos criar:'}
         </p>
 
+        <div className="suggestion-field-label">Pasta</div>
+
         <div className="suggestion-options">
-          {/* New-folder option (pre-filled with the AI's proposed name, editable) */}
+          {/* New-folder option (pre-filled with the AI's macro subject, editable) */}
           <button
             className={`suggestion-option ${selected === '__new__' ? 'selected' : ''}`}
             onClick={() => setSelected('__new__')}
@@ -52,13 +58,16 @@ export default function FolderSuggestionModal({
             <span>Criar nova pasta</span>
           </button>
           {selected === '__new__' && (
-            <input
-              className="suggestion-new-input"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              placeholder="Nome da nova pasta"
-              autoFocus
-            />
+            <div className="suggestion-input-wrap">
+              <IconPlus width={16} height={16} />
+              <input
+                type="text"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Nome da nova pasta"
+                autoFocus
+              />
+            </div>
           )}
 
           {folders.length > 0 && <div className="suggestion-sep">ou pasta existente</div>}
@@ -73,6 +82,17 @@ export default function FolderSuggestionModal({
               <span>{f.name}{f.id === suggestion.folder_id ? ' · sugerida' : ''}</span>
             </button>
           ))}
+        </div>
+
+        {/* The chat is always new, so its name is asked for in both branches. */}
+        <div className="suggestion-field-label">Chat</div>
+        <div className="suggestion-input-wrap">
+          <input
+            type="text"
+            value={chatName}
+            onChange={e => setChatName(e.target.value)}
+            placeholder="Nome do chat"
+          />
         </div>
 
         <div className="modal-actions">

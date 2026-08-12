@@ -18,6 +18,8 @@
   --danger: #c0392b;
   --danger-bg: rgba(192, 57, 43, 0.08);
   --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+  --scrollbar-thumb: #c9c4b4;
+  --scrollbar-thumb-hover: #a8a294;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --radius: 12px;
@@ -45,6 +47,9 @@
   --danger: #e5705a;
   --danger-bg: rgba(229, 112, 90, 0.14);
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.45);
+  /* No tema escuro o contraste vem de clarear, não de escurecer. */
+  --scrollbar-thumb: #55524b;
+  --scrollbar-thumb-hover: #6e6a61;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -58,6 +63,18 @@ body {
   -webkit-font-smoothing: antialiased;
   transition: background 0.2s, color 0.2s;
 }
+
+/* ── Barra de rolagem ──────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: content-box; }
 
 /* ── Utilities ─────────────────────────────────────────── */
 .text-muted { color: var(--text-muted); }
@@ -386,7 +403,6 @@ input::placeholder { color: var(--text-muted); }
 .folder-header .avatar { width: 30px; height: 30px; font-size: 12px; }
 .folder-header h2 { font-family: var(--font-serif); font-size: 18px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-rename-input { flex: 1; min-width: 0; font-family: var(--font-serif); font-size: 18px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); }
-.suggestion-new-input { margin: 8px 0 2px; }
 
 /* tabs: Conversas | Fontes */
 .folder-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -414,11 +430,14 @@ input::placeholder { color: var(--text-muted); }
 .chat-list-del { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--text-muted); opacity: 0; transition: opacity 0.12s; }
 .chat-list-item:hover .chat-list-del { opacity: 1; }
 .chat-list-del:hover { background: var(--danger-bg); color: var(--danger); }
-.list-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; color: var(--text-muted); padding: 40px 20px; }
-.list-empty svg { color: var(--text-muted); margin-bottom: 6px; }
 
 /* sources tab */
 .sources-panel { flex: 1; overflow-y: auto; padding: 20px; max-width: 740px; width: 100%; margin: 0 auto; }
+/* O painel de captura é mais estreito (440px) que o painel de fontes (740px): sem
+   margem automática ele encostaria à esquerda, desalinhado do botão de gravar. */
+.sources-panel .capture-divider,
+.sources-panel .capture-secondary { margin-left: auto; margin-right: auto; }
+.sources-panel .capture-divider { margin-top: 22px; margin-bottom: 14px; }
 .sources-panel h4 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; color: var(--text-muted); }
 .sessions-list { display: flex; flex-direction: column; gap: 8px; }
 .session-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
@@ -522,7 +541,7 @@ input::placeholder { color: var(--text-muted); }
 
 /* ── Capture processing (buffering reassurance) ─────────── */
 .processing-box {
-  width: 100%; max-width: 460px;
+  width: 100%; max-width: 460px; margin: 0 auto;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -594,6 +613,33 @@ input::placeholder { color: var(--text-muted); }
 .suggestion-option svg { flex-shrink: 0; color: var(--text-muted); }
 .suggestion-sep { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 .suggestion-sep::before, .suggestion-sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.suggestion-field-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 14px 0 6px; }
+/* Campo de texto do modal: replica o estilo dos inputs do Dito e acomoda um ícone. */
+.suggestion-input-wrap {
+  display: flex; align-items: center; gap: 9px; margin: 8px 0 2px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 0 13px;
+}
+.suggestion-input-wrap:focus-within { border-color: var(--accent); }
+.suggestion-input-wrap svg { flex-shrink: 0; color: var(--accent); }
+.suggestion-input-wrap input {
+  flex: 1; min-width: 0; border: none; background: transparent; padding: 10px 0;
+  color: var(--text); font-family: var(--font-sans); font-size: 14px;
+}
+.suggestion-input-wrap input:focus { outline: none; }
+
+/* ── Chat starter (estado vazio da aba Conversas) ───────── */
+.chat-starter { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 30px 20px; width: 100%; }
+.chat-starter h2 { font-family: var(--font-serif); font-size: 26px; font-weight: 500; text-align: center; }
+.chat-starter .chat-input { padding: 0; }
+.starter-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.starter-chip {
+  display: flex; align-items: center; gap: 8px; padding: 9px 15px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 13px; box-shadow: var(--shadow);
+}
+.starter-chip:hover { background: var(--surface-2); border-color: var(--accent); }
+.starter-chip svg { color: var(--accent); flex-shrink: 0; }
 
 /* ── Mobile ─────────────────────────────────────────────── */
 @media (max-width: 760px) {

@@ -39,8 +39,9 @@ export async function chatWithSessions(question, clientName, sessions, { history
 }
 
 // Given a transcript and the list of existing folders, asks the backend to
-// suggest which folder it belongs to (or propose a new folder name).
-// Returns { folder_id, suggested_new_name, reason }.
+// suggest where it belongs, split in two levels: the macro subject names the
+// folder and the specific subject names the chat.
+// Returns { folder_id, suggested_new_name, suggested_chat_name, reason }.
 export async function suggestFolder(transcript, folders) {
   return handleResponse(await fetch(`${API_URL}/suggest-folder`, {
     method: 'POST',
