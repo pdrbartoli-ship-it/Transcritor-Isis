@@ -198,6 +198,9 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
     // Enquanto a estimativa se sustenta, mostramos quanto falta; se estourar,
     // voltamos ao tempo decorrido em vez de exibir um contador travado em zero.
     const remaining = estimate ? Math.max(0, estimate - elapsed) : 0
+    // O aviso de hibernação só faz sentido depois que a estimativa acabou. Sem
+    // estimativa (caso que não deveria ocorrer), cai no limite fixo antigo.
+    const overEstimate = estimate ? elapsed >= estimate : elapsed >= 12
     return (
       <div className="processing-box">
         <div className="spinner" />
@@ -207,7 +210,7 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
             ? <>Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo estimado: {formatTime(remaining)}</>
             : <>Leva de alguns segundos a poucos minutos, conforme a duração do áudio. Tempo decorrido: {elapsed}s</>}
         </div>
-        {elapsed >= 12 && (
+        {overEstimate && (
           <div className="processing-warn">
             O servidor pode ter hibernado — a primeira vez demora mais. Já estamos quase lá.
           </div>

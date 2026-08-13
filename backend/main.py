@@ -3,6 +3,7 @@ import io
 import math
 import asyncio
 import httpx
+import shutil
 import tempfile
 import subprocess
 import json
@@ -92,6 +93,28 @@ class SuggestFolderResponse(BaseModel):
     suggested_new_name: str | None = None   # assunto macro → nome da pasta
     suggested_chat_name: str | None = None  # assunto específico → nome do chat
     reason: str = ""
+
+
+def js_runtime_args() -> list[str]:
+    """O YouTube exige resolver um desafio em JavaScript para liberar as URLs de
+    mídia, e o yt-dlp precisa de um runtime externo para isso — só o deno vem
+    habilitado por padrão. Procuramos um dos suportados e passamos o caminho
+    explícito, evitando depender do PATH do processo. Sem nenhum instalado,
+    devolvemos lista vazia: o yt-dlp segue e avisa que faltam formatos."""
+    candidates = [
+        # /opt/render/... é onde o buildCommand instala o deno no Render.
+        ("deno", [
+            shutil.which("deno"),
+            "/opt/render/project/.deno/bin/deno",
+            os.path.expanduser("~/.deno/bin/deno"),
+        ]),
+        ("node", [shutil.which("node"), shutil.which("nodejs")]),
+    ]
+    for name, paths in candidates:
+        for path in paths:
+            if path and os.path.exists(path):
+                return ["--js-runtimes", f"{name}:{path}"]
+    return []
 
 
 def is_video_url(url: str) -> bool:
@@ -418,6 +441,7 @@ async def process_url(
                                 "--audio-quality", "64K",
                                 "--no-playlist",
                                 "--cookies", cookies_path,
+                                *js_runtime_args(),
                                 "-o", output_template,
                                 url,
                             ],
@@ -453,6 +477,7 @@ async def process_url(
                             "--audio-quality", "64K",
                             "--no-playlist",
                             "--extractor-args", "youtube:player_client=ios,android",
+                            *js_runtime_args(),
                             "-o", output_template,
                             url,
                         ],
