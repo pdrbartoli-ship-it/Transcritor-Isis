@@ -12,6 +12,29 @@ Documento de acompanhamento do empacotamento do Dito como app Android (via Capac
   e instala. Esse arquivo é só para teste, **não serve para a Play Store**.
 - Ícone provisório do Dito (letra "D" no terracota da marca, `#C96442`).
 
+## Atualização automática do app (OTA)
+
+O app tem live update via `@capgo/capacitor-updater`. Mudanças de **interface e
+lógica** chegam ao celular sozinhas, sem gerar APK nem passar pela Play Store.
+Só mudança **nativa** (permissão, plugin, ícone, `versionCode`) exige app novo.
+
+Como funciona, a cada push na `main`:
+
+1. O workflow [pages.yml](.github/workflows/pages.yml) faz dois builds — o do app
+   (`build:app`, base relativa) e o do site (`build`, subcaminho do Pages).
+2. O bundle do app vira `dist/ota/bundle-1.0.<run>.zip`, com o `index.html` na
+   raiz do zip (exigência do plugin), e o SHA-256 vai para `dist/ota/latest.json`.
+3. Ao abrir, o app faz POST em `/app-update` no backend, que lê esse
+   `latest.json` e responde `{version, url, checksum}`.
+4. O app baixa em segundo plano e aplica na abertura seguinte.
+
+O endpoint mora no backend porque o plugin exige POST e o GitHub Pages devolve
+405 para POST — o Pages só serve o zip e o manifesto por GET.
+
+Rede de segurança: se o bundle novo não chamar `notifyAppReady()` (em
+`frontend/src/main.jsx`), o plugin desfaz a atualização sozinho na próxima
+abertura. Um bundle quebrado não deixa o app inutilizável.
+
 ### Como gerar o app de novo (técnico)
 
 Pré-requisitos no ambiente: Java 21 e Android SDK (platform 35, build-tools 35).

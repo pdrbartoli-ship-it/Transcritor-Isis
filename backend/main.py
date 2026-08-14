@@ -36,6 +36,12 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
 
+# Manifesto do live update do app Android, publicado pelo GitHub Actions.
+OTA_MANIFEST_URL = os.environ.get(
+    "OTA_MANIFEST_URL",
+    "https://pdrbartoli-ship-it.github.io/Transcritor-Isis/ota/latest.json",
+)
+
 MAX_CHUNK_BYTES = 23 * 1024 * 1024
 
 # O arquivo inteiro passa pela memória do processo antes de ir para o disco
@@ -92,6 +98,24 @@ class FolderInfo(BaseModel):
     id: str
     name: str
     description: str | None = None
+
+
+class AppUpdateRequest(BaseModel):
+    """Corpo que o @capgo/capacitor-updater envia a cada abertura do app.
+    Só usamos version_name (a versão em uso, ou "builtin" na primeira vez);
+    os demais campos chegam mas não influenciam a resposta."""
+    platform: str | None = None
+    version_name: str | None = None
+    version_build: str | None = None
+    device_id: str | None = None
+    app_id: str | None = None
+
+
+class AppUpdateResponse(BaseModel):
+    version: str | None = None
+    url: str | None = None
+    checksum: str | None = None
+    message: str | None = None
 
 
 class FolderBriefingRequest(BaseModel):
@@ -703,6 +727,39 @@ async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: 
     except Exception:
         pass
     return None
+
+
+@app.post("/app-update", response_model=AppUpdateResponse)
+async def app_update(request: AppUpdateRequest):
+    """Diz ao app Android se há um bundle web mais novo para baixar.
+
+    O plugin exige POST, e o GitHub Pages devolve 405 para POST — por isso o
+    endpoint mora aqui e apenas repassa o manifesto que o CI publicou no Pages
+    (lá o GET funciona normalmente). Assim o deploy do app continua sendo só um
+    push, sem infra nova.
+
+    Falhar aqui é inofensivo: o app segue com o bundle que já tem.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(OTA_MANIFEST_URL, timeout=15.0, follow_redirects=True)
+        if resp.status_code != 200:
+            return AppUpdateResponse(message="Manifesto de atualização indisponível.")
+        latest = resp.json()
+    except Exception:
+        return AppUpdateResponse(message="Não foi possível consultar atualizações.")
+
+    version = latest.get("version")
+    url = latest.get("url")
+    checksum = latest.get("checksum")
+    if not (version and url and checksum):
+        return AppUpdateResponse(message="Manifesto de atualização incompleto.")
+
+    # "builtin" é o bundle que veio dentro do APK: sempre vale atualizar.
+    if request.version_name == version:
+        return AppUpdateResponse(message="Já está na versão mais recente.")
+
+    return AppUpdateResponse(version=version, url=url, checksum=checksum)
 
 
 @app.post("/folder-briefing", response_model=FolderBriefingResponse)
