@@ -24,8 +24,11 @@ android {
         applicationId "br.com.albiecloud.dito"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // O Play Console recusa dois envios com o mesmo versionCode: cada
+        // pacote enviado à loja precisa de um número maior que o anterior.
+        // Mudanças só de web não passam por aqui — chegam por OTA (ver PLAYSTORE.md).
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
