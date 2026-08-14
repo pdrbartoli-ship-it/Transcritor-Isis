@@ -6,6 +6,10 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  // Depois do cadastro a sessão nasce na hora e o PublicRoute redirecionaria
+  // antes de o usuário ver que a conta foi criada. A tela de cadastro segura o
+  // redirecionamento por alguns instantes para mostrar a confirmação.
+  const [holdRedirect, setHoldRedirect] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -21,7 +25,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, holdRedirect, setHoldRedirect }}>
       {children}
     </AuthContext.Provider>
   )

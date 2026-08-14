@@ -1,4 +1,4 @@
-package com.dito.app;
+package br.com.albiecloud.dito;
 
 import com.getcapacitor.BridgeActivity;
 

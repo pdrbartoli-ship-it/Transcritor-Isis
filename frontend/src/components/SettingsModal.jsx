@@ -2,8 +2,15 @@ import { useState } from 'react'
 import { getPrefs, setPrefs, getTheme, setTheme } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
 
+const TONE_HINTS = {
+  Formal: 'Formal: frases completas, vocabulário preciso, sem gírias.',
+  Casual: 'Casual: linguagem do dia a dia, frases curtas, sem jargão.',
+  'Técnico': 'Técnico: preserva os termos exatos da fonte e é específico com dados e definições.',
+}
+
 // Theme + summarization preferences. Theme applies instantly; preferences are
-// read by CapturePanel at capture time and sent to the backend.
+// read at capture time (CapturePanel) and at chat time (FolderView), e enviadas
+// ao backend nas duas rotas.
 export default function SettingsModal({ onClose }) {
   const [theme, setThemeState] = useState(getTheme())
   const [prefs, setPrefsState] = useState(getPrefs())
@@ -32,8 +39,12 @@ export default function SettingsModal({ onClose }) {
         </div>
 
         <div className="settings-group">
-          <label>Nível do resumo</label>
-          <p className="hint">Quão completo o resumo automático de cada transcrição deve ser.</p>
+          <label>Profundidade</label>
+          <p className="hint">
+            {prefs.detailed
+              ? 'Detalhado: usa um modelo mais forte, respostas e resumos mais completos — leva um pouco mais de tempo.'
+              : 'Rápido: respostas e resumos enxutos, gerados em menos tempo.'}
+          </p>
           <div className="seg">
             <button className={!prefs.detailed ? 'on' : ''} onClick={() => change({ detailed: false })}>Rápido</button>
             <button className={prefs.detailed ? 'on' : ''} onClick={() => change({ detailed: true })}>Detalhado</button>
@@ -41,7 +52,12 @@ export default function SettingsModal({ onClose }) {
         </div>
 
         <div className="settings-group">
-          <label>Formato do resumo</label>
+          <label>Formato</label>
+          <p className="hint">
+            {prefs.style === 'Tópicos'
+              ? 'Tópicos: tudo em listas com marcadores curtos.'
+              : 'Parágrafos: texto corrido, sem listas.'}
+          </p>
           <div className="seg">
             <button className={prefs.style === 'Tópicos' ? 'on' : ''} onClick={() => change({ style: 'Tópicos' })}>Tópicos</button>
             <button className={prefs.style === 'Parágrafos' ? 'on' : ''} onClick={() => change({ style: 'Parágrafos' })}>Parágrafos</button>
@@ -50,12 +66,17 @@ export default function SettingsModal({ onClose }) {
 
         <div className="settings-group" style={{ marginBottom: 0 }}>
           <label>Tom</label>
+          <p className="hint">{TONE_HINTS[prefs.tone] || ''}</p>
           <div className="seg">
             {['Formal', 'Casual', 'Técnico'].map(t => (
               <button key={t} className={prefs.tone === t ? 'on' : ''} onClick={() => change({ tone: t })}>{t}</button>
             ))}
           </div>
         </div>
+
+        <p className="hint" style={{ marginTop: 16 }}>
+          Estas preferências valem para os resumos das capturas e também para as respostas do chat.
+        </p>
 
         <div className="modal-actions">
           <button className="btn-primary" onClick={onClose}>Concluído</button>

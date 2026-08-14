@@ -14,3 +14,7 @@ e2e/credentials.json
 *.jks
 keystore.properties
 frontend/android/local.properties
+
+# pacotes Android gerados (não versionar)
+*.aab
+*.apk

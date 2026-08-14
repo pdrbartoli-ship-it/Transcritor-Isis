@@ -8,7 +8,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.dito.app"
+    namespace = "br.com.albiecloud.dito"
     compileSdk = rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
@@ -21,7 +21,7 @@ android {
         }
     }
     defaultConfig {
-        applicationId "com.dito.app"
+        applicationId "br.com.albiecloud.dito"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -10,9 +10,19 @@ const BASE_OVERHEAD_S = 8      // rede + cold start do Render
 const AUDIO_RATIO = 0.12       // fração da duração gasta transcrevendo áudio
 const VIDEO_RATIO = 0.20       // vídeo custa a mais a extração da faixa de áudio
 const PER_MB_S = 1.5           // fallback quando não dá para ler a duração
-const LINK_ESTIMATE_S = 120    // links não expõem a duração antes do download
+const LINK_ESTIMATE_S = 60     // links não expõem a duração antes do download
 const MIN_ESTIMATE_S = 15
 const MAX_ESTIMATE_S = 900
+
+// O ffmpeg do backend converte qualquer coisa com faixa de áudio, então o
+// filtro do seletor é deliberadamente amplo. As extensões vão junto dos tipos
+// MIME porque o Android costuma esconder arquivos (áudio do WhatsApp em .opus,
+// .ogg ou até .mp4) quando o accept é restritivo demais.
+const ACCEPTED_FILES = [
+  'audio/*', 'video/*',
+  '.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg', '.oga', '.opus', '.amr', '.wma',
+  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v',
+].join(',')
 
 // Lê a duração de um arquivo de mídia sem enviá-lo. Resolve null se o browser
 // não conseguir decodificar os metadados.
@@ -278,12 +288,12 @@ export default function CapturePanel({ onResult, variant = 'hero' }) {
             <input
               ref={fileRef}
               type="file"
-              accept="audio/*,video/*,.mp3,.m4a,.wav,.mp4,.mov,.avi"
+              accept={ACCEPTED_FILES}
               style={{ display: 'none' }}
               onChange={e => handleFile(e.target.files[0])}
             />
             <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
-            <p className="text-muted text-sm">MP3, M4A, WAV, MP4, MOV</p>
+            <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
           </div>
         ) : (
           <form className="url-form" onSubmit={handleUrl}>

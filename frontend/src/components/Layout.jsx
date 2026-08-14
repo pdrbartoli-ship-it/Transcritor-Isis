@@ -26,10 +26,13 @@ export default function Layout() {
   const [showFeedback, setShowFeedback] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  // Inline action menus for chats (sessions) and folders.
+  // Inline action menus for sources (sessions), conversations (chats) and folders.
   const [sessionMenu, setSessionMenu] = useState(null)   // session id with its action row open
   const [moveFor, setMoveFor] = useState(null)           // session id picking a destination folder
   const [renamingSession, setRenamingSession] = useState(null) // { id, value }
+  const [chatMenu, setChatMenu] = useState(null)         // chat id with its action row open
+  const [moveChatFor, setMoveChatFor] = useState(null)   // chat id picking a destination folder
+  const [renamingChat, setRenamingChat] = useState(null) // { id, value }
   const [folderMenu, setFolderMenu] = useState(null)     // folder id with its action row open
   const [renamingFolder, setRenamingFolder] = useState(null)   // { id, value }
   const [showArchived, setShowArchived] = useState(false)
@@ -39,17 +42,18 @@ export default function Layout() {
   })
 
   const refreshFolders = useCallback(async () => {
+    // A sidebar precisa das conversas (chats) e das fontes (sessions): antes só
+    // trazia sessions, então uma conversa sem fonte nenhuma simplesmente não
+    // aparecia no dropdown da pasta, mesmo estando salva.
+    const FULL = 'id, name, description, created_at, pinned, sessions(id, title, created_at, archived), chats(id, title, updated_at)'
+    const BASE = 'id, name, description, created_at, sessions(id, title, created_at), chats(id, title, updated_at)'
     // Try with the pin/archive columns; if the migration hasn't run yet, fall
     // back to the base columns so the sidebar still loads.
     let { data, error } = await supabase
-      .from('clients')
-      .select('id, name, description, created_at, pinned, sessions(id, title, created_at, archived)')
-      .order('created_at', { ascending: false })
+      .from('clients').select(FULL).order('created_at', { ascending: false })
     if (error) {
       ({ data } = await supabase
-        .from('clients')
-        .select('id, name, description, created_at, sessions(id, title, created_at)')
-        .order('created_at', { ascending: false }))
+        .from('clients').select(BASE).order('created_at', { ascending: false }))
     }
     setFolders(
       (data || [])
@@ -57,6 +61,9 @@ export default function Layout() {
           ...f,
           sessions: (f.sessions || []).sort(
             (a, b) => new Date(b.created_at) - new Date(a.created_at)
+          ),
+          chats: (f.chats || []).sort(
+            (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
           ),
         }))
         // Pinned folders float to the top, otherwise newest first.
@@ -73,6 +80,7 @@ export default function Layout() {
 
   function closeAllMenus() {
     setSessionMenu(null); setMoveFor(null); setRenamingSession(null)
+    setChatMenu(null); setMoveChatFor(null); setRenamingChat(null)
     setFolderMenu(null); setRenamingFolder(null)
   }
 
@@ -129,6 +137,30 @@ export default function Layout() {
   async function moveSession(id, clientId) {
     closeAllMenus()
     await supabase.from('sessions').update({ client_id: clientId }).eq('id', id)
+    setExpanded(prev => new Set(prev).add(clientId))
+    await refreshFolders()
+  }
+
+  // ── Conversation (chat) actions ──────────────────────────
+  async function saveChatRename() {
+    const { id, value } = renamingChat
+    const title = value.trim()
+    setRenamingChat(null)
+    if (!title) return
+    await supabase.from('chats').update({ title }).eq('id', id)
+    await refreshFolders()
+  }
+
+  async function deleteChat(id) {
+    closeAllMenus()
+    if (!confirm('Excluir esta conversa? Esta ação não pode ser desfeita.')) return
+    await supabase.from('chats').delete().eq('id', id)
+    await refreshFolders()
+  }
+
+  async function moveChat(id, clientId) {
+    closeAllMenus()
+    await supabase.from('chats').update({ client_id: clientId }).eq('id', id)
     setExpanded(prev => new Set(prev).add(clientId))
     await refreshFolders()
   }
@@ -197,6 +229,8 @@ export default function Layout() {
               const isOpen = expanded.has(f.id)
               const visible = f.sessions.filter(s => !s.archived)
               const sessions = showAll.has(f.id) ? visible : visible.slice(0, PAGE)
+              const allChats = f.chats || []
+              const chats = showAll.has(f.id) ? allChats : allChats.slice(0, PAGE)
               return (
                 <div className="folder-block" key={f.id}>
                   {renamingFolder?.id === f.id ? (
@@ -246,10 +280,70 @@ export default function Layout() {
 
                   {isOpen && (
                     <div className="folder-children">
-                      {visible.length === 0 ? (
-                        <span className="session-item" style={{ opacity: 0.6 }}>Sem chats</span>
+                      {allChats.length === 0 && visible.length === 0 ? (
+                        <span className="children-empty">Vazia</span>
                       ) : (
                         <>
+                          {/* Conversas primeiro: é o que o usuário abre no dia a dia. */}
+                          {chats.map(c => (
+                            renamingChat?.id === c.id ? (
+                              <input
+                                key={c.id}
+                                className="inline-rename session-rename"
+                                value={renamingChat.value}
+                                onChange={e => setRenamingChat(r => ({ ...r, value: e.target.value }))}
+                                onKeyDown={e => { if (e.key === 'Enter') saveChatRename(); if (e.key === 'Escape') setRenamingChat(null) }}
+                                onBlur={saveChatRename}
+                                autoFocus
+                              />
+                            ) : (
+                              <div className="session-row" key={c.id}>
+                                <button
+                                  className="session-item"
+                                  onClick={() => navigate(`/folders/${f.id}`, { state: { openChat: c } })}
+                                >
+                                  <IconMessage width={13} height={13} className="row-kind-icon" />
+                                  <span className="folder-name">{c.title}</span>
+                                </button>
+                                <button
+                                  className="row-more"
+                                  aria-label="Opções da conversa"
+                                  onClick={e => { e.stopPropagation(); setMoveChatFor(null); setChatMenu(chatMenu === c.id ? null : c.id) }}
+                                >
+                                  <IconMore width={16} height={16} />
+                                </button>
+                                {chatMenu === c.id && (
+                                  <div className="row-actions">
+                                    <button onClick={() => { setRenamingChat({ id: c.id, value: c.title }); setChatMenu(null) }}>
+                                      <IconEdit width={14} height={14} /> Renomear
+                                    </button>
+                                    <button onClick={() => setMoveChatFor(moveChatFor === c.id ? null : c.id)}>
+                                      <IconFolder width={14} height={14} /> Mover para pasta
+                                    </button>
+                                    {moveChatFor === c.id && (
+                                      <div className="move-list">
+                                        {folders.filter(o => o.id !== f.id).length === 0 ? (
+                                          <span className="move-empty">Nenhuma outra pasta</span>
+                                        ) : (
+                                          folders.filter(o => o.id !== f.id).map(o => (
+                                            <button key={o.id} className="move-target" onClick={() => moveChat(c.id, o.id)}>
+                                              <IconFolder width={13} height={13} /> {o.name}
+                                            </button>
+                                          ))
+                                        )}
+                                      </div>
+                                    )}
+                                    <button className="danger" onClick={() => deleteChat(c.id)}>
+                                      <IconTrash width={14} height={14} /> Excluir
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          ))}
+
+                          {/* Fontes agrupadas à parte: são o material, não a conversa. */}
+                          {visible.length > 0 && <div className="children-label">Fontes</div>}
                           {sessions.map(s => (
                             renamingSession?.id === s.id ? (
                               <input
@@ -272,7 +366,7 @@ export default function Layout() {
                                 </button>
                                 <button
                                   className="row-more"
-                                  aria-label="Opções do chat"
+                                  aria-label="Opções da fonte"
                                   onClick={e => { e.stopPropagation(); setMoveFor(null); setSessionMenu(sessionMenu === s.id ? null : s.id) }}
                                 >
                                   <IconMore width={16} height={16} />
@@ -309,7 +403,7 @@ export default function Layout() {
                               </div>
                             )
                           ))}
-                          {visible.length > PAGE && (
+                          {(visible.length > PAGE || allChats.length > PAGE) && (
                             <button
                               className="show-more"
                               onClick={() => setShowAll(prev => {
@@ -318,7 +412,9 @@ export default function Layout() {
                                 return n
                               })}
                             >
-                              {showAll.has(f.id) ? 'Mostrar menos' : `Mostrar mais (${visible.length - PAGE})`}
+                              {showAll.has(f.id)
+                                ? 'Mostrar menos'
+                                : `Mostrar mais (${Math.max(0, visible.length - PAGE) + Math.max(0, allChats.length - PAGE)})`}
                             </button>
                           )}
                         </>

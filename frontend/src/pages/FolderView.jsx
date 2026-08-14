@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { chatWithSessions, suggestFolder } from '../lib/api'
+import { chatWithSessions, suggestFolder, folderBriefing } from '../lib/api'
+import { getPrefs } from '../lib/prefs'
+import { useIsTouchInput } from '../lib/platform'
 import CapturePanel from '../components/CapturePanel'
 import { IconSend, IconTrash, IconMore, IconEdit, IconFile, IconDownload, IconChevron } from '../components/Icons'
 
@@ -83,9 +85,13 @@ export default function FolderView() {
     setLoading(false)
   }
 
+  // A barra lateral também lista as conversas, então toda mudança em `chats`
+  // precisa recarregar as duas — senão a conversa recém-criada só aparece no
+  // dropdown depois de um reload.
   async function refreshChats() {
     const { data } = await supabase.from('chats').select('*').eq('client_id', folderId).order('updated_at', { ascending: false })
     setChats(data || [])
+    await refreshFolders()
   }
 
   function sessionContext() {
@@ -134,7 +140,11 @@ export default function FolderView() {
     setActiveChat(chat)
     await supabase.from('chat_messages').insert({ chat_id: chat.id, user_id: user.id, role: 'user', content: question })
     try {
-      const { answer, title } = await chatWithSessions(question, folder?.name, sessionContext(), { makeTitle: true })
+      const { answer, title } = await chatWithSessions(question, folder?.name, sessionContext(), {
+        makeTitle: true,
+        folderDescription: folder?.description || null,
+        preferences: getPrefs(),
+      })
       await supabase.from('chat_messages').insert({ chat_id: chat.id, user_id: user.id, role: 'assistant', content: answer })
       setMessages(prev => [...prev, { role: 'assistant', content: answer }])
       const finalTitle = (title || question).slice(0, 80)
@@ -157,7 +167,11 @@ export default function FolderView() {
     setSending(true)
     await supabase.from('chat_messages').insert({ chat_id: activeChat.id, user_id: user.id, role: 'user', content: question })
     try {
-      const { answer } = await chatWithSessions(question, folder?.name, sessionContext(), { history })
+      const { answer } = await chatWithSessions(question, folder?.name, sessionContext(), {
+        history,
+        folderDescription: folder?.description || null,
+        preferences: getPrefs(),
+      })
       await supabase.from('chat_messages').insert({ chat_id: activeChat.id, user_id: user.id, role: 'assistant', content: answer })
       setMessages(prev => [...prev, { role: 'assistant', content: answer }])
       await supabase.from('chats').update({ updated_at: new Date().toISOString() }).eq('id', activeChat.id)
@@ -186,9 +200,30 @@ export default function FolderView() {
     }).select().single()
     setAdding(false)
     if (!error && data) {
-      setSessions(prev => [data, ...prev])
+      const next = [data, ...sessions]
+      setSessions(next)
       setExpandedSource(data.id)
       await refreshFolders()
+      refreshBriefing(next)
+    }
+  }
+
+  // O briefing dá ao assistente a noção do conjunto (do que a pasta trata), em
+  // vez de só transcrições soltas. É best-effort: falhar aqui não pode impedir
+  // que a fonte recém-salva apareça.
+  async function refreshBriefing(sourceList) {
+    const excerpts = sourceList
+      .filter(s => !s.archived && s.transcript)
+      .slice(0, 6)
+      .map(s => `${s.title}\n${s.transcript.slice(0, 1500)}`)
+    if (excerpts.length === 0) return
+    try {
+      const { description } = await folderBriefing(folder?.name || 'Pasta', excerpts)
+      if (!description) return
+      await supabase.from('clients').update({ description }).eq('id', folderId)
+      setFolder(f => (f ? { ...f, description } : f))
+    } catch {
+      // Sem briefing o chat segue funcionando com as transcrições.
     }
   }
 
@@ -264,9 +299,10 @@ export default function FolderView() {
   function renderChatInput() {
     return (
       <form className="chat-input" onSubmit={handleSend}>
-        <input
+        <ChatTextarea
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={setInput}
+          onSubmit={handleSend}
           placeholder={messages.length > 0 ? 'Continuar a conversa...' : `Perguntar sobre ${folder?.name || 'esta pasta'}...`}
           disabled={sending}
         />
@@ -434,6 +470,49 @@ export default function FolderView() {
       {/* O starter já traz a própria barra de pergunta, centralizada. */}
       {!showStarter && (activeChat || showChatInput) && renderChatInput()}
     </div>
+  )
+}
+
+// Campo de pergunta multilinha. Um <input> de linha única impede selecionar,
+// navegar e editar textos longos — que é exatamente o que se faz numa pergunta
+// de verdade. Cresce até MAX_ROWS e depois rola internamente.
+const MAX_ROWS = 6
+
+function ChatTextarea({ value, onChange, onSubmit, placeholder, disabled }) {
+  const ref = useRef(null)
+  const touchInput = useIsTouchInput()
+
+  // Auto-grow: zera a altura antes de medir, senão o scrollHeight nunca encolhe.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20
+    const padding = el.offsetHeight - el.clientHeight
+    const max = lineHeight * MAX_ROWS + padding
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+  }, [value])
+
+  function handleKeyDown(e) {
+    if (e.key !== 'Enter') return
+    // No celular o Enter é quebra de linha e o envio fica só no botão; com
+    // teclado físico, Enter envia e Shift+Enter quebra a linha.
+    if (touchInput || e.shiftKey || e.nativeEvent.isComposing) return
+    e.preventDefault()
+    onSubmit(e)
+  }
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder={placeholder}
+      disabled={disabled}
+    />
   )
 }
 

@@ -12,9 +12,10 @@ function ProtectedRoute({ children }) {
 }
 
 function PublicRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, holdRedirect } = useAuth()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
-  return user ? <Navigate to="/" replace /> : children
+  // holdRedirect: a tela de cadastro está exibindo a confirmação de conta criada.
+  return user && !holdRedirect ? <Navigate to="/" replace /> : children
 }
 
 export default function App() {

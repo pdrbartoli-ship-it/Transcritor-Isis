@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { suggestFolder } from '../lib/api'
+import { suggestFolder, folderBriefing } from '../lib/api'
 import CapturePanel from '../components/CapturePanel'
 import FolderSuggestionModal from '../components/FolderSuggestionModal'
 
@@ -44,6 +44,15 @@ export default function Home() {
     return data
   }
 
+  // Descrição curta da pasta, usada como contexto do assistente no chat.
+  // Best-effort: sem ela o chat ainda funciona com as transcrições.
+  async function saveBriefing(folderId, folderName, transcript) {
+    try {
+      const { description } = await folderBriefing(folderName, [transcript.slice(0, 1500)])
+      if (description) await supabase.from('clients').update({ description }).eq('id', folderId)
+    } catch {}
+  }
+
   // Best-effort: a failure here shouldn't block the capture from being saved.
   async function createChat(folderId, chatName, fallbackTitle) {
     const { data } = await supabase.from('chats').insert({
@@ -59,6 +68,11 @@ export default function Home() {
     try {
       const session = await createSession(folderId, chatName)
       const chat = await createChat(folderId, chatName, session.title)
+      // Só na primeira fonte: depois disso o FolderView mantém o briefing em dia.
+      const target = folders.find(f => f.id === folderId)
+      if (target && !target.description) {
+        await saveBriefing(folderId, target.name, pending.result.transcript)
+      }
       await refreshFolders()
       navigate(`/folders/${folderId}`, { state: { newSession: session, openChat: chat } })
     } catch (err) {
@@ -77,6 +91,7 @@ export default function Home() {
       if (error) throw error
       const session = await createSession(folder.id, chatName)
       const chat = await createChat(folder.id, chatName, session.title)
+      await saveBriefing(folder.id, folder.name, pending.result.transcript)
       await refreshFolders()
       navigate(`/folders/${folder.id}`, { state: { newSession: session, openChat: chat } })
     } catch (err) {

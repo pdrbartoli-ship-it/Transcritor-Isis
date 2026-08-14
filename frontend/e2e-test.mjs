@@ -100,8 +100,8 @@ await step('criar pasta', async () => {
 await snap(page, 'folder-view')
 
 await step('gravar áudio (mic fake) 3s e transcrever', async () => {
-  // expand the folder panel to reach the capture inside the folder
-  await page.click('.folder-header button:has-text("Sessões")').catch(() => {})
+  // O painel de captura vive na aba "Fontes" da pasta.
+  await page.click('.folder-tabs button:has-text("Fontes")')
   await page.waitForTimeout(500)
   await page.click('[aria-label="Iniciar gravação"]')
   await page.waitForTimeout(3000)
@@ -115,13 +115,32 @@ await step('gravar áudio (mic fake) 3s e transcrever', async () => {
 await snap(page, 'after-transcribe')
 
 await step('chat: enviar pergunta', async () => {
-  await page.fill('.chat-input input', 'Sobre o que é esta pasta?')
+  // A captura acima deixou a pasta na aba "Fontes"; o chat vive em "Conversas".
+  await page.click('.folder-tabs button:has-text("Conversas")')
+  await page.waitForTimeout(400)
+  await page.fill('.chat-input textarea', 'Sobre o que é esta pasta?')
   await page.click('.chat-input button[aria-label="Enviar"]')
   await page.waitForTimeout(15000)
   const msgs = await page.locator('.message.assistant .bubble').count()
   return `mensagens do assistente: ${msgs}`
 })
 await snap(page, 'chat-response')
+
+// Regressão do feedback #5: uma conversa sem fonte precisa aparecer no dropdown
+// da pasta na barra lateral, não só na lista dentro da pasta.
+await step('sidebar lista a conversa criada', async () => {
+  // A pasta ativa já abre expandida; só clicamos no caret se estiver fechada,
+  // senão o clique a fecharia.
+  const block = page.locator(`.folder-block:has-text("${folderName}")`).first()
+  if (await block.locator('.folder-caret.open').count() === 0) {
+    await block.locator('.folder-caret').click()
+  }
+  await page.waitForTimeout(800)
+  const rows = await page.locator(`.folder-block:has-text("${folderName}") .folder-children .session-item`).allTextContents()
+  if (rows.length === 0) throw new Error('nenhum item no dropdown da pasta')
+  return `itens no dropdown: ${rows.map(r => r.trim()).join(' | ')}`
+})
+await snap(page, 'sidebar-chats')
 
 // mobile
 await step('viewport mobile', async () => {

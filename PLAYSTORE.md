@@ -55,6 +55,6 @@ O APK de teste sai em `frontend/android/app/build/outputs/apk/debug/`.
 
 ## Decisões em aberto
 
-- **ID do app:** está como `com.dito.app`. Esse identificador é **permanente**
+- **ID do app:** está como `br.com.albiecloud.dito` (cadastrado no Play Console em 13/08/2026). Esse identificador é **permanente**
   na Play Store (não dá pra mudar depois de publicar). Se preferir outro, me
   avise antes de publicarmos.

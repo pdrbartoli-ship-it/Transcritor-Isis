@@ -31,9 +31,25 @@ begin
   end if;
 end $$;
 
+-- View pronta para leitura: já vem ordenada, com a hora em horário de Brasília
+-- e sem as colunas técnicas. Depois de rodar isto uma vez, ver os feedbacks é
+-- só abrir "feedback_recentes" no Table editor.
+create or replace view public.feedback_recentes as
+select
+  to_char(created_at at time zone 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') as quando,
+  category as tipo,
+  email,
+  message as mensagem,
+  context ->> 'ua' as dispositivo,
+  created_at
+from public.feedback
+order by created_at desc;
+
 -- ─────────────────────────────────────────────────────────────
 -- COMO VER OS FEEDBACKS (sem dar trabalho)
 -- ─────────────────────────────────────────────────────────────
+-- Opção 0 (mais fácil) — Table editor → view "feedback_recentes".
+--
 -- Opção 1 — Table editor (clicando):
 --   Supabase → Table editor → tabela "feedback".
 --   Clique no cabeçalho da coluna "created_at" → "Sort descending"
