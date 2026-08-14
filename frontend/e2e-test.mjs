@@ -149,6 +149,30 @@ await step('viewport mobile', async () => {
   await page.waitForTimeout(2000)
 })
 await snap(page, 'mobile-home')
+
+// A captura tem telas diferentes por plataforma: no celular não há arrastar
+// arquivo, e o vocabulário é "toque".
+await step('mobile usa a captura de celular', async () => {
+  const label = await page.locator('.record-label').first().textContent()
+  const pick = await page.locator('.pick-file').count()
+  const drop = await page.locator('.drop-zone').count()
+  if (!label.includes('Toque')) throw new Error(`esperava "Toque para gravar", veio "${label}"`)
+  if (pick === 0) throw new Error('botão de escolher arquivo ausente')
+  if (drop > 0) throw new Error('área de arrastar apareceu no celular')
+  return `"${label.trim()}" + botão de arquivo, sem drop-zone`
+})
+
+await step('desktop volta a usar a captura de mouse', async () => {
+  await page.setViewportSize({ width: 1280, height: 820 })
+  await page.waitForTimeout(600)
+  const drop = await page.locator('.drop-zone').count()
+  const label = await page.locator('.record-label').first().textContent()
+  if (drop === 0) throw new Error('área de arrastar ausente no desktop')
+  if (!label.includes('Clique')) throw new Error(`esperava "Clique para gravar", veio "${label}"`)
+  return `"${label.trim()}" + drop-zone`
+})
+await page.setViewportSize({ width: 390, height: 780 })
+await page.waitForTimeout(400)
 await step('abrir drawer mobile', async () => {
   await page.click('[aria-label="Abrir menu"]')
   await page.waitForTimeout(600)

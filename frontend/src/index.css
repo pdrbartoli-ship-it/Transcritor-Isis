@@ -573,6 +573,19 @@ input::placeholder { color: var(--text-muted); }
   margin: 0 auto 14px;
 }
 
+/* No celular não existe arrastar arquivo: a área pontilhada vira um botão. */
+.pick-file {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 16px; font-size: 15px; font-weight: 500;
+  box-shadow: var(--shadow);
+}
+.pick-file:disabled { opacity: 0.5; }
+.pick-file svg { color: var(--text-muted); }
+.pick-file-hint { margin-top: 10px; text-align: center; }
+
 /* ── Capture processing (buffering reassurance) ─────────── */
 .processing-box {
   width: 100%; max-width: 460px; margin: 0 auto;
