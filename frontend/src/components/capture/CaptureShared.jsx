@@ -64,7 +64,7 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
         type="url"
         value={url}
         onChange={e => setUrl(e.target.value)}
-        placeholder="Cole um link do YouTube, Instagram, TikTok..."
+        placeholder="Cole um link do YouTube"
         disabled={loading}
       />
       <button type="submit" className="btn-primary" disabled={loading || !url.trim()}>
