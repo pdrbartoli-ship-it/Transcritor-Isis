@@ -48,7 +48,7 @@ jobs:
           CHECKSUM: ${{ steps.ota.outputs.checksum }}
         run: |
           cd frontend
-          BASE="https://pdrbartoli-ship-it.github.io/Transcritor-Isis/ota"
+          BASE="https://dito.albiecloud.com/ota"
           mkdir -p dist/ota
           mv "bundle-${VERSION}.zip" dist/ota/
           cat > dist/ota/latest.json <<EOF

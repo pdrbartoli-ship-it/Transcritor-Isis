@@ -39,7 +39,7 @@ SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
 # Manifesto do live update do app Android, publicado pelo GitHub Actions.
 OTA_MANIFEST_URL = os.environ.get(
     "OTA_MANIFEST_URL",
-    "https://pdrbartoli-ship-it.github.io/Transcritor-Isis/ota/latest.json",
+    "https://dito.albiecloud.com/ota/latest.json",
 )
 
 MAX_CHUNK_BYTES = 23 * 1024 * 1024

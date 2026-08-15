@@ -9,7 +9,7 @@ App de transcrição e resumo de áudios e vídeos.
 
 ## URLs
 
-- Frontend: https://pdrbartoli-ship-it.github.io/transcritor-isis/
+- Frontend: https://dito.albiecloud.com
 - Backend: https://transcritor-backend.onrender.com
 
 ## Como funciona

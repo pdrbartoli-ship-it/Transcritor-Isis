@@ -2,7 +2,7 @@
   "name": "Dito",
   "short_name": "Dito",
   "description": "Capture, transcreva e organize suas conversas",
-  "start_url": "/Transcritor-Isis/",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
