@@ -18,6 +18,23 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Faz o Dito aparecer no "Compartilhar" de outros apps.
+                 Áudio/vídeo cobre o áudio do WhatsApp; text/plain cobre o link
+                 do YouTube, que é compartilhado como texto, não como arquivo.
+                 Com launchMode="singleTask" acima, o app já aberto recebe o
+                 conteúdo em onNewIntent em vez de abrir uma segunda tela. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <provider

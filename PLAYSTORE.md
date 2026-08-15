@@ -12,6 +12,29 @@ Documento de acompanhamento do empacotamento do Dito como app Android (via Capac
   e instala. Esse arquivo é só para teste, **não serve para a Play Store**.
 - Ícone provisório do Dito (letra "D" no terracota da marca, `#C96442`).
 
+## Compartilhar de outros apps para o Dito
+
+O Dito aparece no menu "Compartilhar" do Android para **áudio, vídeo e links**.
+O usuário compartilha um áudio do WhatsApp ou um vídeo do YouTube, o app abre e
+processa sozinho, caindo no fluxo normal de sugestão de pasta.
+
+Peças envolvidas:
+
+- `AndroidManifest.xml` — dois `intent-filter` de `ACTION_SEND` na MainActivity:
+  `audio/*` + `video/*` (arquivo) e `text/plain` (link).
+- `SharedContentPlugin.java` — lê o intent. Arquivo vem como `EXTRA_STREAM`,
+  uma Uri `content://` com permissão de leitura **temporária**, por isso é
+  copiado para o cache na hora; link vem como `EXTRA_TEXT`, texto puro.
+- `src/lib/sharedContent.js` — entrega isso ao JS. Do texto extrai só a URL,
+  porque o YouTube compartilha título e link juntos.
+- `Layout.jsx` → `Home.jsx` → `CapturePanel` — o conteúdo entra pelo mesmo
+  `useCapture` do envio manual, então o fluxo de pasta sai de graça.
+
+Como testar sem aparelho: `?compartilhado=<url>` na URL do site percorre o mesmo
+caminho do lado JS. É o que o `frontend/e2e-share.mjs` usa.
+
+Só o intent nativo exige pacote novo — a lógica acima chega por OTA.
+
 ## Atualização automática do app (OTA)
 
 O app tem live update via `@capgo/capacitor-updater`. Mudanças de **interface e

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { suggestFolder, folderBriefing } from '../lib/api'
@@ -11,9 +11,20 @@ export default function Home() {
   const navigate = useNavigate()
   const { folders, refreshFolders } = useOutletContext()
 
+  const location = useLocation()
+
   const [pending, setPending] = useState(null)      // { result, sourceType, sourceName }
   const [suggestion, setSuggestion] = useState(null) // { folder_id, suggested_new_name, reason }
   const [saving, setSaving] = useState(false)
+  const [shared, setShared] = useState(null)        // vindo do "Compartilhar" de outro app
+
+  // O Layout deposita aqui o que foi compartilhado. Limpamos o state da rota em
+  // seguida para que voltar a esta tela não reprocesse o mesmo conteúdo.
+  useEffect(() => {
+    if (!location.state?.shared) return
+    setShared(location.state.shared)
+    navigate('.', { replace: true, state: null })
+  }, [location.state, navigate])
 
   // After a capture finishes, ask the backend which folder it belongs to.
   async function handleResult(result, sourceType, sourceName) {
@@ -123,7 +134,12 @@ export default function Home() {
         </div>
       )}
 
-      <CapturePanel onResult={handleResult} variant="hero" />
+      <CapturePanel
+        onResult={handleResult}
+        variant="hero"
+        autoCapture={shared}
+        onAutoCaptureDone={() => setShared(null)}
+      />
 
       {suggestion && pending && (
         <FolderSuggestionModal

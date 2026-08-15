@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import NewFolderModal from './NewFolderModal'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
@@ -72,6 +73,20 @@ export default function Layout() {
   }, [])
 
   useEffect(() => { refreshFolders() }, [refreshFolders])
+
+  // Conteúdo compartilhado de outro app (áudio do WhatsApp, link do YouTube).
+  // Fica aqui porque o Layout está sempre montado: o compartilhamento pode
+  // chegar com o usuário em qualquer tela, e daqui levamos para a inicial, que
+  // é onde o fluxo de captura e sugestão de pasta vive.
+  useEffect(() => {
+    let active = true
+    const receive = shared => {
+      if (active && shared) navigate('/', { state: { shared } })
+    }
+    consumeSharedContent().then(receive)
+    const unsubscribe = onSharedContent(receive)
+    return () => { active = false; unsubscribe() }
+  }, [navigate])
   useEffect(() => { setDrawerOpen(false); closeAllMenus() }, [location.pathname])
   // Auto-expand the folder you're currently viewing.
   useEffect(() => {
