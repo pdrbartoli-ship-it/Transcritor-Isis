@@ -6,6 +6,8 @@ import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import NewFolderModal from './NewFolderModal'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
+import WelcomeModal from './WelcomeModal'
+import { hasSeenWelcome, markWelcomeSeen } from '../lib/prefs'
 import {
   IconSidebar, IconPlus, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
   IconMore, IconEdit, IconTrash, IconPin, IconArchive,
@@ -25,6 +27,7 @@ export default function Layout() {
   const [showNew, setShowNew] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // Inline action menus for sources (sessions), conversations (chats) and folders.
@@ -73,6 +76,17 @@ export default function Layout() {
   }, [])
 
   useEffect(() => { refreshFolders() }, [refreshFolders])
+
+  // Boas-vindas no primeiro acesso da conta. Fica no Layout porque é a primeira
+  // tela montada depois do login, seja em conta nova ou existente.
+  useEffect(() => {
+    if (user?.id && !hasSeenWelcome(user.id)) setShowWelcome(true)
+  }, [user?.id])
+
+  function dismissWelcome() {
+    setShowWelcome(false)
+    markWelcomeSeen(user?.id)
+  }
 
   // Conteúdo compartilhado de outro app (áudio do WhatsApp, link do YouTube).
   // Fica aqui porque o Layout está sempre montado: o compartilhamento pode
@@ -502,6 +516,12 @@ export default function Layout() {
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showWelcome && (
+        <WelcomeModal
+          onClose={dismissWelcome}
+          onOpenFeedback={() => { dismissWelcome(); setShowFeedback(true) }}
+        />
+      )}
     </div>
   )
 }

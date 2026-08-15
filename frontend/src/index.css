@@ -564,6 +564,9 @@ input::placeholder { color: var(--text-muted); }
   transition: border-color 0.15s;
 }
 .feedback-textarea:focus { border-color: var(--accent); }
+.welcome-modal .welcome-lead { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin-bottom: 12px; }
+.welcome-modal .welcome-lead strong { color: var(--text); }
+
 .feedback-done { text-align: center; padding: 8px 4px; }
 .feedback-done h3 { font-family: var(--font-serif); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
 .feedback-check {
