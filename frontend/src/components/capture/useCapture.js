@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { transcribeFile, processUrl, wakeBackend } from '../../lib/api'
 import { getPrefs } from '../../lib/prefs'
+import { track } from '../../lib/analytics'
 import { estimateSeconds, readMediaDuration } from './estimate'
 
 // Toda a regra de captura — gravar, enviar arquivo, processar link, estimar
@@ -124,6 +125,7 @@ export function useCapture({ onResult }) {
       resetRecording()
       return
     }
+    track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
     onResult(result, 'file', 'Gravação de áudio')
     resetRecording()
   }
@@ -139,6 +141,12 @@ export function useCapture({ onResult }) {
     const result = await runCapture(() => transcribeFile(file, getPrefs()), seconds)
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair áudio/texto deste arquivo.'); return }
+    track('captura', {
+      origem: 'arquivo',
+      midia: file.type.startsWith('video/') ? 'video' : 'audio',
+      duracao_s: durationSec || null,
+      usage: result.usage,
+    })
     onResult(result, 'file', file.name)
   }
 
@@ -151,6 +159,8 @@ export function useCapture({ onResult }) {
     )
     if (!result) return false
     if (isEmpty(result)) { setError('Não conseguimos extrair conteúdo deste link.'); return false }
+    // A URL em si não é guardada: só o fato de ter vindo por link e o consumo.
+    track('captura', { origem: 'link', midia: result.usage?.audio_seconds ? 'video' : 'texto', usage: result.usage })
     // Nomeia a sessão pelo título do vídeo/página, não pela URL crua.
     onResult(result, 'url', result.title?.trim() || clean)
     return true

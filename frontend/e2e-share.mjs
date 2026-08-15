@@ -32,6 +32,9 @@ await step('login', async () => {
   await page.fill('input[type="password"]', creds.password)
   await page.click('button[type="submit"]')
   await page.waitForSelector('.sidebar .brand', { timeout: 20000 })
+  // Em navegador limpo o aviso de boas-vindas aparece e cobre a tela.
+  await page.click('.welcome-modal button:has-text("Começar a usar")').catch(() => {})
+  await page.waitForTimeout(400)
 })
 
 await step('abrir com conteúdo compartilhado', async () => {

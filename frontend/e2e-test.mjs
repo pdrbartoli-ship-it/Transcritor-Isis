@@ -50,6 +50,10 @@ await step('login', async () => {
   const err = await page.locator('.alert-error').textContent().catch(() => null)
   if (err) throw new Error('erro de login: ' + err)
   await page.waitForSelector('.sidebar .brand', { timeout: 15000 })
+  // O aviso de boas-vindas aparece uma vez por conta e, em navegador limpo,
+  // isso é toda vez — ele cobre a tela e intercepta os cliques seguintes.
+  await page.click('.welcome-modal button:has-text("Começar a usar")').catch(() => {})
+  await page.waitForTimeout(400)
   const greeting = await page.locator('h1').first().textContent().catch(() => null)
   return `home: "${greeting}"`
 })

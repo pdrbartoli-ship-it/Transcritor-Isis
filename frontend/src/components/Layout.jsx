@@ -8,6 +8,7 @@ import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import WelcomeModal from './WelcomeModal'
 import { hasSeenWelcome, markWelcomeSeen } from '../lib/prefs'
+import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconPlus, IconFolder, IconChevron, IconSettings, IconLogout, IconMic, IconMessage,
   IconMore, IconEdit, IconTrash, IconPin, IconArchive,
@@ -80,7 +81,11 @@ export default function Layout() {
   // Boas-vindas no primeiro acesso da conta. Fica no Layout porque é a primeira
   // tela montada depois do login, seja em conta nova ou existente.
   useEffect(() => {
-    if (user?.id && !hasSeenWelcome(user.id)) setShowWelcome(true)
+    if (!user?.id) return
+    if (!hasSeenWelcome(user.id)) setShowWelcome(true)
+    // Uma abertura por carregamento do app, contada só depois de haver usuário
+    // — sem ele não há a quem atribuir.
+    trackAppOpen()
   }, [user?.id])
 
   function dismissWelcome() {

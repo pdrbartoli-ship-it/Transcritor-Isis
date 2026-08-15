@@ -55,12 +55,23 @@ VIDEO_HOSTS = [
 ]
 
 
+class Usage(BaseModel):
+    """Consumo de uma operação, para o app registrar quanto cada usuário gasta.
+    Tokens cobrem as chamadas de texto (Claude); audio_seconds cobre a
+    transcrição (Whisper), que é cobrada por duração e não por token — medir só
+    tokens esconderia justamente a parte mais cara."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    audio_seconds: float = 0.0
+
+
 class TranscriptionResult(BaseModel):
     transcript: str
     summary: str
     chunks_used: int
     duration_estimate: str
     title: str | None = None
+    usage: Usage = Usage()
 
 
 class SessionContext(BaseModel):
@@ -92,6 +103,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     title: str | None = None
+    usage: Usage = Usage()
 
 
 class FolderInfo(BaseModel):
@@ -370,7 +382,14 @@ Transcrição:
 {transcript}"""
 
 
-async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool = False, prefs: dict = {}) -> str:
+def read_usage(payload: dict) -> tuple[int, int]:
+    """Tokens de uma resposta da Anthropic. Ausência de `usage` não pode
+    derrubar a operação — medição é secundária ao resultado."""
+    usage = payload.get("usage") or {}
+    return int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
+
+
+async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool = False, prefs: dict = {}) -> tuple[str, int, int]:
     model = "claude-sonnet-4-6" if detailed else "claude-haiku-4-5-20251001"
     max_tokens = 3000 if detailed else 1024
 
@@ -393,11 +412,15 @@ async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool =
     )
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar resumo: {response.text}")
-    return response.json()["content"][0]["text"]
+    payload = response.json()
+    return payload["content"][0]["text"], *read_usage(payload)
 
 
-async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, int, str]:
-    """Returns (full_transcript, num_chunks, duration_str)"""
+async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, int, str, float]:
+    """Returns (full_transcript, num_chunks, duration_str, total_seconds).
+
+    total_seconds sai daqui porque o ffprobe já o calcula para fatiar o áudio —
+    é a medida de consumo da transcrição, de graça."""
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, filename)
         with open(input_path, "wb") as f:
@@ -422,7 +445,7 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, i
         tasks = [transcribe_chunk(client, chunk, i) for i, chunk in enumerate(chunks_bytes)]
         transcripts = await asyncio.gather(*tasks)
 
-    return " ".join(transcripts), num_chunks, duration_str
+    return " ".join(transcripts), num_chunks, duration_str, total_seconds
 
 
 @app.get("/")
@@ -455,16 +478,17 @@ async def transcribe(
                    "envie um trecho menor ou um arquivo só de áudio.",
         )
 
-    full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, filename)
+    full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
 
     async with httpx.AsyncClient() as client:
-        summary = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+        summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
 
     return TranscriptionResult(
         transcript=full_transcript,
         summary=summary,
         chunks_used=num_chunks,
         duration_estimate=duration_str,
+        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
     )
 
 
@@ -491,6 +515,7 @@ async def process_url(
             full_transcript = None
             num_chunks = 1
             duration_str = "–"
+            audio_seconds = 0.0
 
             # Step 1: Supadata API (no proxy needed, covers videos with captions)
             if SUPADATA_API_KEY:
@@ -542,7 +567,7 @@ async def process_url(
                     audio_path = os.path.join(tmpdir, audio_files[0])
                     with open(audio_path, "rb") as f:
                         audio_bytes = f.read()
-                full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
+                full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
 
             # Step 3: nothing configured — clear error with instructions
             if full_transcript is None:
@@ -581,7 +606,7 @@ async def process_url(
                 with open(audio_path, "rb") as f:
                     audio_bytes = f.read()
 
-            full_transcript, num_chunks, duration_str = await process_audio_bytes(audio_bytes, "video.m4a")
+            full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
 
     else:
         # Extract text from article/news page
@@ -597,9 +622,10 @@ async def process_url(
         full_transcript = text.strip()
         num_chunks = 1
         duration_str = f"~{len(full_transcript.split()) // 200} min de leitura"
+        audio_seconds = 0.0
 
     async with httpx.AsyncClient() as client:
-        summary = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+        summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
 
     # Prefer the real video/page title (e.g. the YouTube title) so the session
     # isn't named after a raw URL.
@@ -611,6 +637,7 @@ async def process_url(
         chunks_used=num_chunks,
         duration_estimate=duration_str,
         title=title,
+        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
     )
 
 
@@ -692,19 +719,30 @@ REGRAS OBRIGATÓRIAS:
         )
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {response.text}")
-        answer = response.json()["content"][0]["text"]
+        payload = response.json()
+        answer = payload["content"][0]["text"]
+        in_tokens, out_tokens = read_usage(payload)
 
         # On the first turn, generate a short title for the conversation list.
         title = None
         if request.make_title:
-            title = await generate_chat_title(client, request.question, answer)
+            title, title_in, title_out = await generate_chat_title(client, request.question, answer)
+            # O título é uma segunda chamada ao modelo; somar aqui evita que
+            # esse consumo fique invisível na medição.
+            in_tokens += title_in
+            out_tokens += title_out
 
-    return ChatResponse(answer=answer, title=title)
+    return ChatResponse(
+        answer=answer,
+        title=title,
+        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens),
+    )
 
 
-async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: str) -> str | None:
+async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: str) -> tuple[str | None, int, int]:
     """Short 3-6 word title for a conversation, à la NotebookLM. Best-effort —
-    falls back to None so the caller can use the question itself."""
+    falls back to None so the caller can use the question itself.
+    Devolve também os tokens gastos, para o chamador somá-los ao total."""
     try:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
@@ -722,11 +760,12 @@ async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: 
             timeout=30.0,
         )
         if resp.status_code == 200:
-            t = resp.json()["content"][0]["text"].strip().strip('"').strip()
-            return t[:80] or None
+            payload = resp.json()
+            t = payload["content"][0]["text"].strip().strip('"').strip()
+            return t[:80] or None, *read_usage(payload)
     except Exception:
         pass
-    return None
+    return None, 0, 0
 
 
 @app.post("/app-update", response_model=AppUpdateResponse)

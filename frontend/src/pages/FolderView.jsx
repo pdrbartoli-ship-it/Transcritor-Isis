@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { chatWithSessions, suggestFolder, folderBriefing } from '../lib/api'
 import { getPrefs } from '../lib/prefs'
 import { useIsTouchInput } from '../lib/platform'
+import { track } from '../lib/analytics'
 import CapturePanel from '../components/CapturePanel'
 import { IconSend, IconTrash, IconMore, IconEdit, IconFile, IconDownload, IconChevron } from '../components/Icons'
 
@@ -140,11 +141,12 @@ export default function FolderView() {
     setActiveChat(chat)
     await supabase.from('chat_messages').insert({ chat_id: chat.id, user_id: user.id, role: 'user', content: question })
     try {
-      const { answer, title } = await chatWithSessions(question, folder?.name, sessionContext(), {
+      const { answer, title, usage } = await chatWithSessions(question, folder?.name, sessionContext(), {
         makeTitle: true,
         folderDescription: folder?.description || null,
         preferences: getPrefs(),
       })
+      track('chat', { primeira_mensagem: true, usage })
       await supabase.from('chat_messages').insert({ chat_id: chat.id, user_id: user.id, role: 'assistant', content: answer })
       setMessages(prev => [...prev, { role: 'assistant', content: answer }])
       const finalTitle = (title || question).slice(0, 80)
@@ -167,11 +169,12 @@ export default function FolderView() {
     setSending(true)
     await supabase.from('chat_messages').insert({ chat_id: activeChat.id, user_id: user.id, role: 'user', content: question })
     try {
-      const { answer } = await chatWithSessions(question, folder?.name, sessionContext(), {
+      const { answer, usage } = await chatWithSessions(question, folder?.name, sessionContext(), {
         history,
         folderDescription: folder?.description || null,
         preferences: getPrefs(),
       })
+      track('chat', { primeira_mensagem: false, usage })
       await supabase.from('chat_messages').insert({ chat_id: activeChat.id, user_id: user.id, role: 'assistant', content: answer })
       setMessages(prev => [...prev, { role: 'assistant', content: answer }])
       await supabase.from('chats').update({ updated_at: new Date().toISOString() }).eq('id', activeChat.id)
