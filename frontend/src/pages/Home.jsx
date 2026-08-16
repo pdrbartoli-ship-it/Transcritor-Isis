@@ -15,6 +15,9 @@ export default function Home() {
 
   const [pending, setPending] = useState(null)      // { result, sourceType, sourceName }
   const [suggestion, setSuggestion] = useState(null) // { folder_id, suggested_new_name, reason }
+  // True between the capture finishing and the folder suggestion coming back.
+  // Keeps the processing screen up so there's no gap showing the home screen.
+  const [awaitingSuggestion, setAwaitingSuggestion] = useState(false)
   const [saving, setSaving] = useState(false)
   const [shared, setShared] = useState(null)        // vindo do "Compartilhar" de outro app
 
@@ -27,14 +30,19 @@ export default function Home() {
   }, [location.state, navigate])
 
   // After a capture finishes, ask the backend which folder it belongs to.
+  // CapturePanel keeps showing the processing screen (via extraLoading) until
+  // this settles, so the user never sees the plain home screen in between.
   async function handleResult(result, sourceType, sourceName) {
     setPending({ result, sourceType, sourceName })
+    setAwaitingSuggestion(true)
     try {
       const s = await suggestFolder(result.transcript, folders)
       setSuggestion(s)
     } catch {
       // If suggestion fails, still let the user pick a folder manually.
       setSuggestion({ folder_id: null, suggested_new_name: null, reason: '' })
+    } finally {
+      setAwaitingSuggestion(false)
     }
   }
 
@@ -139,6 +147,7 @@ export default function Home() {
         variant="hero"
         autoCapture={shared}
         onAutoCaptureDone={() => setShared(null)}
+        extraLoading={awaitingSuggestion}
       />
 
       {suggestion && pending && (

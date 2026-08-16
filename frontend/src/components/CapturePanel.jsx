@@ -16,7 +16,12 @@ import CaptureNative from './capture/CaptureNative'
 //
 // `autoCapture` vem do "Compartilhar" de outro app: { kind: 'url', url } ou
 // { kind: 'file', path, name }. Processa sozinho, sem o usuário tocar em nada.
-export default function CapturePanel({ onResult, variant = 'hero', autoCapture = null, onAutoCaptureDone }) {
+//
+// `extraLoading` deixa a tela de processamento acesa por mais tempo do que o
+// próprio hook pediria — usado pelo Home para cobrir o intervalo entre a
+// transcrição terminar e a sugestão de pasta chegar, sem esse hiato mostrar a
+// tela normal por trás.
+export default function CapturePanel({ onResult, variant = 'hero', autoCapture = null, onAutoCaptureDone, extraLoading = false }) {
   const { isNative, isMobile } = usePlatform()
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
@@ -53,5 +58,6 @@ export default function CapturePanel({ onResult, variant = 'hero', autoCapture =
   // O app empacotado é sempre a versão de celular; no navegador, decide o
   // tamanho da tela — quem abre o site no celular merece a mesma interface.
   const View = isNative || isMobile ? CaptureNative : CaptureWeb
-  return <View capture={capture} variant={variant} />
+  const viewCapture = extraLoading ? { ...capture, loading: true } : capture
+  return <View capture={viewCapture} variant={variant} />
 }
