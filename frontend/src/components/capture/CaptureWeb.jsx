@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { IconMic, IconFile, IconLink } from '../Icons'
-import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
+import { IconMic } from '../Icons'
+import { formatTime } from './estimate'
+import { ProcessingBox, RecordingReview, LinkOrFile } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
 // sentido e o vocabulário é "clique".
@@ -13,7 +13,6 @@ export default function CaptureWeb({ capture, variant }) {
     submitRecording, submitFile, submitUrl,
   } = capture
 
-  const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef()
@@ -60,32 +59,22 @@ export default function CaptureWeb({ capture, variant }) {
       <div className="capture-divider">ou envie um arquivo / link</div>
 
       <div className="capture-secondary">
-        <div className="capture-tabs">
-          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><IconFile /> Arquivo</button>
-          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><IconLink /> Link</button>
-        </div>
-
-        {mode === 'file' ? (
-          <div
-            className={`drop-zone ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`}
-            onClick={() => !loading && fileRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); submitFile(e.dataTransfer.files[0]) }}
-          >
-            <input
-              ref={fileRef}
-              type="file"
-              accept={ACCEPTED_FILES}
-              style={{ display: 'none' }}
-              onChange={e => submitFile(e.target.files[0])}
-            />
-            <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
-            <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
-          </div>
-        ) : (
-          <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
-        )}
+        <LinkOrFile
+          url={url}
+          setUrl={setUrl}
+          onSubmitUrl={handleUrl}
+          loading={loading}
+          fileRef={fileRef}
+          onPickFile={() => !loading && fileRef.current?.click()}
+          onFileChange={e => submitFile(e.target.files[0])}
+          hint="Ou arraste aqui um arquivo de áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros"
+          dragOver={dragOver}
+          dragProps={{
+            onDragOver: e => { e.preventDefault(); setDragOver(true) },
+            onDragLeave: () => setDragOver(false),
+            onDrop: e => { e.preventDefault(); setDragOver(false); submitFile(e.dataTransfer.files[0]) },
+          }}
+        />
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

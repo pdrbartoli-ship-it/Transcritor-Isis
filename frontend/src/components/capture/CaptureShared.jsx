@@ -1,4 +1,5 @@
-import { formatTime } from './estimate'
+import { ACCEPTED_FILES, formatTime } from './estimate'
+import { IconFile } from '../Icons'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
 // arquivo, textos do microfone, tamanho dos alvos de toque) fica em
@@ -57,19 +58,46 @@ export function RecordingReview({ recordingTime, onSubmit, onReset, loading }) {
   )
 }
 
-export function UrlForm({ url, setUrl, onSubmit, loading }) {
+// Link e arquivo eram duas abas separadas — a mesma decisão de "de onde vem o
+// conteúdo" partida em dois cliques. Aqui viram um controle só: cola o link e
+// manda, ou toca no clipe pra escolher um arquivo. `dragProps` (arrastar
+// arquivo) só existe na versão web; no celular fica de fora.
+export function LinkOrFile({
+  url, setUrl, onSubmitUrl, loading,
+  fileRef, onPickFile, onFileChange,
+  hint, dragProps, dragOver,
+}) {
   return (
-    <form className="url-form" onSubmit={onSubmit}>
+    <div className={`link-file-box ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`} {...dragProps}>
       <input
-        type="url"
-        value={url}
-        onChange={e => setUrl(e.target.value)}
-        placeholder="Cole um link do YouTube"
-        disabled={loading}
+        ref={fileRef}
+        type="file"
+        accept={ACCEPTED_FILES}
+        style={{ display: 'none' }}
+        onChange={onFileChange}
       />
-      <button type="submit" className="btn-primary" disabled={loading || !url.trim()}>
-        {loading ? '...' : 'Processar'}
-      </button>
-    </form>
+      <form className="link-file-row" onSubmit={onSubmitUrl}>
+        <input
+          type="url"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="Cole um link do YouTube"
+          disabled={loading}
+        />
+        <button
+          type="button"
+          className="link-file-pick"
+          onClick={onPickFile}
+          disabled={loading}
+          aria-label="Escolher arquivo de áudio ou vídeo"
+        >
+          <IconFile width={17} height={17} />
+        </button>
+        <button type="submit" className="btn-primary" disabled={loading || !url.trim()}>
+          {loading ? '...' : 'Processar'}
+        </button>
+      </form>
+      {hint && <p className="text-muted text-sm link-file-hint">{hint}</p>}
+    </div>
   )
 }
