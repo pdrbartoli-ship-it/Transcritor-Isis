@@ -14,8 +14,8 @@ export default function WelcomeModal({ onClose, onOpenFeedback }) {
         </div>
 
         <p className="welcome-lead">
-          O Dito está em teste, então pode falhar — não é você. Achou algo estranho ou ruim?
-          Usa o <strong>Fale com a gente</strong> no menu, a gente lê tudo.
+          O Dito ainda está em teste. Achou algo estranho ou faltando?
+          Manda pelo <strong>Fale com a gente</strong>, no menu.
         </p>
 
         <div className="modal-actions">

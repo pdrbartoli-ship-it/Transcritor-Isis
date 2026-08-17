@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { IconCheck } from '../components/Icons'
+import { IconCheck, IconMail } from '../components/Icons'
 
 const MIN_PASSWORD = 8
 
@@ -27,13 +27,17 @@ function translateError(message) {
 
 export default function Auth() {
   const { setHoldRedirect } = useAuth()
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState('signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
   const [created, setCreated] = useState(false)
+  // Quando a confirmação de e-mail está ligada no Supabase, o signUp não abre
+  // sessão: a pessoa fica nesta tela até clicar no link que chegou por e-mail.
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false)
+  const [resent, setResent] = useState(false)
   const timerRef = useRef(null)
 
   // Se o componente sair de cena antes do timer, o redirecionamento não pode
@@ -71,16 +75,22 @@ export default function Auth() {
         // O hold precisa estar ativo antes da sessão nascer, senão o
         // PublicRoute redireciona no mesmo instante e a confirmação não aparece.
         setHoldRedirect(true)
-        const { data, error } = await supabase.auth.signUp({ email, password })
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          // Sem isto o link do e-mail cai na Site URL padrão do Supabase, que
+          // nem sempre é o domínio de onde a pessoa se cadastrou.
+          options: { emailRedirectTo: window.location.origin },
+        })
         if (error) { setHoldRedirect(false); throw error }
         if (data.session) {
           // Confirmação de e-mail desligada: a conta já entra direto.
           setCreated(true)
           timerRef.current = setTimeout(() => setHoldRedirect(false), CELEBRATION_MS)
         } else {
-          // Confirmação de e-mail ligada: não há sessão, é só avisar.
+          // Confirmação de e-mail ligada: não há sessão, a pessoa espera o link.
           setHoldRedirect(false)
-          setMessage('Conta criada! Verifique seu e-mail para confirmar e depois acesse.')
+          setAwaitingConfirm(true)
         }
       }
     } catch (err) {
@@ -88,6 +98,61 @@ export default function Auth() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function resendConfirmation() {
+    setLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo: window.location.origin },
+      })
+      if (error) throw error
+      setResent(true)
+    } catch (err) {
+      setError(translateError(err.message))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (awaitingConfirm) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card auth-created">
+          <div className="feedback-check"><IconMail width={26} height={26} /></div>
+          <h3>Confirme seu e-mail</h3>
+          <p className="text-muted">
+            Enviamos um link para <strong>{email}</strong>. Abra o e-mail e clique
+            no link para ativar sua conta.
+          </p>
+          <p className="field-hint" style={{ marginTop: 14 }}>
+            Não chegou? Verifique a caixa de spam.
+          </p>
+
+          {error && <div className="alert alert-error">{error}</div>}
+          {resent && <div className="alert alert-success">E-mail reenviado.</div>}
+
+          <button
+            className="btn-ghost btn-full"
+            style={{ marginTop: 14 }}
+            onClick={resendConfirmation}
+            disabled={loading || resent}
+          >
+            {loading ? 'Enviando...' : 'Reenviar e-mail'}
+          </button>
+          <button
+            className="btn-ghost btn-full"
+            style={{ marginTop: 8 }}
+            onClick={() => { setAwaitingConfirm(false); setResent(false); switchMode('login') }}
+          >
+            Voltar
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (created) {
@@ -112,11 +177,11 @@ export default function Auth() {
         </div>
 
         <div className="auth-tabs">
-          <button className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>
-            Acessar
-          </button>
           <button className={mode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')}>
             Criar conta
+          </button>
+          <button className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>
+            Acessar
           </button>
         </div>
 
