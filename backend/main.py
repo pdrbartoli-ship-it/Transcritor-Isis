@@ -334,8 +334,18 @@ LANGUAGE_RULE = (
 )
 
 
+# Sem um teto explícito de palavras, o modelo às vezes esbarra no max_tokens e
+# a resposta é cortada no meio da frase. Pedir um limite bem abaixo do teto
+# técnico dá folga pra ele sempre terminar sozinho.
+SUMMARY_WORD_LIMIT = {"detailed": 550, "concise": 180}
+
+
 def build_summary_prompt(transcript: str, detailed: bool, prefs: dict) -> str:
-    rules = [LANGUAGE_RULE]
+    word_limit = SUMMARY_WORD_LIMIT["detailed" if detailed else "concise"]
+    rules = [
+        LANGUAGE_RULE,
+        f"Limite de {word_limit} palavras no total. Termine sempre em uma frase completa dentro desse limite — nunca corte a resposta no meio.",
+    ]
     if prefs.get("tone"):
         rules.append(TONE_MAP.get(prefs["tone"], f"Tom: {prefs['tone']}."))
     if prefs.get("style"):
@@ -359,7 +369,7 @@ def build_summary_prompt(transcript: str, detailed: bool, prefs: dict) -> str:
 
 **📎 Observações** — contexto adicional, ressalvas ou detalhes complementares
 
-Seja abrangente e detalhado. Não omita informações relevantes.
+Priorize os pontos mais relevantes dentro do limite de palavras — é melhor cobrir bem o essencial do que tentar encaixar tudo e cortar a resposta pela metade.
 Mantenha as seções acima, mas escreva os títulos no idioma da transcrição (estão em português só como referência) e apresente o conteúdo delas no formato pedido nas REGRAS OBRIGATÓRIAS.
 
 Transcrição:
