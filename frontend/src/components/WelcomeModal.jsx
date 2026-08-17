@@ -14,19 +14,8 @@ export default function WelcomeModal({ onClose, onOpenFeedback }) {
         </div>
 
         <p className="welcome-lead">
-          O Dito está em fase de testes. Isso quer dizer que algumas coisas ainda vão mudar de
-          lugar, e uma ou outra pode falhar — se acontecer, não é você.
-        </p>
-
-        <p className="welcome-lead">
-          É justamente por isso que a sua opinião pesa tanto agora: o que você achar confuso,
-          lento ou faltando tem chance real de mudar o produto. Achou algo estranho? Sentiu falta
-          de alguma coisa? Não gostou de como ficou? Queremos ouvir — inclusive as críticas duras.
-        </p>
-
-        <p className="welcome-lead">
-          É só usar o <strong>Fale com a gente</strong>, no menu lateral. Leva alguns segundos e
-          a gente lê tudo.
+          O Dito está em teste, então pode falhar — não é você. Achou algo estranho ou ruim?
+          Usa o <strong>Fale com a gente</strong> no menu, a gente lê tudo.
         </p>
 
         <div className="modal-actions">
