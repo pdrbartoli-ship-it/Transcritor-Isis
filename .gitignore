@@ -18,3 +18,6 @@ frontend/android/local.properties
 # pacotes Android gerados (não versionar)
 *.aab
 *.apk
+
+# screenshots geradas para a store (artefato, não fonte)
+frontend/.store-screenshots/
