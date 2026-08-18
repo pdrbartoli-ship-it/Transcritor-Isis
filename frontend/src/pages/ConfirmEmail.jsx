@@ -43,9 +43,10 @@ export default function ConfirmEmail() {
           setStatus('nova-senha')
           return
         }
+        // Sem redirecionar sozinho: quem se cadastrou pelo app chega aqui no
+        // navegador, e cair no Dito web seria o lugar errado. A tela diz o que
+        // fazer e a pessoa escolhe.
         setStatus('ok')
-        // A sessão já existe; o ProtectedRoute leva para dentro do app.
-        setTimeout(() => navigate('/', { replace: true }), 1500)
       })
       .catch(err => {
         setStatus('erro')
@@ -119,7 +120,17 @@ export default function ConfirmEmail() {
           <>
             <div className="feedback-check"><IconCheck width={26} height={26} /></div>
             <h3>E-mail confirmado! 🎉</h3>
-            <p className="text-muted">Estamos te levando para o Dito…</p>
+            <p className="text-muted">
+              Sua conta está ativa. <strong>Volte para o app Dito</strong> e
+              entre com seu e-mail e senha.
+            </p>
+            <button
+              className="btn-ghost btn-full"
+              style={{ marginTop: 18 }}
+              onClick={() => navigate('/', { replace: true })}
+            >
+              Ou continue aqui no navegador
+            </button>
           </>
         ) : status === 'erro' ? (
           <>

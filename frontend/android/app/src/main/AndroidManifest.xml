@@ -19,6 +19,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Link: o link de confirmação de e-mail abre o próprio Dito
+                 em vez do navegador. autoVerify faz o Android conferir o
+                 /.well-known/assetlinks.json do domínio na instalação; sem esse
+                 arquivo publicado (com a impressão digital da chave que o Play
+                 usa para assinar), a verificação falha em silêncio e o link
+                 volta a cair no navegador. O caminho é restrito a
+                 /confirm.html para não sequestrar o site inteiro. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="dito.albiecloud.com"
+                      android:path="/confirm.html" />
+            </intent-filter>
+
             <!-- Faz o Dito aparecer no "Compartilhar" de outros apps.
                  Áudio/vídeo cobre o áudio do WhatsApp; text/plain cobre o link
                  do YouTube, que é compartilhado como texto, não como arquivo.

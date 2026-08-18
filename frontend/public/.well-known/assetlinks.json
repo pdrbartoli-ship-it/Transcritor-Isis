@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.albiecloud.dito",
+      "sha256_cert_fingerprints": [
+        "E2:AC:D4:AE:28:EC:11:D3:DE:D0:8C:FB:10:8E:D6:B9:CB:63:6D:D1:E3:EE:0C:64:5D:1E:C5:01:73:B4:58:CA",
+        "31:94:51:AF:9E:F5:34:8B:3A:0A:AF:CD:A7:BA:BE:1E:B5:AB:81:DE:48:27:0C:31:6A:77:B4:73:4A:AE:8D:DA"
+      ]
+    }
+  }
+]
