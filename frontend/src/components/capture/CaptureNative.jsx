@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { IconMic } from '../Icons'
-import { formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, LinkOrFile } from './CaptureShared'
+import { IconMic, IconFile, IconLink } from '../Icons'
+import { ACCEPTED_FILES, formatTime } from './estimate'
+import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
 
 // Captura no celular. Diferenças reais em relação ao desktop:
 // - não existe arrastar arquivo: o alvo vira um botão de toque, sem a área
@@ -17,6 +17,7 @@ export default function CaptureNative({ capture, variant }) {
     submitRecording, submitFile, submitUrl,
   } = capture
 
+  const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const fileRef = useRef()
 
@@ -62,16 +63,35 @@ export default function CaptureNative({ capture, variant }) {
       <div className="capture-divider">ou envie um arquivo / link</div>
 
       <div className="capture-secondary">
-        <LinkOrFile
-          url={url}
-          setUrl={setUrl}
-          onSubmitUrl={handleUrl}
-          loading={loading}
-          fileRef={fileRef}
-          onPickFile={() => !loading && fileRef.current?.click()}
-          onFileChange={e => submitFile(e.target.files[0])}
-          hint="Ou toque no clipe para enviar um áudio ou vídeo — do WhatsApp, gravação de reunião, etc."
-        />
+        <div className="capture-tabs">
+          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><IconFile /> Arquivo</button>
+          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><IconLink /> Link</button>
+        </div>
+
+        {mode === 'file' ? (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ACCEPTED_FILES}
+              style={{ display: 'none' }}
+              onChange={e => submitFile(e.target.files[0])}
+            />
+            <button
+              className="pick-file"
+              onClick={() => !loading && fileRef.current?.click()}
+              disabled={loading}
+            >
+              <IconFile width={18} height={18} />
+              Escolher áudio ou vídeo
+            </button>
+            <p className="text-muted text-sm pick-file-hint">
+              Serve áudio do WhatsApp, gravação de reunião, vídeo salvo — MP3, M4A, OGG, OPUS, MP4 e outros.
+            </p>
+          </>
+        ) : (
+          <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
+        )}
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

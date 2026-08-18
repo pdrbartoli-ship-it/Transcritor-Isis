@@ -9,6 +9,12 @@ const MOBILE_QUERY = '(max-width: 760px)'
 export const isNative = () => Capacitor.isNativePlatform()
 export const platformName = () => Capacitor.getPlatform() // 'android' | 'ios' | 'web'
 
+// Endereço público do Dito. No app empacotado a página roda em localhost, então
+// window.location.origin não serve para montar links que saem daqui (o de
+// confirmação de e-mail, por exemplo) — eles precisam apontar para o domínio.
+export const SITE_URL = 'https://dito.albiecloud.com'
+export const siteUrl = () => (isNative() ? SITE_URL : window.location.origin)
+
 export function isMobileViewport() {
   try { return window.matchMedia(MOBILE_QUERY).matches } catch { return false }
 }

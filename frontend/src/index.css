@@ -194,6 +194,11 @@ input::placeholder { color: var(--text-muted); }
 .auth-tabs button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .auth-created { text-align: center; }
 .auth-created h3 { font-family: var(--font-serif); font-size: 21px; font-weight: 500; margin-bottom: 8px; }
+.auth-forgot {
+  display: block; margin: 14px auto 0; padding: 4px;
+  background: transparent; color: var(--text-muted); font-size: 12.5px;
+}
+.auth-forgot:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
 .field-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 .field-hint.warn { color: var(--danger); }
 
@@ -394,24 +399,21 @@ input::placeholder { color: var(--text-muted); }
 .capture-divider::before, .capture-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 .capture-secondary { width: 100%; max-width: 440px; }
+.capture-tabs { display: flex; gap: 6px; margin-bottom: 12px; justify-content: center; }
+.capture-tabs button { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); font-size: 12.5px; }
+.capture-tabs button svg { width: 15px; height: 15px; }
+.capture-tabs button.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
-/* Link e arquivo num controle só: cola o link e manda, ou toca no clipe. */
-.link-file-box {
+.drop-zone {
   border: 1.5px dashed var(--border); border-radius: var(--radius);
-  padding: 14px 14px 12px; transition: border-color 0.15s, background 0.15s;
+  padding: 28px 16px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-.link-file-box.drag-over { border-color: var(--accent); background: var(--surface); }
-.link-file-box.is-loading { opacity: 0.8; }
-.link-file-row { display: flex; gap: 8px; }
-.link-file-row input { flex: 1; }
-.link-file-pick {
-  flex-shrink: 0; width: 38px; display: flex; align-items: center; justify-content: center;
-  background: var(--surface); color: var(--text-muted);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-}
-.link-file-pick:hover { color: var(--accent); border-color: var(--accent); }
-.link-file-pick:disabled { opacity: 0.5; }
-.link-file-hint { margin-top: 10px; text-align: center; }
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--surface); }
+.drop-zone.is-loading { cursor: default; opacity: 0.8; }
+.url-form { display: flex; gap: 8px; }
+.url-form input { flex: 1; }
 
 /* ── Folder workspace ───────────────────────────────────── */
 .folder-view { display: flex; flex-direction: column; height: 100%; }
@@ -581,6 +583,18 @@ input::placeholder { color: var(--text-muted); }
   margin: 0 auto 14px;
 }
 
+/* No celular não existe arrastar arquivo: a área pontilhada vira um botão. */
+.pick-file {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 16px; font-size: 15px; font-weight: 500;
+  box-shadow: var(--shadow);
+}
+.pick-file:disabled { opacity: 0.5; }
+.pick-file svg { color: var(--text-muted); }
+.pick-file-hint { margin-top: 10px; text-align: center; }
 
 /* ── Capture processing (buffering reassurance) ─────────── */
 .processing-box {
@@ -696,4 +710,5 @@ input::placeholder { color: var(--text-muted); }
   .home { padding: 6vh 18px 40px; }
   .home-greeting h1 { font-size: 25px; }
   .bubble { max-width: 92%; }
+  .url-form { flex-direction: column; }
 }

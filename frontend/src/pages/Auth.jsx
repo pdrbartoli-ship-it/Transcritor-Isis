@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
+import { siteUrl } from '../lib/platform'
 
 const MIN_PASSWORD = 8
 
@@ -24,6 +25,11 @@ function translateError(message) {
   if (/network|fetch/i.test(message)) return 'Sem conexão com o servidor. Verifique sua internet.'
   return message
 }
+
+// "Pedro@Gmail.com " e "pedro@gmail.com" são a mesma pessoa, mas viram contas
+// diferentes se o texto for enviado cru — e o teclado do celular costuma
+// colocar a maiúscula inicial sozinho.
+const cleanEmail = value => value.trim().toLowerCase()
 
 export default function Auth() {
   const { setHoldRedirect } = useAuth()
@@ -69,20 +75,29 @@ export default function Auth() {
 
     try {
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail(email), password })
         if (error) throw error
       } else {
         // O hold precisa estar ativo antes da sessão nascer, senão o
         // PublicRoute redireciona no mesmo instante e a confirmação não aparece.
         setHoldRedirect(true)
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail(email),
           password,
-          // Sem isto o link do e-mail cai na Site URL padrão do Supabase, que
-          // nem sempre é o domínio de onde a pessoa se cadastrou.
-          options: { emailRedirectTo: window.location.origin },
+          // No app empacotado a origem é localhost, que não serve como
+          // destino do link enviado por e-mail — daí o siteUrl().
+          options: { emailRedirectTo: `${siteUrl()}/confirm.html` },
         })
         if (error) { setHoldRedirect(false); throw error }
+        // Com a confirmação de e-mail ligada, o Supabase não acusa erro em
+        // e-mail repetido (é proteção contra descobrir quem tem conta): ele
+        // devolve um usuário falso, sem identities. Sem checar isto, a pessoa
+        // acha que criou a conta e fica esperando um e-mail que nunca chega.
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setHoldRedirect(false)
+          setError('Já existe uma conta com este e-mail. Use "Acessar".')
+          return
+        }
         if (data.session) {
           // Confirmação de e-mail desligada: a conta já entra direto.
           setCreated(true)
@@ -100,14 +115,40 @@ export default function Auth() {
     }
   }
 
+  // Sem isto, quem esquece a senha fica travado para sempre: não há outro
+  // caminho de volta para a conta. O link cai na mesma tela de /confirm, que
+  // trata recovery pedindo a senha nova.
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError('Digite seu e-mail acima para receber o link.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail(email), {
+        redirectTo: `${siteUrl()}/confirm.html`,
+      })
+      if (error) throw error
+      // A resposta é a mesma para e-mail existente ou não — de propósito, para
+      // não virar uma forma de descobrir quem tem conta.
+      setMessage('Se houver uma conta com este e-mail, o link de redefinição chegou nele.')
+    } catch (err) {
+      setError(translateError(err.message))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function resendConfirmation() {
     setLoading(true)
     setError(null)
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',
-        email,
-        options: { emailRedirectTo: window.location.origin },
+        email: cleanEmail(email),
+        options: { emailRedirectTo: `${siteUrl()}/confirm.html` },
       })
       if (error) throw error
       setResent(true)
@@ -223,6 +264,17 @@ export default function Auth() {
           <button type="submit" className="btn-primary btn-full" disabled={!canSubmit}>
             {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>
+
+          {mode === 'login' && (
+            <button
+              type="button"
+              className="auth-forgot"
+              onClick={handleForgotPassword}
+              disabled={loading}
+            >
+              Esqueci minha senha
+            </button>
+          )}
         </form>
       </div>
     </div>
