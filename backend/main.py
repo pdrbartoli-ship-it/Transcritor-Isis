@@ -1,6 +1,6 @@
 import os
 import io
-import math
+import re
 import asyncio
 import httpx
 import shutil
@@ -248,17 +248,43 @@ def extract_audio(input_path: str, output_path: str):
         raise HTTPException(status_code=400, detail=detail)
 
 
-def get_duration(input_path: str) -> float:
+def probe_media(input_path: str) -> tuple[float, bool]:
+    """Duração em segundos e se há faixa de vídeo de verdade.
+
+    Lê o cabeçalho com o próprio ffmpeg em vez do ffprobe: o pacote
+    imageio-ffmpeg **não distribui o ffprobe** (só `get_ffmpeg_exe`), então a
+    versão anterior levantava AttributeError, caía no `except` e devolvia 0.0
+    para todo arquivo — o que zerava `audio_seconds` e fazia todo áudio ser
+    rotulado "menos de 1 minuto".
+
+    `ffmpeg -i` sem saída sai com código 1 de propósito; o que interessa está
+    no stderr. Só lê cabeçalho, então custa milissegundos.
+    """
     try:
-        ffprobe = imageio_ffmpeg.get_ffprobe_exe()
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
         result = subprocess.run(
-            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", input_path],
-            capture_output=True, text=True
+            [ffmpeg, "-hide_banner", "-i", input_path],
+            capture_output=True, text=True,
         )
-        info = json.loads(result.stdout)
-        return float(info["format"]["duration"])
+        stderr = result.stderr or ""
     except Exception:
-        return 0.0
+        return 0.0, False
+
+    total_seconds = 0.0
+    match = re.search(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)", stderr)
+    if match:
+        hours, minutes, seconds = match.groups()
+        total_seconds = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+    # Capa de álbum entra como stream de vídeo (mjpeg/png, "attached pic") —
+    # tratá-la como vídeo mandaria um MP3 comum para o caminho lento à toa.
+    has_video = any(
+        "Video:" in line
+        and "attached pic" not in line
+        and not re.search(r"Video:\s*(mjpeg|png|bmp|gif)", line)
+        for line in stderr.splitlines()
+    )
+    return total_seconds, has_video
 
 
 def format_duration(total_seconds: float) -> str:
@@ -273,28 +299,78 @@ def format_duration(total_seconds: float) -> str:
         return f"~{hours}h{mins:02d}min"
 
 
-def split_audio(input_path: str, tmpdir: str, num_chunks: int, total_seconds: float) -> list[str]:
+def split_audio(input_path: str, tmpdir: str, seconds_per_chunk: int = 900) -> list[str]:
+    """Fatia em pedaços de tamanho fixo com o muxer `segment`, copiando o áudio.
+
+    O modo antigo — um `ffmpeg -ss/-t` por pedaço, recodificando cada um —
+    dependia da duração total, que vinha 0 do `get_duration` quebrado: os
+    pedaços saíam com `-t 0`, isto é, vazios. Aqui o ffmpeg corta sozinho, numa
+    passada só e sem recodificar, então não precisa saber a duração.
+    """
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    chunk_duration = total_seconds / num_chunks
-    chunk_paths = []
-    for i in range(num_chunks):
-        start = i * chunk_duration
-        output_path = os.path.join(tmpdir, f"chunk_{i}.m4a")
-        subprocess.run([
-            ffmpeg, "-y", "-i", input_path,
-            "-ss", str(start), "-t", str(chunk_duration),
-            "-acodec", "aac", "-b:a", "64k",
-            output_path
-        ], capture_output=True, check=True)
-        chunk_paths.append(output_path)
-    return chunk_paths
+    pattern = os.path.join(tmpdir, "chunk_%03d.m4a")
+    subprocess.run([
+        ffmpeg, "-y", "-i", input_path,
+        "-f", "segment", "-segment_time", str(seconds_per_chunk),
+        "-c:a", "copy", "-vn",
+        pattern
+    ], capture_output=True, check=True)
+    return sorted(
+        os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
+        if f.startswith("chunk_") and f.endswith(".m4a")
+    )
 
 
-async def transcribe_chunk(client: httpx.AsyncClient, audio_bytes: bytes, chunk_index: int) -> str:
+# Containers que a API do Groq aceita como chegam (console.groq.com/docs/
+# speech-to-text). Quando o arquivo já vem num deles, mandá-lo direto poupa a
+# recodificação para AAC — que era ~90% do tempo de processamento por minuto de
+# áudio e não mudava nada do que o Whisper enxerga (ele reamostra para 16 kHz
+# mono de qualquer jeito). O áudio do WhatsApp é opus em container Ogg: o caso
+# mais comum do app é justamente o que se beneficia.
+#
+# O valor é o nome enviado ao Groq — é pela extensão dele que a API decide se
+# aceita o arquivo, então um ".opus" precisa se apresentar como ".ogg".
+DIRECT_CONTAINERS = {
+    "ogg": ("audio.ogg", "audio/ogg"),
+    "flac": ("audio.flac", "audio/flac"),
+    "wav": ("audio.wav", "audio/wav"),
+    "mp3": ("audio.mp3", "audio/mpeg"),
+    "m4a": ("audio.m4a", "audio/m4a"),
+}
+
+# Teto do arquivo mandado direto: o limite do Groq é 25 MB no plano gratuito.
+MAX_DIRECT_BYTES = 23 * 1024 * 1024
+
+
+def sniff_container(data: bytes) -> str | None:
+    """Formato pelos bytes iniciais, não pelo nome do arquivo.
+
+    O compartilhamento do Android costuma entregar nomes sem extensão ou com a
+    extensão errada; o cabeçalho não mente."""
+    if data[:4] == b"OggS":
+        return "ogg"
+    if data[:4] == b"fLaC":
+        return "flac"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "wav"
+    if data[4:8] == b"ftyp":
+        return "m4a"
+    if data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
+        return "mp3"
+    return None
+
+
+async def transcribe_chunk(
+    client: httpx.AsyncClient, audio_bytes: bytes, chunk_index: int,
+    name: str = "audio.m4a", mime: str = "audio/m4a",
+) -> str:
+    # O nome importa: a API do Groq decide pela extensão se aceita o arquivo,
+    # então ele precisa combinar com o container que está sendo enviado.
+    #
     # Sem `language` o Whisper detecta o idioma sozinho: fixá-lo em "pt" fazia o
     # modelo tentar traduzir/forçar português em áudios em outros idiomas.
     files = {
-        "file": (f"chunk_{chunk_index}.m4a", io.BytesIO(audio_bytes), "audio/m4a"),
+        "file": (name, io.BytesIO(audio_bytes), mime),
         "model": (None, "whisper-large-v3-turbo"),
         "response_format": (None, "text"),
     }
@@ -429,22 +505,83 @@ async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool =
 async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, int, str, float]:
     """Returns (full_transcript, num_chunks, duration_str, total_seconds).
 
-    total_seconds sai daqui porque o ffprobe já o calcula para fatiar o áudio —
-    é a medida de consumo da transcrição, de graça."""
+    Dois caminhos. Se o arquivo já está num container que o Groq aceita, não é
+    vídeo e cabe no limite, ele vai como veio — o caso do áudio do WhatsApp.
+    Qualquer outra coisa (vídeo, formato exótico, arquivo grande demais) passa
+    pelo ffmpeg como antes.
+
+    total_seconds sai daqui porque a sonda de cabeçalho já o calcula — é a
+    medida de consumo da transcrição, de graça."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, filename)
+        input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
+        with open(input_path, "wb") as f:
+            f.write(audio_bytes)
+
+        total_seconds, has_video = probe_media(input_path)
+        container = sniff_container(audio_bytes)
+        direct = (
+            container in DIRECT_CONTAINERS
+            and not has_video
+            and len(audio_bytes) <= MAX_DIRECT_BYTES
+        )
+
+        if direct:
+            name, mime = DIRECT_CONTAINERS[container]
+            chunks = [(audio_bytes, name, mime)]
+        else:
+            audio_path = os.path.join(tmpdir, "audio.m4a")
+            extract_audio(input_path, audio_path)
+            # A duração real é a do áudio extraído; para um vídeo, a sonda de
+            # cima já a leu, mas um container quebrado pode só revelá-la aqui.
+            if total_seconds <= 0:
+                total_seconds, _ = probe_media(audio_path)
+
+            if os.path.getsize(audio_path) <= MAX_CHUNK_BYTES:
+                chunk_paths = [audio_path]
+            else:
+                chunk_paths = split_audio(audio_path, tmpdir)
+
+            chunks = []
+            for path in chunk_paths:
+                with open(path, "rb") as f:
+                    chunks.append((f.read(), "audio.m4a", "audio/m4a"))
+
+    duration_str = format_duration(total_seconds)
+
+    async with httpx.AsyncClient() as client:
+        tasks = [
+            transcribe_chunk(client, data, i, name, mime)
+            for i, (data, name, mime) in enumerate(chunks)
+        ]
+        try:
+            transcripts = await asyncio.gather(*tasks)
+        except HTTPException:
+            # O envio direto depende do Groq aceitar o container que chegou.
+            # Se ele recusar, refazemos pelo caminho antigo em vez de devolver
+            # erro ao usuário por uma otimização nossa.
+            if not direct:
+                raise
+            return await process_converted_audio(audio_bytes, filename)
+
+    return " ".join(transcripts), len(chunks), duration_str, total_seconds
+
+
+async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[str, int, str, float]:
+    """Caminho antigo, sempre passando pelo ffmpeg. Serve de rede de segurança
+    para quando o envio direto é recusado pelo Groq."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
         with open(input_path, "wb") as f:
             f.write(audio_bytes)
 
         audio_path = os.path.join(tmpdir, "audio.m4a")
         extract_audio(input_path, audio_path)
+        total_seconds, _ = probe_media(audio_path)
 
-        audio_size = os.path.getsize(audio_path)
-        total_seconds = get_duration(audio_path)
-        duration_str = format_duration(total_seconds)
-
-        num_chunks = max(1, math.ceil(audio_size / MAX_CHUNK_BYTES))
-        chunk_paths = [audio_path] if num_chunks == 1 else split_audio(audio_path, tmpdir, num_chunks, total_seconds)
+        if os.path.getsize(audio_path) <= MAX_CHUNK_BYTES:
+            chunk_paths = [audio_path]
+        else:
+            chunk_paths = split_audio(audio_path, tmpdir)
 
         chunks_bytes = []
         for path in chunk_paths:
@@ -452,10 +589,10 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, i
                 chunks_bytes.append(f.read())
 
     async with httpx.AsyncClient() as client:
-        tasks = [transcribe_chunk(client, chunk, i) for i, chunk in enumerate(chunks_bytes)]
+        tasks = [transcribe_chunk(client, data, i) for i, data in enumerate(chunks_bytes)]
         transcripts = await asyncio.gather(*tasks)
 
-    return " ".join(transcripts), num_chunks, duration_str, total_seconds
+    return " ".join(transcripts), len(chunks_bytes), format_duration(total_seconds), total_seconds
 
 
 @app.get("/")
