@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import hashlib
 import asyncio
 import httpx
 import shutil
@@ -595,6 +596,42 @@ async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[st
     return " ".join(transcripts), len(chunks_bytes), format_duration(total_seconds), total_seconds
 
 
+# Um pedido idêntico que chega enquanto o primeiro ainda está em andamento
+# espera o resultado dele em vez de refazer o trabalho. É a situação que o
+# `postWithRetry` do app cria sozinho: uma queda de rede depois do upload faz o
+# app reenviar o arquivo inteiro, e o servidor transcrevia o mesmo áudio duas
+# vezes — tempo e custo de API dobrados, e o usuário esperando pelo segundo.
+#
+# Vale só dentro deste processo e só enquanto o trabalho está em voo; assim que
+# termina, a chave sai do mapa. Não é cache de resultado — isso é o passo
+# seguinte, com tabela e escopo por usuário.
+_inflight: dict[str, asyncio.Task] = {}
+
+
+async def run_once(key: str, build):
+    """Executa `build()` uma vez por chave concorrente; os demais aguardam."""
+    task = _inflight.get(key)
+    if task is None or task.done():
+        task = asyncio.create_task(build())
+        _inflight[key] = task
+
+        def release(finished: asyncio.Task, key: str = key):
+            if _inflight.get(key) is finished:
+                del _inflight[key]
+
+        task.add_done_callback(release)
+
+    # shield: se quem espera desistir (usuário fecha a tela), o trabalho segue
+    # para quem ficou — e não se perde se logo depois chegar o reenvio.
+    return await asyncio.shield(task)
+
+
+def capture_key(*parts: str) -> str:
+    """Mesma entrada + mesmas preferências = mesma chave. As preferências
+    entram porque o resumo muda com tom, formato e nível de detalhe."""
+    return hashlib.sha256("\x00".join(parts).encode()).hexdigest()
+
+
 @app.get("/")
 async def health():
     return {"status": "ok", "service": "Dito"}
@@ -625,18 +662,28 @@ async def transcribe(
                    "envie um trecho menor ou um arquivo só de áudio.",
         )
 
-    full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
+    async def build() -> TranscriptionResult:
+        full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
 
-    async with httpx.AsyncClient() as client:
-        summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+        async with httpx.AsyncClient() as client:
+            summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
 
-    return TranscriptionResult(
-        transcript=full_transcript,
-        summary=summary,
-        chunks_used=num_chunks,
-        duration_estimate=duration_str,
-        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+        return TranscriptionResult(
+            transcript=full_transcript,
+            summary=summary,
+            chunks_used=num_chunks,
+            duration_estimate=duration_str,
+            usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+        )
+
+    # O conteúdo do arquivo é a identidade: o mesmo áudio reenviado tem o mesmo
+    # hash, mesmo que o nome mude (o compartilhamento do Android põe um prefixo
+    # de tempo no nome a cada envio).
+    key = capture_key(
+        "file", hashlib.sha256(audio_bytes).hexdigest(),
+        str(detailed), str(prefs.get("tone")), str(prefs.get("style")),
     )
+    return await run_once(key, build)
 
 
 @app.post("/process-url", response_model=TranscriptionResult)
@@ -653,6 +700,16 @@ async def process_url(
     except Exception:
         prefs = {}
 
+    # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
+    # vezes em paralelo é o pior caso de desperdício do app.
+    key = capture_key(
+        "url", url.strip(),
+        str(detailed), str(prefs.get("tone")), str(prefs.get("style")),
+    )
+    return await run_once(key, lambda: build_url_result(url, detailed, prefs))
+
+
+async def build_url_result(url: str, detailed: bool, prefs: dict) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
