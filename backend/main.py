@@ -292,7 +292,7 @@ def format_duration(total_seconds: float) -> str:
     if minutes < 1:
         return "menos de 1 minuto"
     elif minutes < 60:
-        return f"~{int(minutes)} minutos"
+        return f"~{int(minutes)} minuto" + ("" if int(minutes) == 1 else "s")
     else:
         hours = int(minutes // 60)
         mins = int(minutes % 60)
