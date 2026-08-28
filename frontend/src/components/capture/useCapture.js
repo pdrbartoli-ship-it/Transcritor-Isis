@@ -21,6 +21,9 @@ export function useCapture({ onResult }) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
+  // 'mic' (só microfone) ou 'system' (áudio do sistema + microfone) — decide
+  // nome de arquivo, rótulo e qual botão fica desabilitado durante a gravação.
+  const [recordingKind, setRecordingKind] = useState(null)
 
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
@@ -46,6 +49,7 @@ export function useCapture({ onResult }) {
     setRecordedBlob(null)
     setRecordingTime(0)
     setIsRecording(false)
+    setRecordingKind(null)
     chunksRef.current = []
   }
 
@@ -64,11 +68,73 @@ export function useCapture({ onResult }) {
         clearInterval(timerRef.current)
       }
       recorder.start()
+      setRecordingKind('mic')
       setIsRecording(true)
       setRecordingTime(0)
       timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
     } catch (err) {
       setError(micErrorMessage(err))
+    }
+  }
+
+  // Grava tudo que sai das caixas de som do PC (reunião, vídeo, o que for),
+  // misturado com o microfone — um único arquivo, igual à gravação normal.
+  // Só existe em navegador desktop (CaptureWeb não entra no app nativo/mobile).
+  async function startSystemRecording() {
+    setError(null)
+    resetRecording()
+    let displayStream, micStream, audioCtx
+    try {
+      // video:true é exigido pelo Chrome pra oferecer a opção de "áudio do
+      // sistema" no seletor — pedimos o menor tamanho possível já que não
+      // usamos a imagem, só o áudio.
+      displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 1, height: 1 },
+        audio: true,
+      })
+      const systemAudioTracks = displayStream.getAudioTracks()
+      if (systemAudioTracks.length === 0) {
+        displayStream.getTracks().forEach(t => t.stop())
+        setError('Nenhum áudio do sistema foi compartilhado. Ao compartilhar, escolha "Tela inteira" e marque a opção de áudio do sistema.')
+        return
+      }
+
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch {
+        // Sem microfone disponível/autorizado: segue só com o áudio do sistema.
+      }
+
+      audioCtx = new AudioContext()
+      const destination = audioCtx.createMediaStreamDestination()
+      audioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks)).connect(destination)
+      if (micStream) audioCtx.createMediaStreamSource(micStream).connect(destination)
+
+      const recorder = new MediaRecorder(destination.stream)
+      mediaRecorderRef.current = recorder
+      chunksRef.current = []
+      recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      recorder.onstop = () => {
+        displayStream.getTracks().forEach(t => t.stop())
+        micStream?.getTracks().forEach(t => t.stop())
+        audioCtx.close()
+        setRecordedBlob(new Blob(chunksRef.current, { type: 'audio/webm' }))
+        clearInterval(timerRef.current)
+      }
+      // Se a pessoa parar o compartilhamento pela barra do próprio Chrome
+      // (em vez do botão do Dito), a gravação também precisa encerrar.
+      displayStream.getVideoTracks()[0].onended = () => stopRecording()
+
+      recorder.start()
+      setRecordingKind('system')
+      setIsRecording(true)
+      setRecordingTime(0)
+      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+    } catch (err) {
+      displayStream?.getTracks().forEach(t => t.stop())
+      micStream?.getTracks().forEach(t => t.stop())
+      audioCtx?.close()
+      setError(systemAudioErrorMessage(err))
     }
   }
 
@@ -113,10 +179,13 @@ export function useCapture({ onResult }) {
 
   async function submitRecording() {
     if (!recordedBlob) return
+    const kind = recordingKind
+    const filename = kind === 'system' ? 'gravacao-reuniao.webm' : 'gravacao.webm'
+    const sourceName = kind === 'system' ? 'Gravação de reunião' : 'Gravação de áudio'
     // resetRecording() zera recordingTime mais adiante — ler a duração antes.
     const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
     const result = await runCapture(() => {
-      const file = new File([recordedBlob], 'gravacao.webm', { type: 'audio/webm' })
+      const file = new File([recordedBlob], filename, { type: 'audio/webm' })
       return transcribeFile(file, getPrefs())
     }, seconds)
     if (!result) return
@@ -125,8 +194,8 @@ export function useCapture({ onResult }) {
       resetRecording()
       return
     }
-    track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
-    onResult(result, 'file', 'Gravação de áudio')
+    track('captura', { origem: kind === 'system' ? 'gravacao_sistema' : 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
+    onResult(result, 'file', sourceName)
     resetRecording()
   }
 
@@ -169,8 +238,8 @@ export function useCapture({ onResult }) {
   return {
     loading, waking, error, setError,
     elapsed, estimate,
-    isRecording, recordedBlob, recordingTime,
-    startRecording, stopRecording, resetRecording,
+    isRecording, recordedBlob, recordingTime, recordingKind,
+    startRecording, startSystemRecording, stopRecording, resetRecording,
     submitRecording, submitFile, submitUrl,
   }
 }
@@ -190,5 +259,17 @@ function micErrorMessage(err) {
       return 'O microfone está em uso por outro aplicativo. Feche-o e tente de novo.'
     default:
       return 'Não foi possível acessar o microfone. Verifique as permissões e tente de novo.'
+  }
+}
+
+// Idem, para o getDisplayMedia da gravação de sistema.
+function systemAudioErrorMessage(err) {
+  switch (err?.name) {
+    case 'NotAllowedError':
+      return 'Compartilhamento cancelado. Clique em gravar reunião de novo e escolha o que compartilhar.'
+    case 'NotReadableError':
+      return 'Não foi possível capturar o áudio do sistema agora. Tente de novo.'
+    default:
+      return 'Não foi possível gravar o áudio do sistema. Verifique as permissões e tente de novo.'
   }
 }

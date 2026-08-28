@@ -378,6 +378,9 @@ input::placeholder { color: var(--text-muted); }
 .home-greeting p { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
 
 .hero-record { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.record-btn-group { display: flex; gap: 28px; }
+.record-btn-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.record-btn-caption { font-size: 12px; color: var(--text-muted); }
 .record-btn {
   width: 76px; height: 76px; border-radius: 50%;
   background: var(--surface); border: 1px solid var(--border);
