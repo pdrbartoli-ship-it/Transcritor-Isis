@@ -19,6 +19,16 @@ export function isMobileViewport() {
   try { return window.matchMedia(MOBILE_QUERY).matches } catch { return false }
 }
 
+// O PWA instalado abre sem barra de endereço, como o app nativo — nesse modo
+// não faz sentido mostrar a landing com a caixa de instalar de novo.
+export function isStandalonePwa() {
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+  } catch {
+    return false
+  }
+}
+
 // Envio por Enter só faz sentido com teclado físico. No celular o Enter precisa
 // quebrar linha, senão a mensagem escapa no meio da frase.
 export function useIsTouchInput() {
