@@ -19,6 +19,13 @@ if (isNative()) {
   })
 }
 
+// Só no site: o app empacotado já se atualiza sozinho via CapacitorUpdater, e
+// um service worker ali serviria só pra atrapalhar esse mecanismo. No site,
+// o Chrome/Edge exige um service worker registrado para oferecer instalação.
+if (!isNative() && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />

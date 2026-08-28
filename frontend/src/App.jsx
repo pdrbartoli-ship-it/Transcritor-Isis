@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Auth from './pages/Auth'
 import ConfirmEmail from './pages/ConfirmEmail'
+import Landing from './pages/Landing'
 import Layout from './components/Layout'
 import useDeepLinks from './lib/useDeepLinks'
 import Home from './pages/Home'
@@ -11,6 +12,14 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   return user ? children : <Navigate to="/auth" replace />
+}
+
+// Quem não está logado vê a landing (caixa de instalar/entrar) na raiz, em vez
+// de ser jogado direto para o formulário de login.
+function RootRoute() {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="loading-screen"><div className="spinner" /></div>
+  return user ? <Layout /> : <Landing />
 }
 
 function PublicRoute({ children }) {
@@ -37,8 +46,10 @@ export default function App() {
           {/* Fora do PublicRoute: quem chega aqui ainda não tem sessão, e
               depois de confirmar precisa continuar nesta tela até o redirect. */}
           <Route path="/confirm" element={<ConfirmEmail />} />
+          <Route path="/" element={<RootRoute />}>
+            <Route index element={<Home />} />
+          </Route>
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route path="/" element={<Home />} />
             <Route path="/folders/:folderId" element={<FolderView />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
