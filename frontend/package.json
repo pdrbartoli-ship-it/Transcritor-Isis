@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:app": "cross-env CAPACITOR=1 vite build",
+    "build:tauri": "cross-env CAPACITOR=1 vite build",
     "app:sync": "npm run build:app && cap sync android",
     "app:open": "cap open android"
   },
@@ -18,12 +19,15 @@
     "@capacitor/core": "^8.4.1",
     "@capgo/capacitor-updater": "^8.51.6",
     "@supabase/supabase-js": "^2.45.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
+    "@tauri-apps/cli": "^2.11.4",
     "@vitejs/plugin-react": "^4.3.1",
     "cross-env": "^10.1.0",
     "playwright": "^1.62.1",

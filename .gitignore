@@ -21,3 +21,7 @@ frontend/android/local.properties
 
 # screenshots geradas para a store (artefato, não fonte)
 frontend/.store-screenshots/
+
+# Tauri (Windows) — build Rust e instaladores gerados
+frontend/src-tauri/target/
+frontend/src-tauri/gen/schemas/

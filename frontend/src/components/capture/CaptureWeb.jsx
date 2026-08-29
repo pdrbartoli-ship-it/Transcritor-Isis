@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { IconMic, IconScreen, IconFile, IconLink } from '../Icons'
+import { IconMic, IconFile, IconLink } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
 import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
 
@@ -8,8 +8,8 @@ import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
 export default function CaptureWeb({ capture, variant }) {
   const {
     loading, waking, error, elapsed, estimate,
-    isRecording, recordedBlob, recordingTime, recordingKind,
-    startRecording, startSystemRecording, stopRecording, resetRecording,
+    isRecording, recordedBlob, recordingTime,
+    startRecording, stopRecording, resetRecording,
     submitRecording, submitFile, submitUrl,
   } = capture
 
@@ -30,39 +30,21 @@ export default function CaptureWeb({ capture, variant }) {
       <div className="hero-record">
         {!recordedBlob ? (
           <>
-            <div className="record-btn-group">
-              <div className="record-btn-item">
-                <button
-                  className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording && recordingKind === 'mic' ? 'recording' : ''}`}
-                  onClick={isRecording && recordingKind === 'mic' ? stopRecording : startRecording}
-                  disabled={loading || (isRecording && recordingKind === 'system')}
-                  aria-label={isRecording && recordingKind === 'mic' ? 'Parar gravação' : 'Gravar microfone'}
-                >
-                  <IconMic width={26} height={26} />
-                </button>
-                <p className="record-btn-caption">Microfone</p>
-              </div>
-              <div className="record-btn-item">
-                <button
-                  className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording && recordingKind === 'system' ? 'recording' : ''}`}
-                  onClick={isRecording && recordingKind === 'system' ? stopRecording : startSystemRecording}
-                  disabled={loading || (isRecording && recordingKind === 'mic')}
-                  aria-label={isRecording && recordingKind === 'system' ? 'Parar gravação' : 'Gravar reunião'}
-                >
-                  <IconScreen width={26} height={26} />
-                </button>
-                <p className="record-btn-caption">Reunião</p>
-              </div>
-            </div>
+            <button
+              className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording ? 'recording' : ''}`}
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={loading}
+              aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
+            >
+              <IconMic width={26} height={26} />
+            </button>
             <p className="record-label">
               {isRecording
-                ? <><span className="rec-dot" /> {recordingKind === 'system' ? 'Gravando reunião' : 'Gravando'} — {formatTime(recordingTime)}</>
+                ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
                 : 'Clique para gravar'}
             </p>
             {variant === 'hero' && !isRecording && (
-              <p className="mic-hint">
-                Microfone: o navegador pede acesso na primeira vez. Reunião: escolha "Tela inteira" e marque o áudio do sistema ao compartilhar.
-              </p>
+              <p className="mic-hint">Na primeira vez, o navegador vai pedir acesso ao microfone.</p>
             )}
           </>
         ) : (

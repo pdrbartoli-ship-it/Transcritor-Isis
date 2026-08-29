@@ -1,16 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { readFile } from '@tauri-apps/plugin-fs'
 import { transcribeFile, processUrl, wakeBackend } from '../../lib/api'
 import { getPrefs } from '../../lib/prefs'
 import { track } from '../../lib/analytics'
+import { isTauriApp } from '../../lib/platform'
 import { estimateSeconds, readMediaDuration } from './estimate'
 
 // Toda a regra de captura — gravar, enviar arquivo, processar link, estimar
 // tempo e tratar erro. As telas (CaptureWeb, CaptureNative) só desenham; nada
 // de lógica de negócio duplicada entre plataformas.
 //
-// A gravação aqui é a do navegador (MediaRecorder). A versão nativa vai
-// substituir apenas essa parte por um serviço em segundo plano, mantendo o
-// resto — que é justamente o motivo de separar.
+// startRecording/stopRecording tratam duas gravações por trás do mesmo botão:
+// dentro do app nativo (Windows/Tauri), invoke('start_recording'/'stop_recording')
+// aciona a captura WASAPI (sistema + microfone, ver src-tauri/src/audio); no
+// navegador comum é getUserMedia + MediaRecorder, só microfone, como sempre.
+// O resto do fluxo (upload, estimativa, erro de transcrição vazia) é o mesmo
+// pros dois casos — só o jeito de gravar muda.
 export function useCapture({ onResult }) {
   const [loading, setLoading] = useState(false)
   const [waking, setWaking] = useState(false)
@@ -21,19 +28,18 @@ export function useCapture({ onResult }) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
-  // 'mic' (só microfone) ou 'system' (áudio do sistema + microfone) — decide
-  // nome de arquivo, rótulo e qual botão fica desabilitado durante a gravação.
-  const [recordingKind, setRecordingKind] = useState(null)
 
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
   const timerRef = useRef(null)
+  const unlistenWarningRef = useRef(null)
 
   useEffect(() => () => {
     clearInterval(timerRef.current)
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    unlistenWarningRef.current?.()
   }, [])
 
   // Conta os segundos enquanto processa + avisa antes de sair da página.
@@ -49,13 +55,31 @@ export function useCapture({ onResult }) {
     setRecordedBlob(null)
     setRecordingTime(0)
     setIsRecording(false)
-    setRecordingKind(null)
     chunksRef.current = []
   }
 
   async function startRecording() {
     setError(null)
     resetRecording()
+
+    // Dentro do app nativo (Windows/Tauri) grava sistema + microfone
+    // misturados via WASAPI (ver src-tauri/src/audio). No navegador comum
+    // segue como sempre — getUserMedia + MediaRecorder, só microfone.
+    if (isTauriApp()) {
+      try {
+        unlistenWarningRef.current = await listen('recording-warning', event => {
+          setError(event.payload)
+        })
+        await invoke('start_recording')
+        setIsRecording(true)
+        setRecordingTime(0)
+        timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+      } catch (err) {
+        setError(typeof err === 'string' ? err : 'Não foi possível iniciar a gravação.')
+      }
+      return
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
@@ -68,7 +92,6 @@ export function useCapture({ onResult }) {
         clearInterval(timerRef.current)
       }
       recorder.start()
-      setRecordingKind('mic')
       setIsRecording(true)
       setRecordingTime(0)
       timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
@@ -77,68 +100,22 @@ export function useCapture({ onResult }) {
     }
   }
 
-  // Grava tudo que sai das caixas de som do PC (reunião, vídeo, o que for),
-  // misturado com o microfone — um único arquivo, igual à gravação normal.
-  // Só existe em navegador desktop (CaptureWeb não entra no app nativo/mobile).
-  async function startSystemRecording() {
-    setError(null)
-    resetRecording()
-    let displayStream, micStream, audioCtx
-    try {
-      // video:true é exigido pelo Chrome pra oferecer a opção de "áudio do
-      // sistema" no seletor — pedimos o menor tamanho possível já que não
-      // usamos a imagem, só o áudio.
-      displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1, height: 1 },
-        audio: true,
-      })
-      const systemAudioTracks = displayStream.getAudioTracks()
-      if (systemAudioTracks.length === 0) {
-        displayStream.getTracks().forEach(t => t.stop())
-        setError('Nenhum áudio do sistema foi compartilhado. Ao compartilhar, escolha "Tela inteira" e marque a opção de áudio do sistema.')
-        return
-      }
-
+  async function stopRecording() {
+    if (isTauriApp()) {
+      setIsRecording(false)
+      clearInterval(timerRef.current)
+      unlistenWarningRef.current?.()
+      unlistenWarningRef.current = null
       try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      } catch {
-        // Sem microfone disponível/autorizado: segue só com o áudio do sistema.
+        const path = await invoke('stop_recording')
+        const bytes = await readFile(path)
+        setRecordedBlob(new Blob([bytes], { type: 'audio/wav' }))
+      } catch (err) {
+        setError(typeof err === 'string' ? err : 'Não foi possível finalizar a gravação.')
       }
-
-      audioCtx = new AudioContext()
-      const destination = audioCtx.createMediaStreamDestination()
-      audioCtx.createMediaStreamSource(new MediaStream(systemAudioTracks)).connect(destination)
-      if (micStream) audioCtx.createMediaStreamSource(micStream).connect(destination)
-
-      const recorder = new MediaRecorder(destination.stream)
-      mediaRecorderRef.current = recorder
-      chunksRef.current = []
-      recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      recorder.onstop = () => {
-        displayStream.getTracks().forEach(t => t.stop())
-        micStream?.getTracks().forEach(t => t.stop())
-        audioCtx.close()
-        setRecordedBlob(new Blob(chunksRef.current, { type: 'audio/webm' }))
-        clearInterval(timerRef.current)
-      }
-      // Se a pessoa parar o compartilhamento pela barra do próprio Chrome
-      // (em vez do botão do Dito), a gravação também precisa encerrar.
-      displayStream.getVideoTracks()[0].onended = () => stopRecording()
-
-      recorder.start()
-      setRecordingKind('system')
-      setIsRecording(true)
-      setRecordingTime(0)
-      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
-    } catch (err) {
-      displayStream?.getTracks().forEach(t => t.stop())
-      micStream?.getTracks().forEach(t => t.stop())
-      audioCtx?.close()
-      setError(systemAudioErrorMessage(err))
+      return
     }
-  }
 
-  function stopRecording() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
@@ -179,13 +156,13 @@ export function useCapture({ onResult }) {
 
   async function submitRecording() {
     if (!recordedBlob) return
-    const kind = recordingKind
-    const filename = kind === 'system' ? 'gravacao-reuniao.webm' : 'gravacao.webm'
-    const sourceName = kind === 'system' ? 'Gravação de reunião' : 'Gravação de áudio'
+    // Dentro do app nativo o blob já vem como .wav (lido do arquivo que o
+    // Rust gravou); no navegador é o .webm de sempre do MediaRecorder.
+    const filename = recordedBlob.type === 'audio/wav' ? 'gravacao.wav' : 'gravacao.webm'
     // resetRecording() zera recordingTime mais adiante — ler a duração antes.
     const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
     const result = await runCapture(() => {
-      const file = new File([recordedBlob], filename, { type: 'audio/webm' })
+      const file = new File([recordedBlob], filename, { type: recordedBlob.type })
       return transcribeFile(file, getPrefs())
     }, seconds)
     if (!result) return
@@ -194,8 +171,8 @@ export function useCapture({ onResult }) {
       resetRecording()
       return
     }
-    track('captura', { origem: kind === 'system' ? 'gravacao_sistema' : 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
-    onResult(result, 'file', sourceName)
+    track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
+    onResult(result, 'file', 'Gravação de áudio')
     resetRecording()
   }
 
@@ -238,8 +215,8 @@ export function useCapture({ onResult }) {
   return {
     loading, waking, error, setError,
     elapsed, estimate,
-    isRecording, recordedBlob, recordingTime, recordingKind,
-    startRecording, startSystemRecording, stopRecording, resetRecording,
+    isRecording, recordedBlob, recordingTime,
+    startRecording, stopRecording, resetRecording,
     submitRecording, submitFile, submitUrl,
   }
 }
@@ -259,17 +236,5 @@ function micErrorMessage(err) {
       return 'O microfone está em uso por outro aplicativo. Feche-o e tente de novo.'
     default:
       return 'Não foi possível acessar o microfone. Verifique as permissões e tente de novo.'
-  }
-}
-
-// Idem, para o getDisplayMedia da gravação de sistema.
-function systemAudioErrorMessage(err) {
-  switch (err?.name) {
-    case 'NotAllowedError':
-      return 'Compartilhamento cancelado. Clique em gravar reunião de novo e escolha o que compartilhar.'
-    case 'NotReadableError':
-      return 'Não foi possível capturar o áudio do sistema agora. Tente de novo.'
-    default:
-      return 'Não foi possível gravar o áudio do sistema. Verifique as permissões e tente de novo.'
   }
 }

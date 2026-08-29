@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { isTauri } from '@tauri-apps/api/core'
 
 // Onde o app está rodando. `isNative` distingue o app empacotado (Capacitor) do
 // site; `isMobile` é sobre o tamanho da tela — um celular no navegador é mobile
@@ -8,6 +9,10 @@ const MOBILE_QUERY = '(max-width: 760px)'
 
 export const isNative = () => Capacitor.isNativePlatform()
 export const platformName = () => Capacitor.getPlatform() // 'android' | 'ios' | 'web'
+
+// App nativo Windows (Tauri) — usado só internamente pelo useCapture.js para
+// decidir entre a captura WASAPI (sistema + mic) e o getUserMedia do navegador.
+export const isTauriApp = () => isTauri()
 
 // Endereço público do Dito. No app empacotado a página roda em localhost, então
 // window.location.origin não serve para montar links que saem daqui (o de
