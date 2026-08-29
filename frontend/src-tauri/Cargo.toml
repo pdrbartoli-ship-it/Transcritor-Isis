@@ -29,6 +29,6 @@ tauri-plugin-fs = "2"
 # fica por conta do autoconvert do WASAPI em modo compartilhado (ver
 # audio/mod.rs), então rubato não é necessário.
 [target.'cfg(windows)'.dependencies]
-wasapi = "0.15"
+wasapi = "0.24"
 hound = "3.5"
 crossbeam-channel = "0.5"

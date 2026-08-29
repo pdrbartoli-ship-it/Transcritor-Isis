@@ -108,11 +108,10 @@ pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<Recording
     }
 
     let mixer_handle = {
-        let stop_flag = stop_flag.clone();
         let output_path = output_path.clone();
         thread::Builder::new()
             .name("audio-mixer".into())
-            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, stop_flag))
+            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx))
             .map_err(|e| e.to_string())?
     };
 
@@ -180,8 +179,7 @@ fn capture_stream(
     };
 
     wasapi::initialize_mta()
-        .ok()
-        .ok_or_else(|| "falha ao inicializar COM (MTA)".to_string())?;
+        .map_err(|e| format!("falha ao inicializar COM (MTA): {e:?}"))?;
 
     let enumerator = DeviceEnumerator::new().map_err(|e| e.to_string())?;
     let device = enumerator
@@ -258,7 +256,6 @@ fn mixer_loop(
     output_path: PathBuf,
     mic_rx: Receiver<Vec<f32>>,
     sys_rx: Receiver<Vec<f32>>,
-    stop_flag: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let spec = WavSpec {
         channels: CHANNELS,
