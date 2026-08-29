@@ -108,6 +108,9 @@ body {
 /* ── Buttons ────────────────────────────────────────────── */
 button { cursor: pointer; border: none; font-size: 14px; font-family: inherit; color: inherit; transition: background 0.15s, opacity 0.15s, border-color 0.15s, color 0.15s; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Um <a> com essas classes (ex.: link de download na Landing) precisa das
+   mesmas propriedades de caixa que o reset de `button` já dá de graça. */
+a.btn-primary, a.btn-secondary, a.btn-ghost { display: inline-block; box-sizing: border-box; text-decoration: none; text-align: center; }
 
 .btn-primary {
   background: var(--accent);
@@ -204,7 +207,6 @@ input::placeholder { color: var(--text-muted); }
 
 /* ── Landing page ───────────────────────────────────────── */
 .landing-card { text-align: center; }
-.landing-install-hint { font-size: 13px; color: var(--text-muted); line-height: 1.5; padding: 12px 4px; }
 
 /* ── App shell ──────────────────────────────────────────── */
 .app-shell { display: flex; height: 100%; overflow: hidden; }

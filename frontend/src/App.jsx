@@ -7,7 +7,7 @@ import Layout from './components/Layout'
 import useDeepLinks from './lib/useDeepLinks'
 import Home from './pages/Home'
 import FolderView from './pages/FolderView'
-import { isStandalonePwa } from './lib/platform'
+import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -21,8 +21,9 @@ function RootRoute() {
   const { user, loading } = useAuth()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (user) return <Layout />
-  // Dentro do app instalado não existe "instalar de novo" — vai direto pro login.
-  if (isStandalonePwa()) return <Navigate to="/auth" replace />
+  // Dentro do app instalado (PWA ou nativo Windows) não existe "instalar de
+  // novo" — vai direto pro login.
+  if (isStandalonePwa() || isTauriApp()) return <Navigate to="/auth" replace />
   return <Landing />
 }
 
