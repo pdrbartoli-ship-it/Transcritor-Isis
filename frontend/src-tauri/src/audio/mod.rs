@@ -178,7 +178,10 @@ fn capture_stream(
         Direction::Capture
     };
 
+    // initialize_mta() devolve um HRESULT puro, não um Result — .ok() converte
+    // pro Result<(), windows_result::Error> antes do map_err de sempre.
     wasapi::initialize_mta()
+        .ok()
         .map_err(|e| format!("falha ao inicializar COM (MTA): {e:?}"))?;
 
     let enumerator = DeviceEnumerator::new().map_err(|e| e.to_string())?;
