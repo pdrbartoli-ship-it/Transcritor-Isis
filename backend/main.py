@@ -605,7 +605,13 @@ INSIGHTS_MODEL = "claude-sonnet-5"
 CHAT_MODEL = "claude-haiku-4-5"
 
 
-async def call_insights(prompt: str, schema: dict, max_tokens: int = 8000) -> tuple[dict, int, int]:
+# Folga proposital. A saída da extração é grande (4 tópicos com detalhe,
+# capítulos, tarefas e as trocas de locutor) e estourar o teto não devolve um
+# erro: devolve JSON cortado no meio, que só falha depois, no parse.
+INSIGHTS_MAX_TOKENS = 16000
+
+
+async def call_insights(prompt: str, schema: dict, max_tokens: int = INSIGHTS_MAX_TOKENS) -> tuple[dict, int, int]:
     client = anthropic_client()
     try:
         response = await client.messages.create(
@@ -617,13 +623,25 @@ async def call_insights(prompt: str, schema: dict, max_tokens: int = 8000) -> tu
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=f"Erro ao analisar a conversa: {e}")
 
+    # Truncamento é a falha mais provável aqui, e o JSON cortado só estoura no
+    # parse — dizer "formato inesperado" mandaria procurar o problema no lugar
+    # errado.
+    if response.stop_reason == "max_tokens":
+        raise HTTPException(
+            status_code=502,
+            detail="A análise ficou longa demais e foi cortada. Tente de novo — se repetir, o áudio é longo demais para uma passada só.",
+        )
+
     text = next((b.text for b in response.content if b.type == "text"), None)
     if not text:
         raise HTTPException(status_code=502, detail="A análise da conversa voltou vazia.")
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail="A análise da conversa voltou num formato inesperado.")
+        raise HTTPException(
+            status_code=502,
+            detail=f"A análise da conversa voltou num formato inesperado (stop_reason={response.stop_reason}).",
+        )
     return data, *read_usage(response)
 
 
@@ -707,7 +725,7 @@ async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, 
         "Os time_refs devem usar os tempos das seções.\n\n"
         f"Roteiro:\n{outline}",
         REDUCE_SCHEMA,
-        max_tokens=4000,
+        max_tokens=8000,
     )
     in_tokens += tin
     out_tokens += tout
