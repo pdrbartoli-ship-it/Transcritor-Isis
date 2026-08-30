@@ -94,9 +94,6 @@ class InsightsRequest(BaseModel):
     análise ainda sai, só sem tempos confiáveis."""
     transcript: str
     segments: list[dict] = []
-    # Só para medir o custo de cada nível de esforço em produção; a captura
-    # normal usa o padrão.
-    effort: str | None = None
 
 
 class InsightsResponse(BaseModel):
@@ -615,10 +612,16 @@ INSIGHTS_MAX_TOKENS = 16000
 
 
 # O modelo roda com raciocínio adaptativo ligado, e esses tokens são cobrados
-# como saída — numa medição eles eram ~85% da conta, contra ~1.600 tokens de
-# JSON de verdade. Extrair campos de uma transcrição que já está toda no prompt
-# é tarefa bem especificada, não um problema difícil, então o esforço baixo é
-# o padrão certo aqui.
+# como saída: medindo a mesma transcrição, o JSON devolvido tinha ~1.600 tokens
+# e a cobrança ia de 5 mil a 12 mil. O resto era raciocínio.
+#
+# Cinco rodadas por nível sobre a mesma reunião de 2 minutos (US$/captura,
+# mediana): high ~0,093 em ~80s; medium ~0,042 em ~35s; low ~0,023 em ~15s.
+# A saída de "low" é equivalente — mesmos 4 tópicos, mesmas tarefas com os
+# mesmos responsáveis e prazos, mesmos cortes de capítulo. Extrair campos de
+# uma transcrição que já está inteira no prompt é tarefa bem especificada, não
+# um problema difícil, e os níveis altos só compram raciocínio que não muda a
+# resposta. Os 15s contra 80s também valem: é tempo de usuário esperando.
 INSIGHTS_EFFORT = "low"
 
 
@@ -803,9 +806,14 @@ def normalize_insights(insights: dict, segments: list[dict]) -> dict:
         chapters[-1]["end"] = max(duration, chapters[-1]["start"])
 
     # A UI acha o dono de uma fala procurando a última marca antes dela; fora
-    # de ordem, essa busca devolveria a pessoa errada.
+    # de ordem, essa busca devolveria a pessoa errada. Marcas depois do fim do
+    # áudio o modelo às vezes inventa — nunca são alcançadas, mas vazariam para
+    # o .txt e para qualquer contagem, então saem aqui.
     turns = sorted(
-        (t for t in (insights.get("speaker_turns") or []) if isinstance(t.get("start"), (int, float))),
+        (
+            t for t in (insights.get("speaker_turns") or [])
+            if isinstance(t.get("start"), (int, float)) and 0 <= t["start"] <= duration + 1
+        ),
         key=lambda t: t["start"],
     )
 
@@ -1171,7 +1179,7 @@ async def insights(request: InsightsRequest):
     if not request.transcript.strip():
         raise HTTPException(status_code=400, detail="Não há transcrição para analisar.")
 
-    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments, request.effort)
+    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments)
     return InsightsResponse(
         insights=data,
         summary=summary_markdown(data),
