@@ -94,6 +94,9 @@ class InsightsRequest(BaseModel):
     análise ainda sai, só sem tempos confiáveis."""
     transcript: str
     segments: list[dict] = []
+    # Só para medir o custo de cada nível de esforço em produção; a captura
+    # normal usa o padrão.
+    effort: str | None = None
 
 
 class InsightsResponse(BaseModel):
@@ -611,14 +614,28 @@ CHAT_MODEL = "claude-haiku-4-5"
 INSIGHTS_MAX_TOKENS = 16000
 
 
-async def call_insights(prompt: str, schema: dict, max_tokens: int = INSIGHTS_MAX_TOKENS) -> tuple[dict, int, int]:
+# O modelo roda com raciocínio adaptativo ligado, e esses tokens são cobrados
+# como saída — numa medição eles eram ~85% da conta, contra ~1.600 tokens de
+# JSON de verdade. Extrair campos de uma transcrição que já está toda no prompt
+# é tarefa bem especificada, não um problema difícil, então o esforço baixo é
+# o padrão certo aqui.
+INSIGHTS_EFFORT = "low"
+
+
+async def call_insights(
+    prompt: str, schema: dict,
+    max_tokens: int = INSIGHTS_MAX_TOKENS, effort: str | None = None,
+) -> tuple[dict, int, int]:
     client = anthropic_client()
     try:
         response = await client.messages.create(
             model=INSIGHTS_MODEL,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": schema}},
+            output_config={
+                "format": {"type": "json_schema", "schema": schema},
+                "effort": effort or INSIGHTS_EFFORT,
+            },
         )
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=f"Erro ao analisar a conversa: {e}")
@@ -645,14 +662,14 @@ async def call_insights(prompt: str, schema: dict, max_tokens: int = INSIGHTS_MA
     return data, *read_usage(response)
 
 
-async def extract_insights(transcript: str, segments: list[dict]) -> tuple[dict, int, int]:
+async def extract_insights(transcript: str, segments: list[dict], effort: str | None = None) -> tuple[dict, int, int]:
     """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
     chamada só, sobre a transcrição com marcadores de tempo."""
     body = format_timed_transcript(segments) or transcript
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
         insights, tin, tout = await call_insights(
-            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA
+            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA, effort=effort
         )
         return normalize_insights(insights, segments), tin, tout
 
@@ -1154,7 +1171,7 @@ async def insights(request: InsightsRequest):
     if not request.transcript.strip():
         raise HTTPException(status_code=400, detail="Não há transcrição para analisar.")
 
-    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments)
+    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments, request.effort)
     return InsightsResponse(
         insights=data,
         summary=summary_markdown(data),
