@@ -1,11 +1,13 @@
 import { useState, useRef } from 'react'
 import { IconMic } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm, CaptureSecondary } from './CaptureShared'
+import { ProcessingBox, RecordingReview, UrlForm, MODE_TITLE } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
-// sentido e o vocabulário é "clique".
-export default function CaptureWeb({ capture, variant }) {
+// sentido e o vocabulário é "clique". Cada origem tem a sua rota, e este
+// componente mostra só a que está aberta — antes as três disputavam a mesma
+// tela e a gaveta empurrava o resto da página para baixo ao abrir.
+export default function CaptureWeb({ capture, variant, mode = 'record' }) {
   const {
     loading, waking, error, elapsed, estimate,
     isRecording, recordedBlob, recordingTime,
@@ -26,35 +28,38 @@ export default function CaptureWeb({ capture, variant }) {
 
   return (
     <>
-      <div className="hero-record">
-        {!recordedBlob ? (
-          <>
-            <button
-              className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording ? 'recording' : ''}`}
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={loading}
-              aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
-            >
-              <IconMic width={26} height={26} />
-            </button>
-            <p className="record-label">
-              {isRecording
-                ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
-                : 'Clique para gravar'}
-            </p>
-          </>
-        ) : (
-          <RecordingReview
-            recordingTime={recordingTime}
-            onSubmit={submitRecording}
-            onReset={resetRecording}
-            loading={loading}
-          />
-        )}
-      </div>
+      {mode === 'record' && (
+        <div className="hero-record">
+          {!recordedBlob ? (
+            <>
+              <button
+                className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording ? 'recording' : ''}`}
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={loading}
+                aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
+              >
+                <IconMic width={26} height={26} />
+              </button>
+              <p className="record-label">
+                {isRecording
+                  ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
+                  : 'Clique para gravar'}
+              </p>
+            </>
+          ) : (
+            <RecordingReview
+              recordingTime={recordingTime}
+              onSubmit={submitRecording}
+              onReset={resetRecording}
+              loading={loading}
+            />
+          )}
+        </div>
+      )}
 
-      <CaptureSecondary loading={loading}>
-        {mode => mode === 'file' ? (
+      {mode === 'file' && (
+        <div className="capture-mode">
+          <p className="capture-mode-title">{MODE_TITLE.file}</p>
           <div
             className={`drop-zone ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`}
             onClick={() => !loading && fileRef.current?.click()}
@@ -72,10 +77,15 @@ export default function CaptureWeb({ capture, variant }) {
             <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
             <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
           </div>
-        ) : (
+        </div>
+      )}
+
+      {mode === 'url' && (
+        <div className="capture-mode">
+          <p className="capture-mode-title">{MODE_TITLE.url}</p>
           <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
-        )}
-      </CaptureSecondary>
+        </div>
+      )}
 
       {error && <div className="alert alert-error">{error}</div>}
     </>

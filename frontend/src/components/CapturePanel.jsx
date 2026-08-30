@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { NavLink } from 'react-router-dom'
+import { IconMic, IconFile, IconLink } from './Icons'
 import { usePlatform } from '../lib/platform'
 import { sharedFileToFile } from '../lib/sharedContent'
 import { useCapture } from './capture/useCapture'
@@ -21,7 +23,16 @@ import CaptureNative from './capture/CaptureNative'
 // próprio hook pediria — usado pelo Home para cobrir o intervalo entre a
 // transcrição terminar e a sugestão de pasta chegar, sem esse hiato mostrar a
 // tela normal por trás.
-export default function CapturePanel({ onResult, variant = 'hero', autoCapture = null, onAutoCaptureDone, extraLoading = false }) {
+// As três origens são rotas irmãs: cada uma tem endereço, o voltar funciona e
+// nenhuma delas empurra o resto da página ao abrir, que era o que a gaveta
+// fazia. Gravar é a primeira porque é o que o usuário quase sempre quer.
+const MODES = [
+  { mode: 'record', to: '/', label: 'Gravar', Icon: IconMic },
+  { mode: 'file', to: '/arquivo', label: 'Arquivo', Icon: IconFile },
+  { mode: 'url', to: '/youtube', label: 'YouTube', Icon: IconLink },
+]
+
+export default function CapturePanel({ onResult, variant = 'hero', mode = 'record', autoCapture = null, onAutoCaptureDone, extraLoading = false }) {
   const { isNative, isMobile } = usePlatform()
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
@@ -59,5 +70,32 @@ export default function CapturePanel({ onResult, variant = 'hero', autoCapture =
   // tamanho da tela — quem abre o site no celular merece a mesma interface.
   const View = isNative || isMobile ? CaptureNative : CaptureWeb
   const viewCapture = extraLoading ? { ...capture, loading: true } : capture
-  return <View capture={viewCapture} variant={variant} />
+  // Trocar de aba desmonta o painel; no meio de uma transcrição isso jogaria
+  // fora o que já custou tempo e API.
+  const busy = viewCapture.loading
+
+  return (
+    <div className="capture">
+      <nav className={`capture-tabs ${busy ? 'busy' : ''}`} aria-label="De onde vem o áudio">
+        {MODES.map(({ mode: m, to, label, Icon }) => (
+          <NavLink
+            key={m}
+            to={to}
+            end
+            className={m === mode ? 'on' : ''}
+            aria-current={m === mode ? 'page' : undefined}
+            tabIndex={busy ? -1 : 0}
+          >
+            <Icon width={15} height={15} /> {label}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Altura fixa: sem ela, trocar de aba fazia "Últimas conversas" pular
+          de lugar a cada clique. */}
+      <div className="capture-panel">
+        <View capture={viewCapture} variant={variant} mode={mode} />
+      </div>
+    </div>
+  )
 }

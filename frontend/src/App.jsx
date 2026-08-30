@@ -56,8 +56,13 @@ export default function App() {
           {/* Fora do PublicRoute: quem chega aqui ainda não tem sessão, e
               depois de confirmar precisa continuar nesta tela até o redirect. */}
           <Route path="/confirm" element={<ConfirmEmail />} />
+          {/* Uma rota por origem de captura: a home é a de gravar, e as outras
+              duas são a mesma página com o painel trocado — "Últimas
+              conversas" é idêntica nas três. */}
           <Route path="/" element={<RootRoute />}>
-            <Route index element={<Home />} />
+            <Route index element={<Home mode="record" />} />
+            <Route path="arquivo" element={<Home mode="file" />} />
+            <Route path="youtube" element={<Home mode="url" />} />
           </Route>
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             {/* Rota própria por conversa: dá deep-link e faz o voltar do

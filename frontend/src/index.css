@@ -430,7 +430,7 @@ input::placeholder { color: var(--text-muted); }
 }
 .record-btn:hover:not(:disabled) { border-color: var(--accent); }
 .record-btn:active:not(:disabled) { transform: scale(0.96); }
-.record-btn.hero { width: 104px; height: 104px; }
+.record-btn.hero { width: 108px; height: 108px; }
 .record-btn.hero svg { width: 34px; height: 34px; }
 .record-btn.recording { border-color: var(--record); background: var(--accent-soft); color: var(--record); animation: pulse-ring 1.4s ease-in-out infinite; }
 .record-label { font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 7px; min-height: 20px; }
@@ -445,14 +445,43 @@ input::placeholder { color: var(--text-muted); }
 .capture-divider { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 440px; margin: 34px 0 18px; color: var(--text-muted); font-size: 12px; }
 .capture-divider::before, .capture-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-.capture-secondary { width: 100%; max-width: 440px; }
-.capture-options { display: flex; gap: 10px; justify-content: center; }
-.capture-option { display: flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 13px; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
-.capture-option:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.capture-option.open { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-.capture-option:disabled { opacity: .5; cursor: default; }
-.capture-drawer { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.capture-drawer-title { font-family: var(--font-serif); font-size: 15px; margin-bottom: 12px; text-align: center; }
+/* As três origens dentro de uma moldura só. Antes o microfone flutuava solto
+   e as duas pílulas abriam uma gaveta que empurrava a página inteira. */
+.capture { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+.capture-tabs {
+  display: flex; align-items: center; gap: 2px;
+  padding: 3px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.capture-tabs a {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 15px; border-radius: 999px;
+  color: var(--text-muted); text-decoration: none;
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.capture-tabs a svg { flex-shrink: 0; opacity: .8; }
+.capture-tabs a:hover { color: var(--text); }
+.capture-tabs a.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.capture-tabs a.on svg { color: var(--accent); opacity: 1; }
+.capture-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Trocar de aba desmonta o painel; no meio de uma transcrição isso jogaria
+   fora o que já custou tempo e API. */
+.capture-tabs.busy { opacity: .45; }
+.capture-tabs.busy a { pointer-events: none; }
+
+.capture-panel {
+  width: 100%; max-width: 520px;
+  min-height: 252px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 26px 24px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.capture-mode { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; }
+.capture-mode-title { font-family: var(--font-serif); font-size: 16px; margin-bottom: 16px; text-align: center; }
+.capture-mode .drop-zone, .capture-mode .url-form { width: 100%; }
 
 .drop-zone {
   border: 1.5px dashed var(--border); border-radius: var(--radius);
@@ -504,7 +533,7 @@ input::placeholder { color: var(--text-muted); }
 /* O painel de captura é mais estreito (440px) que o painel de fontes (740px): sem
    margem automática ele encostaria à esquerda, desalinhado do botão de gravar. */
 .sources-panel .capture-divider,
-.sources-panel .capture-secondary { margin-left: auto; margin-right: auto; }
+.sources-panel .capture { margin-left: auto; margin-right: auto; }
 .sources-panel .capture-divider { margin-top: 22px; margin-bottom: 14px; }
 .sources-panel h4 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; color: var(--text-muted); }
 .sessions-list { display: flex; flex-direction: column; gap: 8px; }

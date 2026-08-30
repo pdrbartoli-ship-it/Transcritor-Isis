@@ -7,7 +7,7 @@ import { IconMic, IconLink, IconFile } from '../components/Icons'
 
 const KIND_ICON = { url: IconLink, record: IconMic, file: IconFile }
 
-export default function Home() {
+export default function Home({ mode = 'record' }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { conversations, refreshConversations, loadingConversations } = useOutletContext()
@@ -54,6 +54,7 @@ export default function Home() {
         <CapturePanel
           onResult={handleResult}
           variant="hero"
+          mode={mode}
           autoCapture={shared}
           onAutoCaptureDone={() => setShared(null)}
           extraLoading={saving}

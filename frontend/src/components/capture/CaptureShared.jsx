@@ -1,5 +1,3 @@
-import { useState } from 'react'
-import { IconFile, IconLink } from '../Icons'
 import { formatTime } from './estimate'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
@@ -76,47 +74,9 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
   )
 }
 
-
-// Arquivos e Link ficam recolhidos até serem pedidos. Antes eram abas sempre
-// abertas, o que deixava uma área de soltar arquivo permanentemente na tela e
-// competindo com o botão de gravar — que é o que o usuário quase sempre quer.
-// Cada um abre com um título dizendo para que serve, porque "Arquivos" sozinho
-// não conta a ninguém que dá para jogar ali o áudio do WhatsApp.
-export function CaptureSecondary({ loading, children }) {
-  const [open, setOpen] = useState(null)
-  const toggle = key => setOpen(open === key ? null : key)
-
-  return (
-    <div className="capture-secondary">
-      <div className="capture-options">
-        <button
-          className={`capture-option ${open === 'file' ? 'open' : ''}`}
-          onClick={() => toggle('file')}
-          disabled={loading}
-          aria-expanded={open === 'file'}
-        >
-          <IconFile width={18} height={18} />
-          Arquivos
-        </button>
-        <button
-          className={`capture-option ${open === 'url' ? 'open' : ''}`}
-          onClick={() => toggle('url')}
-          disabled={loading}
-          aria-expanded={open === 'url'}
-        >
-          <IconLink width={18} height={18} />
-          Link
-        </button>
-      </div>
-
-      {open && (
-        <div className="capture-drawer">
-          <p className="capture-drawer-title">
-            {open === 'file' ? 'Transcreva áudios do WhatsApp' : 'Transcreva vídeos do YouTube'}
-          </p>
-          {children(open)}
-        </div>
-      )}
-    </div>
-  )
+// Rótulo do painel. "Arquivos" sozinho não conta a ninguém que dá para jogar
+// ali o áudio do WhatsApp — o título é onde isso é dito.
+export const MODE_TITLE = {
+  file: 'Transcreva áudios do WhatsApp',
+  url: 'Transcreva vídeos do YouTube',
 }
