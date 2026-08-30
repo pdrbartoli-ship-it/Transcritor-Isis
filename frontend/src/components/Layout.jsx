@@ -6,12 +6,22 @@ import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
-import { listConversations, searchConversations, formatCapturedAt } from '../lib/conversas'
+import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile,
 } from './Icons'
+
+// De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
+// gravação, arquivo e link eram indistinguíveis sem abrir.
+// As conversas antigas foram todas gravadas como 'file' — daí o ícone de
+// arquivo ser o padrão, e não o microfone: ele seria mentira na metade delas.
+const KIND_ICON = { url: IconLink, record: IconMic, file: IconFile }
+function KindIcon({ sourceType }) {
+  const Icon = KIND_ICON[sourceType] || IconFile
+  return <Icon className="kind-icon" width={14} height={14} />
+}
 
 // Espera depois da última tecla antes de consultar o banco. Buscar a cada
 // caractere dispara uma consulta por letra e faz respostas antigas chegarem
@@ -22,6 +32,10 @@ export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // O roteador guarda a posição no histórico em history.state.idx — é o que
+  // diz se existe para onde voltar sem sair do app.
+  const canGoBack = (window.history.state?.idx ?? 0) > 0
 
   const [conversations, setConversations] = useState([])
   const [loadingConversations, setLoadingConversations] = useState(true)
@@ -34,6 +48,8 @@ export default function Layout() {
   const [term, setTerm] = useState('')
   const [results, setResults] = useState(null)   // null = não está buscando
   const [searching, setSearching] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchRef = useRef(null)
 
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('dito-sidebar-collapsed') === '1' } catch { return false }
@@ -113,8 +129,21 @@ export default function Layout() {
   }
 
   function openConversation(id) {
-    setTerm('')
+    closeSearch()
     navigate(`/conversa/${id}`)
+  }
+
+  function toggleSearch() {
+    if (searchOpen) return closeSearch()
+    setSearchOpen(true)
+    // O foco é o ponto da lupa: abrir o campo e ainda exigir um clique nele
+    // seria trocar um controle sempre visível por dois cliques.
+    requestAnimationFrame(() => searchRef.current?.focus())
+  }
+
+  function closeSearch() {
+    setSearchOpen(false)
+    setTerm('')
   }
 
   return (
@@ -129,37 +158,58 @@ export default function Layout() {
       <aside className={`sidebar ${drawerOpen ? 'open' : ''}`}>
         <div className="sidebar-head">
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
-          <button className="sidebar-toggle" onClick={toggleCollapsed} aria-label="Recolher barra lateral">
-            <IconSidebar />
-          </button>
+          <div className="sidebar-tools">
+            <button
+              className={`tool-btn ${searchOpen ? 'on' : ''}`}
+              onClick={toggleSearch}
+              aria-label="Buscar conversas"
+              aria-expanded={searchOpen}
+            >
+              <IconSearch width={16} height={16} />
+            </button>
+            {/* No app empacotado não existe barra do navegador: sem estes dois
+                não há como voltar de um tópico para a conversa sem passar pela
+                home. O índice vem do próprio histórico do roteador. */}
+            <button className="tool-btn" onClick={() => navigate(-1)} disabled={!canGoBack} aria-label="Voltar">
+              <IconArrowRight width={16} height={16} style={{ transform: 'rotate(180deg)' }} />
+            </button>
+            <button className="tool-btn" onClick={() => navigate(1)} aria-label="Avançar">
+              <IconArrowRight width={16} height={16} />
+            </button>
+            <span className="sep" />
+            <button className="sidebar-toggle" onClick={toggleCollapsed} aria-label="Recolher barra lateral">
+              <IconSidebar />
+            </button>
+          </div>
         </div>
 
         <button className="sidebar-cta" onClick={() => navigate('/')}>
           <IconMic width={16} height={16} /> Nova gravação
         </button>
 
-        <div className="sidebar-search">
-          <IconSearch width={15} height={15} />
-          <input
-            type="search"
-            value={term}
-            onChange={e => setTerm(e.target.value)}
-            placeholder="Buscar conversas"
-            aria-label="Buscar conversas por título ou palavra-chave"
-          />
-          {term && (
-            <button className="btn-icon" onClick={() => setTerm('')} aria-label="Limpar busca">
+        {searchOpen && (
+          <div className="sidebar-search">
+            <IconSearch width={15} height={15} />
+            <input
+              ref={searchRef}
+              type="search"
+              value={term}
+              onChange={e => setTerm(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') closeSearch() }}
+              placeholder="Buscar conversas"
+              aria-label="Buscar conversas por título ou palavra-chave"
+            />
+            <button className="btn-icon" onClick={closeSearch} aria-label="Fechar busca">
               <IconClose width={14} height={14} />
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="sidebar-list">
           {results ? (
             <SearchResults results={results} searching={searching} onOpen={openConversation} />
           ) : (
             <>
-              <div className="sidebar-section-label">Conversas</div>
               {loadingConversations ? (
                 <p className="sidebar-empty">Carregando…</p>
               ) : listError ? (
@@ -167,16 +217,21 @@ export default function Layout() {
               ) : conversations.length === 0 ? (
                 <p className="sidebar-empty">Nenhuma conversa ainda.</p>
               ) : (
-                conversations.map(c => (
-                  <button
-                    key={c.id}
-                    className={`sidebar-item ${location.pathname.startsWith(`/conversa/${c.id}`) ? 'active' : ''}`}
-                    onClick={() => openConversation(c.id)}
-                    title={c.title}
-                  >
-                    <span className="dot-mark" />
-                    <span className="sidebar-item-text">{c.title}</span>
-                  </button>
+                groupConversations(conversations).map(grupo => (
+                  <div key={grupo.label}>
+                    <div className="sidebar-group-label">{grupo.label}</div>
+                    {grupo.items.map(c => (
+                      <button
+                        key={c.id}
+                        className={`sidebar-item ${location.pathname.startsWith(`/conversa/${c.id}`) ? 'active' : ''}`}
+                        onClick={() => openConversation(c.id)}
+                        title={displayTitle(c)}
+                      >
+                        <KindIcon sourceType={c.source_type} />
+                        <span className="sidebar-item-text">{displayTitle(c)}</span>
+                      </button>
+                    ))}
+                  </div>
                 ))
               )}
             </>
@@ -188,7 +243,7 @@ export default function Layout() {
             <IconSettings /> Tema
           </button>
           <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
-            <IconMessage /> Deixe um feedback para gente!
+            <IconMessage /> Enviar feedback
           </button>
           <button className="nav-item" onClick={() => setShowPlan(true)}>
             <IconCard /> Meu plano
@@ -235,9 +290,9 @@ function SearchResults({ results, searching, onOpen }) {
         <>
           <div className="sidebar-section-label">Nos títulos</div>
           {titles.map(c => (
-            <button key={c.id} className="sidebar-item" onClick={() => onOpen(c.id)} title={c.title}>
-              <span className="dot-mark" />
-              <span className="sidebar-item-text">{c.title}</span>
+            <button key={c.id} className="sidebar-item" onClick={() => onOpen(c.id)} title={displayTitle(c)}>
+              <KindIcon sourceType={c.source_type} />
+              <span className="sidebar-item-text">{displayTitle(c)}</span>
             </button>
           ))}
         </>
@@ -246,8 +301,8 @@ function SearchResults({ results, searching, onOpen }) {
         <>
           <div className="sidebar-section-label">Nas transcrições</div>
           {transcripts.map(c => (
-            <button key={c.id} className="sidebar-item tall" onClick={() => onOpen(c.id)} title={c.title}>
-              <span className="sidebar-item-text">{c.title}</span>
+            <button key={c.id} className="sidebar-item tall" onClick={() => onOpen(c.id)} title={displayTitle(c)}>
+              <span className="sidebar-item-text">{displayTitle(c)}</span>
               <span className="sidebar-item-sub">{c.excerpt}</span>
               <span className="sidebar-item-sub muted">{formatCapturedAt(c.created_at)}</span>
             </button>

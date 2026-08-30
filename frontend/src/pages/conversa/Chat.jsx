@@ -7,12 +7,23 @@ import { track } from '../../lib/analytics'
 import ChatTextarea from '../../components/chat/ChatTextarea'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconTrash, IconMessage } from '../../components/Icons'
+import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 
 // Cada mensagem reenvia o histórico; sem teto, uma conversa longa cresce sem
 // parar. O corte é por mensagem, para uma resposta gigante não comer o espaço
 // das outras.
 const MAX_CHARS_PER_TURN = 2000
+
+// O estado vazio era um parágrafo e seiscentos pixels de nada. Quem acabou de
+// transcrever uma reunião não sabe o que dá para perguntar, então não pergunta
+// — e o recurso mais caro do app fica sem uso.
+const SUGESTOES = [
+  'Quais foram as decisões?',
+  'O que ficou pendente e com quem?',
+  'Resuma para quem não estava presente',
+  'Que números foram citados?',
+]
 
 export default function Chat() {
   const { user } = useAuth()
@@ -56,9 +67,13 @@ export default function Chat() {
     setTab('chat')
   }
 
-  async function send(e) {
+  // Um chip não passa pelo campo: mandar o texto direto evita depender de o
+  // setState ter sido aplicado antes do submit.
+  function ask(texto) { send(null, texto) }
+
+  async function send(e, texto) {
     e?.preventDefault()
-    const text = question.trim()
+    const text = (texto ?? question).trim()
     if (!text || sending) return
 
     setQuestion('')
@@ -125,7 +140,7 @@ export default function Chat() {
       <ConversaHeader
         conversation={conversation}
         backTo=".."
-        backLabel={conversation.title}
+        backLabel={displayTitle(conversation)}
         title="Pergunte qualquer coisa"
         subtitle={activeChat?.title || 'Sobre esta conversa'}
       />
@@ -179,6 +194,13 @@ export default function Chat() {
               <div className="chat-starter">
                 <IconMessage width={26} height={26} />
                 <p>Pergunte o que quiser sobre esta conversa — o que ficou decidido, o que fulano disse, o que faltou.</p>
+                <div className="starter-chips">
+                  {SUGESTOES.map(texto => (
+                    <button key={texto} type="button" onClick={() => ask(texto)} disabled={sending}>
+                      {texto}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((m, i) => (

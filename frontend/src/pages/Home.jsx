@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { createConversation, formatCapturedAt, formatDurationLabel } from '../lib/conversas'
+import { createConversation, formatCapturedAt, formatDurationLabel, displayTitle } from '../lib/conversas'
 import CapturePanel from '../components/CapturePanel'
 import { IconArrowRight } from '../components/Icons'
 
@@ -93,7 +93,7 @@ export function ConversationRow({ conversation, onOpen, excerpt }) {
         }}
       >
         <div className="conversation-main">
-          <span className="conversation-title">{conversation.title}</span>
+          <span className="conversation-title">{displayTitle(conversation)}</span>
           <span className="conversation-meta">
             {formatCapturedAt(conversation.created_at)}
             {duration && <> · {duration}</>}

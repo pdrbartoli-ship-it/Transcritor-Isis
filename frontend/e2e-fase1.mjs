@@ -94,14 +94,27 @@ await step('voltar do navegador retorna à home', async () => {
   await page.waitForSelector('.home', { timeout: 10000 })
 })
 
-await step('busca na sidebar responde', async () => {
+await step('busca abre pela lupa e responde', async () => {
+  // A busca deixou de ocupar uma faixa fixa: agora sai da lupa no cabeçalho.
+  await page.click('.tool-btn[aria-label="Buscar conversas"]')
+  await page.waitForSelector('.sidebar-search input')
   await page.fill('.sidebar-search input', 'a')
   await page.waitForTimeout(1200)
   const labels = await page.locator('.sidebar-section-label').allTextContents()
   const empty = await page.locator('.sidebar-empty').count()
   if (!labels.length && !empty) throw new Error('busca não renderizou nem resultado nem vazio')
   console.log(`       (seções: ${labels.join(', ') || 'nenhuma'})`)
-  await page.fill('.sidebar-search input', '')
+  await page.keyboard.press('Escape')
+  await page.waitForSelector('.sidebar-search', { state: 'detached' })
+})
+
+await step('lista da sidebar vem agrupada por recência', async () => {
+  const grupos = await page.locator('.sidebar-group-label').allTextContents()
+  if (!grupos.length) throw new Error('nenhum grupo de data na sidebar')
+  const crus = await page.locator('.sidebar-item-text').evaluateAll(
+    els => els.filter(e => e.textContent.trim().startsWith('http')).length)
+  if (crus) throw new Error(`${crus} títulos ainda são URLs cruas`)
+  console.log(`       (grupos: ${grupos.join(', ')})`)
 })
 
 await step('Tema abre com só claro/escuro', async () => {

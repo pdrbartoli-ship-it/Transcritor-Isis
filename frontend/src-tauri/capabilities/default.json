@@ -7,9 +7,14 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-theme",
     {
       "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "$APPCACHE/*" }]
+      "allow": [
+        {
+          "path": "$APPCACHE/*"
+        }
+      ]
     }
   ]
 }

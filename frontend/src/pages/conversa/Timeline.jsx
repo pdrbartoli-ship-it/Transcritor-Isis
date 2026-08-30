@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useOutletContext } from 'react-router-dom'
 import { IconChevron } from '../../components/Icons'
+import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 import Trecho from './Trecho'
 import { formatRange } from './shared'
@@ -20,7 +21,7 @@ export default function Timeline() {
       <ConversaHeader
         conversation={conversation}
         backTo=".."
-        backLabel={conversation.title}
+        backLabel={displayTitle(conversation)}
         title="Resumo minuto a minuto"
         subtitle={chapters.length === 1 ? '1 intervalo' : `${chapters.length} intervalos`}
       />

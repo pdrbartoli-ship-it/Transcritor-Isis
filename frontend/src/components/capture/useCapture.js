@@ -171,7 +171,7 @@ export function useCapture({ onResult }) {
       return
     }
     track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
-    onResult(result, 'file', 'Gravação de áudio')
+    onResult(result, 'record', 'Gravação de áudio')
     resetRecording()
   }
 

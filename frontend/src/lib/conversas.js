@@ -64,11 +64,46 @@ export async function getConversation(id) {
   )
 }
 
+// Nomes de site conhecidos, para o rótulo dizer de onde veio em vez de repetir
+// o domínio cru. O que não estiver aqui vira o domínio sem o "www.".
+const SITE_NAMES = {
+  'youtube.com': 'YouTube', 'youtu.be': 'YouTube',
+  'vimeo.com': 'Vimeo', 'drive.google.com': 'Google Drive',
+  'open.spotify.com': 'Spotify', 'soundcloud.com': 'SoundCloud',
+  'x.com': 'X', 'twitter.com': 'X', 'instagram.com': 'Instagram',
+  'tiktok.com': 'TikTok', 'linkedin.com': 'LinkedIn', 'meet.google.com': 'Google Meet',
+}
+
+// Uma URL inteira como título deixava a barra lateral com seis linhas
+// "https://www.youtube.com/watch?v=…" idênticas e truncadas no mesmo ponto.
+// Isto é só o último recurso: quando o modelo devolve um título, ele ganha.
+export function labelForLink(url, quando) {
+  if (!url) return null
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    const site = SITE_NAMES[host] || host
+    const dia = new Date(quando || Date.now()).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+    return `Link do ${site} · ${dia}`
+  } catch {
+    return null
+  }
+}
+
+// As conversas capturadas antes desta correção já foram gravadas com a URL
+// inteira no título. Reescrever o banco seria mexer em dado que o usuário pode
+// ter renomeado à mão; trocar só na exibição resolve a tela sem esse risco.
+export function displayTitle(conversation) {
+  const title = conversation?.title || ''
+  if (!/^https?:\/\//i.test(title.trim())) return title
+  return labelForLink(title.trim(), conversation.created_at) || title
+}
+
 export async function createConversation(userId, result, sourceType, fallbackName) {
   const clientId = await ensureInbox(userId)
   const title =
     result.title?.trim() ||
     result.insights?.title?.trim() ||
+    (sourceType === 'url' ? labelForLink(fallbackName) : null) ||
     fallbackName ||
     `Conversa de ${new Date().toLocaleDateString('pt-BR')}`
 
@@ -156,6 +191,37 @@ export function formatCapturedAt(iso) {
   const d = new Date(iso)
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
     + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+// A lista chega ordenada do banco (created_at desc); aqui ela só ganha as
+// quebras. Sem elas são vinte títulos numa coluna só, sem nenhum eixo de tempo
+// — e a busca vira o único jeito de achar o que foi capturado ontem.
+const DIA = 86400000
+
+export function groupConversations(list) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const inicioDoDia = hoje.getTime()
+
+  const grupos = []
+  let atual = null
+
+  for (const c of list) {
+    const rotulo = labelForAge(new Date(c.created_at).getTime(), inicioDoDia)
+    if (!atual || atual.label !== rotulo) {
+      atual = { label: rotulo, items: [] }
+      grupos.push(atual)
+    }
+    atual.items.push(c)
+  }
+  return grupos
+}
+
+function labelForAge(quando, inicioDoDia) {
+  if (quando >= inicioDoDia) return 'Hoje'
+  if (quando >= inicioDoDia - DIA) return 'Ontem'
+  if (quando >= inicioDoDia - 7 * DIA) return 'Últimos 7 dias'
+  if (quando >= inicioDoDia - 30 * DIA) return 'Últimos 30 dias'
+  return 'Mais antigas'
 }
 
 export function formatDurationLabel(seconds) {

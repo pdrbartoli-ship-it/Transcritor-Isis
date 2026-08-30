@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
-import { IconArrowRight, IconDownload, IconCheck, IconMessage } from '../../components/Icons'
+import { IconChevron, IconDownload, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import { track } from '../../lib/analytics'
 import {
@@ -11,9 +11,9 @@ import {
 } from './shared'
 
 // Visão geral: os quatro blocos que o usuário pode aprofundar. Cada um é uma
-// porta, e a sinalização disso é deliberada — seta sempre visível (no toque não
-// existe hover), borda que reage ao ponteiro, foco de teclado e um clique só.
-// Duplo clique não existe em celular e é invisível para quem não sabe.
+// porta, e a sinalização disso é o próprio card reagindo ao ponteiro — mais o
+// chevron que aparece com ele. Duplo clique não existe em celular e é
+// invisível para quem não sabe.
 export default function Conversa() {
   const navigate = useNavigate()
   const { conversation, setConversation, refreshConversations } = useOutletContext()
@@ -117,7 +117,7 @@ export default function Conversa() {
                 {todos.slice(0, 4).map((t, i) => (
                   <li key={i}>
                     <Card onOpen={() => open('todos', 'todo_aberto', { state: { focus: i } })} className="todo-card">
-                      <span className="todo-check"><IconCheck width={14} height={14} /></span>
+                      <span className="todo-check" aria-hidden="true">—</span>
                       <span className="todo-main">
                         <span className="todo-task">{t.task}</span>
                         {(t.owners?.length > 0 || t.due) && (
@@ -216,7 +216,8 @@ function DownloadButton({ onClick }) {
 }
 
 // Todo bloco navegável usa esta casca, para a afordância ser idêntica em todos:
-// clicável com um clique, alcançável por teclado e com a seta sempre visível.
+// clicável com um clique e alcançável por teclado. O chevron mora no CSS, que
+// o revela sob o ponteiro e o mantém fixo onde não há hover.
 export function Card({ onOpen, className = '', children }) {
   return (
     <div
@@ -229,8 +230,7 @@ export function Card({ onOpen, className = '', children }) {
       }}
     >
       {children}
-      <IconArrowRight className="card-arrow" width={16} height={16} />
-      <span className="card-cue">ver detalhes</span>
+      <IconChevron className="card-arrow" width={15} height={15} />
     </div>
   )
 }

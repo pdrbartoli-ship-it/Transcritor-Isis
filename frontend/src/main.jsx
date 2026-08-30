@@ -4,6 +4,7 @@ import App from './App.jsx'
 import './index.css'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
 import { isNative } from './lib/platform'
+import { getTheme, syncNativeChrome } from './lib/prefs'
 
 // Live update (OTA): o app baixa versões novas do site em segundo plano, para
 // que correções de tela e de lógica não dependam de reinstalar o APK. Só
@@ -25,6 +26,11 @@ if (isNative()) {
 if (!isNative() && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {})
 }
+
+// O script no index.html já aplicou o tema ao documento antes do React montar;
+// a janela nativa precisa do mesmo aviso, senão abre com a barra de título do
+// tema errado até o usuário mexer nas configurações.
+syncNativeChrome(getTheme())
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useOutletContext } from 'react-router-dom'
-import { IconCheck, IconChevron } from '../../components/Icons'
+import { IconChevron } from '../../components/Icons'
+import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 import Trecho from './Trecho'
 
@@ -19,7 +20,7 @@ export default function Todos() {
       <ConversaHeader
         conversation={conversation}
         backTo=".."
-        backLabel={conversation.title}
+        backLabel={displayTitle(conversation)}
         title="Lista de to do's"
         subtitle={todos.length === 1 ? '1 ação combinada' : `${todos.length} ações combinadas`}
       />
@@ -40,7 +41,7 @@ export default function Todos() {
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(open === i ? null : i) }
                 }}
               >
-                <span className="todo-check"><IconCheck width={14} height={14} /></span>
+                <span className="todo-check" aria-hidden="true">—</span>
                 <span className="todo-main">
                   <span className="todo-task">{i + 1}. {t.task}</span>
                   {t.description && <span className="todo-desc">{t.description}</span>}
