@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
-import { IconArrowRight, IconDownload, IconCheck } from '../../components/Icons'
+import { IconArrowRight, IconDownload, IconCheck, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import { track } from '../../lib/analytics'
 import {
   formatTimestamp, formatRange, sliceSegments,
   buildTranscriptFile, downloadText, safeFilename, speakersAreUncertain,
@@ -49,7 +50,15 @@ export default function Conversa() {
   }
 
   function download() {
+    track('download_transcricao')
     downloadText(safeFilename(conversation.title), buildTranscriptFile(conversation))
+  }
+
+  // Saber quais blocos são realmente abertos é o que vai dizer o que manter e
+  // o que cortar — sem isso a próxima decisão de produto seria no palpite.
+  function open(destino, evento, state) {
+    track(evento)
+    navigate(destino, state)
   }
 
   if (!insights) {
@@ -87,7 +96,7 @@ export default function Conversa() {
           <p className="block-hint">Clique em um tópico para ver o que foi dito sobre ele.</p>
           <div className="topic-grid">
             {topics.map((t, i) => (
-              <Card key={i} onOpen={() => navigate(`topico/${i}`)} className="topic-card">
+              <Card key={i} onOpen={() => open(`topico/${i}`, 'topico_aberto')} className="topic-card">
                 <span className="topic-label">{t.label}</span>
                 {t.time_refs?.[0] && (
                   <span className="topic-time">{formatRange(t.time_refs[0][0], t.time_refs[0][1])}</span>
@@ -107,7 +116,7 @@ export default function Conversa() {
               <ul className="todo-list">
                 {todos.slice(0, 4).map((t, i) => (
                   <li key={i}>
-                    <Card onOpen={() => navigate('todos', { state: { focus: i } })} className="todo-card">
+                    <Card onOpen={() => open('todos', 'todo_aberto', { state: { focus: i } })} className="todo-card">
                       <span className="todo-check"><IconCheck width={14} height={14} /></span>
                       <span className="todo-main">
                         <span className="todo-task">{t.task}</span>
@@ -151,14 +160,14 @@ export default function Conversa() {
                   className={`timeline-slot ${i === chapter ? 'on' : ''}`}
                   style={{ flexGrow: width }}
                   title={`${formatRange(c.start, c.end)} — ${c.title}`}
-                  onClick={() => (i === chapter ? navigate('timeline', { state: { focus: i } }) : setChapter(i))}
+                  onClick={() => (i === chapter ? open('timeline', 'timeline_aberta', { state: { focus: i } }) : setChapter(i))}
                 />
               )
             })}
           </div>
 
           {current && (
-            <Card onOpen={() => navigate('timeline', { state: { focus: chapter } })} className="chapter-preview">
+            <Card onOpen={() => open('timeline', 'timeline_aberta', { state: { focus: chapter } })} className="chapter-preview">
               <span className="chapter-time">{formatRange(current.start, current.end)}</span>
               <span className="chapter-title">{current.title}</span>
               <ul className="bullet-list">
@@ -188,7 +197,12 @@ export default function Conversa() {
         </section>
       )}
 
-      <DownloadButton onClick={download} />
+      <div className="conversa-actions">
+        <button className="btn-primary" onClick={() => open('chat', 'chat_aberto')}>
+          <IconMessage width={16} height={16} /> Pergunte qualquer coisa
+        </button>
+        <DownloadButton onClick={download} />
+      </div>
     </div>
   )
 }

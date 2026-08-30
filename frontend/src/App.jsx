@@ -11,6 +11,7 @@ import Conversa from './pages/conversa/Conversa'
 import Topico from './pages/conversa/Topico'
 import Todos from './pages/conversa/Todos'
 import Timeline from './pages/conversa/Timeline'
+import Chat from './pages/conversa/Chat'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="topico/:i" element={<Topico />} />
               <Route path="todos" element={<Todos />} />
               <Route path="timeline" element={<Timeline />} />
+              <Route path="chat" element={<Chat />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

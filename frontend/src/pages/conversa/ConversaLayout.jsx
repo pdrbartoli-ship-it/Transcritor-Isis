@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Outlet, useOutletContext } from 'react-router-dom'
 import { getConversation } from '../../lib/conversas'
+import { track } from '../../lib/analytics'
 
 // As quatro telas da conversa (visão geral, tópico, tarefas, timeline) são
 // rotas irmãs sobre o MESMO dado. Carregar aqui, uma vez, evita que navegar
@@ -26,6 +27,8 @@ export default function ConversaLayout() {
     setError(null)
     load()
   }, [load])
+
+  useEffect(() => { track('conversa_aberta') }, [id])
 
   if (error && !conversation) return <div className="alert alert-error">{error}</div>
   if (!conversation) return <div className="loading-screen"><div className="spinner" /></div>

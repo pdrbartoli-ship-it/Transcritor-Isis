@@ -105,37 +105,16 @@ export async function generateInsights(transcript, segments = []) {
   return postJson('/insights', { transcript, segments })
 }
 
-export async function chatWithSessions(
-  question, clientName, sessions,
-  { history = [], makeTitle = false, folderDescription = null } = {},
-) {
+// O chat fala sobre UMA conversa. O backend marca a transcrição com
+// cache_control, então a partir da segunda pergunta ela não é recobrada.
+export async function askConversation(question, conversation, { history = [], makeTitle = false } = {}) {
   return postJson('/chat', {
     question,
-    client_name: clientName,
-    sessions,
+    title: conversation.title,
+    date: new Date(conversation.created_at).toLocaleDateString('pt-BR'),
+    transcript: conversation.transcript,
+    summary: conversation.summary || null,
     history,
     make_title: makeTitle,
-    folder_description: folderDescription,
   })
-}
-
-// Gera a descrição curta da pasta a partir dos trechos das fontes. Guardada em
-// clients.description e reenviada ao /chat como contexto.
-export async function folderBriefing(folderName, excerpts) {
-  return postJson('/folder-briefing', { folder_name: folderName, excerpts })
-}
-
-// Given a transcript and the list of existing folders, asks the backend to
-// suggest where it belongs, split in two levels: the macro subject names the
-// folder and the specific subject names the chat.
-// Returns { folder_id, suggested_new_name, suggested_chat_name, reason }.
-export async function suggestFolder(transcript, folders) {
-  return handleResponse(await fetch(`${API_URL}/suggest-folder`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      transcript,
-      folders: folders.map(f => ({ id: f.id, name: f.name, description: f.description || null })),
-    }),
-  }))
 }
