@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
-import { IconChevron, IconDownload, IconMessage } from '../../components/Icons'
+import { IconChevron, IconDownload } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import { track } from '../../lib/analytics'
 import {
@@ -87,7 +87,12 @@ export default function Conversa() {
 
   return (
     <div className="conversa">
-      <ConversaHeader conversation={conversation} backTo="/" backLabel="Conversas" />
+      <ConversaHeader
+        conversation={conversation}
+        backTo="/"
+        backLabel="Conversas"
+        action={<DownloadButton onClick={download} />}
+      />
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="conversa-grid">
@@ -197,20 +202,14 @@ export default function Conversa() {
         </section>
       )}
 
-      <div className="conversa-actions">
-        <button className="btn-primary" onClick={() => open('chat', 'chat_aberto')}>
-          <IconMessage width={16} height={16} /> Pergunte qualquer coisa
-        </button>
-        <DownloadButton onClick={download} />
-      </div>
     </div>
   )
 }
 
 function DownloadButton({ onClick }) {
   return (
-    <button className="btn-secondary btn-download" onClick={onClick}>
-      <IconDownload width={16} height={16} /> Baixar a transcrição
+    <button className="btn-ghost btn-sm btn-download" onClick={onClick}>
+      <IconDownload width={15} height={15} /> Baixar a transcrição
     </button>
   )
 }

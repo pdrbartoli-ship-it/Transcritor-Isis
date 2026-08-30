@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useOutletContext, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { askConversation } from '../../lib/api'
@@ -28,6 +28,8 @@ const SUGESTOES = [
 export default function Chat() {
   const { user } = useAuth()
   const { conversation } = useOutletContext()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const [tab, setTab] = useState('chat')
   const [chats, setChats] = useState([])
@@ -51,6 +53,16 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
+
+  // Pergunta digitada na barra fixa da conversa: chega pelo state da rota e é
+  // enviada na montagem. Limpar o state evita que voltar para cá reenvie a
+  // mesma pergunta e cobre a chamada de novo.
+  const pending = location.state?.ask
+  useEffect(() => {
+    if (!pending) return
+    navigate('.', { replace: true, state: null })
+    send(null, pending)
+  }, [pending])
 
   async function openChat(chat) {
     setActiveChat(chat)

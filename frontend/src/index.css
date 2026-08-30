@@ -409,7 +409,10 @@ input::placeholder { color: var(--text-muted); }
 .topbar-mobile { display: none; }
 
 /* ── Home ───────────────────────────────────────────────── */
-.home { max-width: 620px; margin: 0 auto; padding: 9vh 24px 48px; display: flex; flex-direction: column; align-items: center; }
+/* A página tem dois ritmos: a captura é uma decisão única e fica numa coluna
+   estreita e centrada; a lista embaixo é varredura e usa a largura toda. */
+.home { max-width: 1140px; margin: 0 auto; padding: 7vh 28px 56px; display: flex; flex-direction: column; }
+.home-capture { width: 100%; max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
 .home-greeting { text-align: center; margin-bottom: 40px; }
 .home-greeting h1 { font-family: var(--font-serif); font-size: 30px; font-weight: 500; letter-spacing: -0.01em; }
 .home-greeting p { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
@@ -760,25 +763,42 @@ input::placeholder { color: var(--text-muted); }
 /* Toda a sinalização de "isto abre algo" mora aqui: a seta permanente (no
    touch não existe hover para revelá-la), a borda que reage ao ponteiro e o
    foco visível para quem navega pelo teclado. */
-.recent { width: 100%; max-width: 720px; margin: 44px auto 0; }
-.recent-title { font-family: var(--font-serif); font-size: 16px; font-weight: 500; margin-bottom: 12px; }
+.recent { width: 100%; margin: 56px 0 0; }
+.recent-title { font-family: var(--font-serif); font-size: 17px; font-weight: 500; margin-bottom: 14px; }
 .recent-empty { padding: 22px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; text-align: center; }
 
-.conversation-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.conversation-card {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); cursor: pointer;
-  transition: border-color .15s, transform .15s, box-shadow .15s;
+/* Grade que se ajusta à janela: 3 colunas no desktop largo, 2 no médio, 1 no
+   estreito. A coluna única de 620px deixava metade da tela vazia num monitor
+   comum, e cada card tinha duas linhas de conteúdo dentro de uma caixa alta. */
+.conversation-list {
+  list-style: none; display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
 }
-.conversation-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow); }
+.conversation-card {
+  height: 100%;
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.conversation-card:hover { border-color: var(--text-muted); background: var(--surface-2); }
 .conversation-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.conversation-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.conversation-title { font-size: 14.5px; font-weight: 500; }
-.conversation-meta { font-size: 12px; color: var(--text-muted); }
-.conversation-excerpt { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
-.card-arrow { flex-shrink: 0; color: var(--text-muted); transition: color .15s, transform .15s; }
-.conversation-card:hover .card-arrow { color: var(--accent); transform: translateX(2px); }
+.conversation-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.conversation-meta svg { flex-shrink: 0; opacity: .7; }
+.conversation-meta .dot-sep { opacity: .5; }
+/* Duas linhas no máximo, para todos os cards da fileira terminarem na mesma
+   altura mesmo com títulos de tamanhos bem diferentes. */
+.conversation-title {
+  font-size: 14.5px; font-weight: 500; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.conversation-excerpt {
+  font-size: 12.5px; color: var(--text-muted); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 
 /* ---------- Sidebar: busca e lista plana ---------- */
 
@@ -801,6 +821,41 @@ input::placeholder { color: var(--text-muted); }
 .sidebar-item-sub.muted { opacity: .75; }
 
 /* ---------- Tela de conversa ---------- */
+
+/* A casca segura o conteúdo e a barra de perguntar; o padding embaixo é o
+   espaço que a barra ocupa, para o último bloco da página não ficar atrás
+   dela quando a rolagem chega ao fim. */
+.conversa-shell { position: relative; min-height: 100%; padding: 26px 24px 32px; }
+/* O que a barra fixa ocupa, para o último bloco não terminar atrás dela. */
+.conversa-shell.com-ask { padding-bottom: 8px; }
+
+.ask-dock {
+  position: sticky; bottom: 0; z-index: 20;
+  width: 100%; max-width: 760px; margin: 0 auto;
+  padding: 14px 0 20px;
+  /* O degradê deixa o conteúdo sumir por baixo da barra em vez de ser cortado
+     por uma linha reta no meio de uma frase. */
+  background: linear-gradient(to bottom, transparent, var(--bg) 26%);
+}
+.ask-bar {
+  display: flex; align-items: flex-end; gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+  transition: border-color .15s;
+}
+.ask-bar:focus-within { border-color: var(--accent); }
+.ask-bar textarea {
+  flex: 1; min-width: 0; border: none; background: transparent;
+  color: var(--text); font-family: inherit; font-size: 14px; line-height: 1.5;
+  resize: none; outline: none; padding: 6px 0;
+}
+.ask-bar textarea::placeholder { color: var(--text-muted); }
+.ask-send { flex-shrink: 0; width: 34px; height: 34px; background: var(--accent); color: var(--accent-text); border-radius: 50%; }
+.ask-send:hover { background: var(--accent-hover); color: var(--accent-text); }
+
+.conversa-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.conversa-topbar .back-link { margin-bottom: 0; }
 
 .conversa { width: 100%; max-width: 760px; margin: 0 auto; }
 .back-link { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 18px; padding: 0; border: none; background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; }

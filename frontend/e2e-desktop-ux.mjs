@@ -60,8 +60,8 @@ await p.click('.tool-btn[aria-label="Voltar"]')
 await p.waitForTimeout(500)
 console.log('voltar pela setinha ->', await p.evaluate(() => location.hash))
 
-// chat vazio com sugestões
-await p.click('.conversa-actions .btn-primary')
+// chat vazio com sugestões — agora se chega por lá pela barra fixa
+await p.click('.ask-send')
 await p.waitForSelector('.chat-starter')
 console.log('chips de sugestao:', await p.locator('.starter-chips button').count())
 const fonteBolha = await p.evaluate(() => {

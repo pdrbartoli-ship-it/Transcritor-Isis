@@ -24,9 +24,12 @@ export async function ensureInbox(userId) {
 }
 
 // Campos da listagem. `transcript` fica de fora de propósito: é a coluna mais
-// pesada da tabela e a home não mostra nada dela.
-const LIST_FIELDS = 'id, title, created_at, source_type, duration_s'
-const LIST_FIELDS_BASE = 'id, title, created_at, source_type'
+// pesada da tabela e a home não mostra nada dela. `summary` entra porque os
+// cards da home mostram duas linhas de prévia — sem elas o card tem duas
+// linhas de conteúdo dentro de uma caixa alta, que é o que fazia a seção
+// parecer vazia mesmo cheia.
+const LIST_FIELDS = 'id, title, created_at, source_type, duration_s, summary'
+const LIST_FIELDS_BASE = 'id, title, created_at, source_type, summary'
 const FULL_FIELDS = 'id, title, created_at, source_type, transcript, summary, segments, insights, duration_s'
 const FULL_FIELDS_BASE = 'id, title, created_at, source_type, transcript, summary'
 
@@ -222,6 +225,32 @@ function labelForAge(quando, inicioDoDia) {
   if (quando >= inicioDoDia - 7 * DIA) return 'Últimos 7 dias'
   if (quando >= inicioDoDia - 30 * DIA) return 'Últimos 30 dias'
   return 'Mais antigas'
+}
+
+// O resumo vem em markdown com bullets, e os antigos ainda começam com um
+// cabeçalho fixo ("Resumo da Transcrição -- 🎯 Tema principal"). No card isso
+// ocuparia a primeira linha inteira sem dizer nada, então sai fora: o que
+// interessa ali é a primeira frase de conteúdo.
+export function previewOf(conversation, max = 110) {
+  let raw = (conversation?.summary || '')
+    .replace(/[*_`#>]/g, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/^\s*[-•]\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // Os resumos antigos abrem com um cabeçalho de forma variável ("Resumo da
+  // Transcrição -- Tema principal", "Resumo do Áudio — … -- Tema Principal").
+  // Em vez de tentar casar cada variante, corto tudo que vem antes do rótulo:
+  // o conteúdo começa logo depois dele. Os resumos novos não têm o rótulo e
+  // passam intactos.
+  const rotulo = raw.match(/tema\s+principal:?\s*/i)
+  if (rotulo && rotulo.index < 80) raw = raw.slice(rotulo.index + rotulo[0].length)
+
+  if (!raw) return ''
+  if (raw.length <= max) return raw
+  const corte = raw.slice(0, max)
+  return corte.slice(0, corte.lastIndexOf(' ')) + '…'
 }
 
 export function formatDurationLabel(seconds) {

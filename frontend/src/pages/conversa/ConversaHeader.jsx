@@ -4,15 +4,18 @@ import { formatCapturedAt, formatDurationLabel, displayTitle } from '../../lib/c
 
 // Cabeçalho comum. Nas telas de detalhe o voltar leva à visão geral da própria
 // conversa, não à home: sair do zoom não deveria custar o contexto inteiro.
-export default function ConversaHeader({ conversation, backTo, backLabel, title, subtitle }) {
+export default function ConversaHeader({ conversation, backTo, backLabel, title, subtitle, action }) {
   const navigate = useNavigate()
   const duration = formatDurationLabel(conversation.duration_s)
 
   return (
     <>
-      <button className="back-link" onClick={() => navigate(backTo)}>
-        <IconChevron width={14} height={14} style={{ transform: 'rotate(180deg)' }} /> {backLabel}
-      </button>
+      <div className="conversa-topbar">
+        <button className="back-link" onClick={() => navigate(backTo)}>
+          <IconChevron width={14} height={14} style={{ transform: 'rotate(180deg)' }} /> {backLabel}
+        </button>
+        {action}
+      </div>
       <header className="conversa-head">
         <h1>{title || displayTitle(conversation)}</h1>
         <p className="text-muted text-sm">

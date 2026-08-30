@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { createConversation, formatCapturedAt, formatDurationLabel, displayTitle } from '../lib/conversas'
+import { createConversation, formatCapturedAt, formatDurationLabel, displayTitle, previewOf } from '../lib/conversas'
 import CapturePanel from '../components/CapturePanel'
-import { IconArrowRight } from '../components/Icons'
+import { IconMic, IconLink, IconFile } from '../components/Icons'
+
+const KIND_ICON = { url: IconLink, record: IconMic, file: IconFile }
 
 export default function Home() {
   const { user } = useAuth()
@@ -41,20 +43,24 @@ export default function Home() {
 
   return (
     <div className="home">
-      <div className="home-greeting">
-        <h1>O que vamos registrar hoje?</h1>
-        <p className="text-muted">Grave, envie um arquivo ou cole um link — a gente transcreve e organiza.</p>
+      {/* A captura fica numa coluna estreita — é uma decisão de cada vez. A
+          lista embaixo é varredura, e por isso usa a largura toda. */}
+      <div className="home-capture">
+        <div className="home-greeting">
+          <h1>O que vamos registrar hoje?</h1>
+          <p className="text-muted">Grave, envie um arquivo ou cole um link — a gente transcreve e organiza.</p>
+        </div>
+
+        <CapturePanel
+          onResult={handleResult}
+          variant="hero"
+          autoCapture={shared}
+          onAutoCaptureDone={() => setShared(null)}
+          extraLoading={saving}
+        />
+
+        {error && <div className="alert alert-error">{error}</div>}
       </div>
-
-      <CapturePanel
-        onResult={handleResult}
-        variant="hero"
-        autoCapture={shared}
-        onAutoCaptureDone={() => setShared(null)}
-        extraLoading={saving}
-      />
-
-      {error && <div className="alert alert-error">{error}</div>}
 
       <section className="recent">
         <h2 className="recent-title">Últimas conversas</h2>
@@ -77,10 +83,13 @@ export default function Home() {
   )
 }
 
-// Card clicável. A seta fica sempre visível, não só no hover: no celular não
-// existe hover, e sem ela nada indica que a linha leva a algum lugar.
+// Card da grade. A meta (origem, duração, data) sobe para uma tarja no topo e
+// o corpo fica com título e prévia — assim o card carrega quatro informações
+// no lugar das duas de antes, que era o que deixava a seção com cara de vazia.
 export function ConversationRow({ conversation, onOpen, excerpt }) {
   const duration = formatDurationLabel(conversation.duration_s)
+  const Icon = KIND_ICON[conversation.source_type] || IconFile
+  const preview = excerpt || previewOf(conversation)
   return (
     <li>
       <div
@@ -92,15 +101,14 @@ export function ConversationRow({ conversation, onOpen, excerpt }) {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() }
         }}
       >
-        <div className="conversation-main">
-          <span className="conversation-title">{displayTitle(conversation)}</span>
-          <span className="conversation-meta">
-            {formatCapturedAt(conversation.created_at)}
-            {duration && <> · {duration}</>}
-          </span>
-          {excerpt && <span className="conversation-excerpt">{excerpt}</span>}
+        <div className="conversation-meta">
+          <Icon width={14} height={14} />
+          {/* O ponto só separa se houver duas coisas para separar. */}
+          {duration && <><span>{duration}</span><span className="dot-sep">·</span></>}
+          <span>{formatCapturedAt(conversation.created_at)}</span>
         </div>
-        <IconArrowRight className="card-arrow" width={18} height={18} />
+        <span className="conversation-title">{displayTitle(conversation)}</span>
+        {preview && <span className="conversation-excerpt">{preview}</span>}
       </div>
     </li>
   )
