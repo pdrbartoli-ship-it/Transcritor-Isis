@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { useNavigate, useLocation, Outlet, NavLink } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
@@ -12,6 +12,15 @@ import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile,
 } from './Icons'
+
+// As três origens de captura. Ficam na barra lateral, junto do resto da
+// navegação — no centro elas roubavam o lugar da própria superfície de gravar.
+// Cada uma é uma rota, então tem endereço e o voltar funciona.
+const CAPTURE_MODES = [
+  { to: '/', label: 'Gravação', Icon: IconMic },
+  { to: '/audio', label: 'Áudio', Icon: IconFile },
+  { to: '/video', label: 'Vídeo', Icon: IconLink },
+]
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
 // gravação, arquivo e link eram indistinguíveis sem abrir.
@@ -183,9 +192,13 @@ export default function Layout() {
           </div>
         </div>
 
-        <button className="sidebar-cta" onClick={() => navigate('/')}>
-          <IconMic width={16} height={16} /> Nova gravação
-        </button>
+        <nav className="capture-nav" aria-label="O que você quer transcrever">
+          {CAPTURE_MODES.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'on' : '')}>
+              <Icon width={16} height={16} /> {label}
+            </NavLink>
+          ))}
+        </nav>
 
         {searchOpen && (
           <div className="sidebar-search">

@@ -20,10 +20,10 @@ for (const [aba, hash, espera] of [
   ['Áudio', '#/audio', '.drop-zone'],
   ['Vídeo', '#/video', '.url-form'],
 ]) {
-  await p.click(`.capture-tabs a:has-text("${aba}")`)
+  await p.click(`.capture-nav a:has-text("${aba}")`)
   await p.waitForSelector(espera, { timeout: 5000 })
   if (!p.url().endsWith(hash)) throw new Error(`${aba} não foi para ${hash} (${p.url()})`)
-  const ativa = await p.locator('.capture-tabs a.on').textContent()
+  const ativa = await p.locator('.capture-nav a.on').textContent()
   const painel = await p.locator('.capture-panel').boundingBox()
   const titulo = await p.locator('.capture-mode-title').count()
     ? await p.locator('.capture-mode-title').textContent() : '(sem título)'
@@ -37,7 +37,7 @@ console.log('"Últimas conversas" no mesmo y nas três:', new Set(recentes).size
 
 // cada rota abre direto, sem passar pela home
 await p.goto(base + '#/video'); await p.waitForSelector('.url-form')
-console.log('deep-link /video abre no painel certo:', await p.locator('.capture-tabs a.on').textContent())
+console.log('deep-link /video abre no painel certo:', await p.locator('.capture-nav a.on').textContent())
 console.log('cards de conversa presentes:', await p.locator('.conversation-card').count())
 
 // voltar do navegador percorre as abas
