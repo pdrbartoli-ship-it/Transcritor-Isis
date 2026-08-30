@@ -253,6 +253,12 @@ export default function Layout() {
             <span className="email">{user?.email}</span>
             <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
           </div>
+          {/* Qual build está rodando. O instalador do Windows tem nome e URL
+              fixos, então uma cópia velha no cache do navegador se instala sem
+              nenhum aviso — sem isto, "atualizou?" não tinha resposta. */}
+          <span className="foot-version" title={`Versão ${__APP_VERSION__}, commit ${__BUILD_SHA__}`}>
+            v{__APP_VERSION__} · {__BUILD_SHA__}
+          </span>
         </div>
       </aside>
 
