@@ -465,6 +465,22 @@ INSIGHTS_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        # Marcas esparsas de troca de locutor: uma entrada por vez que a voz
+        # muda, não uma por trecho. O Whisper não faz diarização, então isto é
+        # o que permite a timeline mostrar quem disse o quê — e sai barato
+        # porque uma reunião de uma hora tem dezenas de trocas, não milhares.
+        "speaker_turns": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "start": {"type": "number"},
+                    "speaker": {"type": "string"},
+                },
+                "required": ["start", "speaker"],
+                "additionalProperties": False,
+            },
+        },
         "topics": {
             "type": "array",
             "items": {
@@ -511,7 +527,7 @@ INSIGHTS_SCHEMA = {
             },
         },
     },
-    "required": ["title", "summary_bullets", "speakers", "topics", "todos", "chapters"],
+    "required": ["title", "summary_bullets", "speakers", "speaker_turns", "topics", "todos", "chapters"],
     "additionalProperties": False,
 }
 
@@ -522,6 +538,7 @@ Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, se
 - **title**: 3 a 7 palavras nomeando o assunto da conversa. Sem aspas, sem ponto final.
 - **summary_bullets**: 3 a 6 bullets curtos com o essencial. Cada um uma frase.
 - **speakers**: quem fala, inferido do próprio conteúdo (alguém é chamado pelo nome, se apresenta, ou assina uma fala). `label` é sempre "Locutor 1", "Locutor 2"… na ordem em que aparecem. `name` é o nome inferido, ou null se não houver pista nenhuma. `confidence` é "alta" só quando a pessoa é nomeada de forma inequívoca e repetida; "media" quando há uma pista só; "baixa" quando é palpite. NÃO invente nomes: sem pista, name é null. Se a gravação é claramente de uma pessoa só, devolva um único locutor.
+- **speaker_turns**: uma entrada CADA VEZ que a voz muda de dono, com `start` em segundos (tirado do marcador de tempo mais próximo) e `speaker` igual ao `name` do locutor, ou ao `label` dele quando não há nome. Não repita a mesma pessoa em entradas seguidas — só marque a troca. Se a gravação tem uma voz só, devolva uma entrada em 0.
 - **topics**: EXATAMENTE 4 tópicos, os mais importantes da conversa. `label` é curtíssimo, 2 a 4 palavras, como uma etiqueta ("Política comercial", "Dimensionamento de equipes"). `detail` são 3 a 5 bullets em markdown (cada linha começando com "- ") desenvolvendo o tópico. `time_refs` são os intervalos [início, fim] em SEGUNDOS onde o tópico é discutido, tirados dos marcadores de tempo.
 - **todos**: ações concretas que ficaram combinadas — algo que alguém precisa fazer depois. `task` é curtíssimo e começa por verbo ("Revisar apresentação do Q4"). `description` é uma frase dizendo o que precisa ser feito. `owners` são os nomes dos responsáveis (lista vazia se não ficou claro). `due` é o prazo como foi dito ("até sexta", "no fim do mês") ou null. `time_ref` é o intervalo [início, fim] em segundos onde a ação foi combinada. Se a conversa não combinou nenhuma ação, devolva uma lista VAZIA — não invente tarefas para preencher espaço.
 - **chapters**: a conversa dividida em seções sequenciais por assunto, tipicamente entre 4 e 12. Cada uma com `start` e `end` em segundos, um `title` curto (igual em espírito aos labels de tópico) e 2 a 4 `bullets` com o que foi dito ali. As seções devem cobrir a conversa inteira, em ordem, sem buraco e sem sobreposição: o `start` de uma é o `end` da anterior, a primeira começa em 0 e a última termina no último marcador de tempo.
@@ -641,10 +658,11 @@ PART_SCHEMA = {
     "type": "object",
     "properties": {
         "speakers": INSIGHTS_SCHEMA["properties"]["speakers"],
+        "speaker_turns": INSIGHTS_SCHEMA["properties"]["speaker_turns"],
         "todos": INSIGHTS_SCHEMA["properties"]["todos"],
         "chapters": INSIGHTS_SCHEMA["properties"]["chapters"],
     },
-    "required": ["speakers", "todos", "chapters"],
+    "required": ["speakers", "speaker_turns", "todos", "chapters"],
     "additionalProperties": False,
 }
 
@@ -668,10 +686,11 @@ async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, 
         for i, part in enumerate(parts)
     ])
 
-    speakers, todos, chapters = [], [], []
+    speakers, turns, todos, chapters = [], [], [], []
     in_tokens = out_tokens = 0
     for data, tin, tout in results:
         speakers.extend(data.get("speakers") or [])
+        turns.extend(data.get("speaker_turns") or [])
         todos.extend(data.get("todos") or [])
         chapters.extend(data.get("chapters") or [])
         in_tokens += tin
@@ -696,6 +715,7 @@ async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, 
     merged = {
         **reduced,
         "speakers": dedupe_speakers(speakers),
+        "speaker_turns": turns,
         "todos": todos,
         "chapters": chapters,
     }
@@ -747,9 +767,17 @@ def normalize_insights(insights: dict, segments: list[dict]) -> dict:
         chapters[0]["start"] = 0.0
         chapters[-1]["end"] = max(duration, chapters[-1]["start"])
 
+    # A UI acha o dono de uma fala procurando a última marca antes dela; fora
+    # de ordem, essa busca devolveria a pessoa errada.
+    turns = sorted(
+        (t for t in (insights.get("speaker_turns") or []) if isinstance(t.get("start"), (int, float))),
+        key=lambda t: t["start"],
+    )
+
     return {
         **insights,
         "topics": topics,
+        "speaker_turns": turns,
         "chapters": chapters,
         "todos": insights.get("todos") or [],
         "speakers": insights.get("speakers") or [],

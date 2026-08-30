@@ -42,9 +42,6 @@ export default function CaptureWeb({ capture, variant }) {
                 ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
                 : 'Clique para gravar'}
             </p>
-            {variant === 'hero' && !isRecording && (
-              <p className="mic-hint">Na primeira vez, o navegador vai pedir acesso ao microfone.</p>
-            )}
           </>
         ) : (
           <RecordingReview

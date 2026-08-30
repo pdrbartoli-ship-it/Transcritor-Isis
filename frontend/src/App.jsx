@@ -6,7 +6,11 @@ import Landing from './pages/Landing'
 import Layout from './components/Layout'
 import useDeepLinks from './lib/useDeepLinks'
 import Home from './pages/Home'
-import Conversa from './pages/Conversa'
+import ConversaLayout from './pages/conversa/ConversaLayout'
+import Conversa from './pages/conversa/Conversa'
+import Topico from './pages/conversa/Topico'
+import Todos from './pages/conversa/Todos'
+import Timeline from './pages/conversa/Timeline'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
@@ -58,7 +62,14 @@ export default function App() {
             {/* Rota própria por conversa: dá deep-link e faz o voltar do
                 navegador funcionar, o que o modelo antigo (tudo em state
                 dentro de uma pasta) não permitia. */}
-            <Route path="/conversa/:id" element={<Conversa />} />
+            {/* As quatro telas compartilham o dado carregado pelo
+                ConversaLayout, e cada uma tem endereço próprio. */}
+            <Route path="/conversa/:id" element={<ConversaLayout />}>
+              <Route index element={<Conversa />} />
+              <Route path="topico/:i" element={<Topico />} />
+              <Route path="todos" element={<Todos />} />
+              <Route path="timeline" element={<Timeline />} />
+            </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
