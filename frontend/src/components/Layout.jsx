@@ -195,7 +195,7 @@ export default function Layout() {
         <nav className="capture-nav" aria-label="O que você quer transcrever">
           {CAPTURE_MODES.map(({ to, label, Icon }) => (
             <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'on' : '')}>
-              <Icon width={14} height={14} /> {label}
+              <Icon width={13} height={13} /> {label}
             </NavLink>
           ))}
         </nav>
