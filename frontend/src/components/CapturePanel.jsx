@@ -27,9 +27,9 @@ import CaptureNative from './capture/CaptureNative'
 // nenhuma delas empurra o resto da página ao abrir, que era o que a gaveta
 // fazia. Gravar é a primeira porque é o que o usuário quase sempre quer.
 const MODES = [
-  { mode: 'record', to: '/', label: 'Gravar', Icon: IconMic },
-  { mode: 'file', to: '/arquivo', label: 'Arquivo', Icon: IconFile },
-  { mode: 'url', to: '/youtube', label: 'YouTube', Icon: IconLink },
+  { mode: 'record', to: '/', label: 'Gravação', Icon: IconMic },
+  { mode: 'file', to: '/audio', label: 'Áudio', Icon: IconFile },
+  { mode: 'url', to: '/video', label: 'Vídeo', Icon: IconLink },
 ]
 
 export default function CapturePanel({ onResult, variant = 'hero', mode = 'record', autoCapture = null, onAutoCaptureDone, extraLoading = false }) {

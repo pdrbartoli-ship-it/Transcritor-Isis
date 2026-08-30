@@ -1,4 +1,4 @@
-// Fase 1: login, home nova (gravar + Arquivos/Link recolhidos + últimas
+// Fase 1: login, home nova (as três origens de captura como abas + últimas
 // conversas), busca na sidebar, tema e abertura de uma conversa.
 import { chromium } from 'playwright'
 import { readFileSync, mkdirSync } from 'fs'
@@ -36,25 +36,25 @@ await step('botão de gravar visível', async () => {
   await page.waitForSelector('.record-btn.hero', { timeout: 5000 })
 })
 
-await step('as três origens são abas, e Gravar é a padrão', async () => {
+await step('as três origens são abas, e Gravação é a padrão', async () => {
   const abas = (await page.locator('.capture-tabs a').allTextContents()).map(t => t.trim())
-  if (abas.join('|') !== 'Gravar|Arquivo|YouTube') throw new Error(`abas: ${abas}`)
+  if (abas.join('|') !== 'Gravação|Áudio|Vídeo') throw new Error(`abas: ${abas}`)
   const ativa = (await page.textContent('.capture-tabs a.on')).trim()
-  if (ativa !== 'Gravar') throw new Error(`aba ativa: "${ativa}"`)
+  if (ativa !== 'Gravação') throw new Error(`aba ativa: "${ativa}"`)
 })
 
-await step('Arquivo abre em rota própria, com o título do WhatsApp', async () => {
-  await page.click('.capture-tabs a:has-text("Arquivo")')
+await step('Áudio abre em rota própria, com o título do WhatsApp', async () => {
+  await page.click('.capture-tabs a:has-text("Áudio")')
   await page.waitForSelector('.drop-zone', { timeout: 3000 })
-  if (!page.url().endsWith('#/arquivo')) throw new Error(`rota: ${page.url()}`)
+  if (!page.url().endsWith('#/audio')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
   if (t.trim() !== 'Transcreva áudios do WhatsApp') throw new Error(`título: "${t}"`)
 })
 
-await step('YouTube abre em rota própria, com o título certo', async () => {
-  await page.click('.capture-tabs a:has-text("YouTube")')
+await step('Vídeo abre em rota própria, com o título certo', async () => {
+  await page.click('.capture-tabs a:has-text("Vídeo")')
   await page.waitForSelector('.url-form', { timeout: 3000 })
-  if (!page.url().endsWith('#/youtube')) throw new Error(`rota: ${page.url()}`)
+  if (!page.url().endsWith('#/video')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
   if (t.trim() !== 'Transcreva vídeos do YouTube') throw new Error(`título: "${t}"`)
   // "Últimas conversas" é a mesma nas três — por isso continua aqui. A espera
@@ -64,7 +64,7 @@ await step('YouTube abre em rota própria, com o título certo', async () => {
     () => document.querySelectorAll('.conversation-card').length > 0,
     { timeout: 20000 },
   ).catch(() => { throw new Error('a lista de conversas sumiu fora da home') })
-  await page.click('.capture-tabs a:has-text("Gravar")')
+  await page.click('.capture-tabs a:has-text("Gravação")')
   await page.waitForSelector('.record-btn.hero', { timeout: 3000 })
 })
 

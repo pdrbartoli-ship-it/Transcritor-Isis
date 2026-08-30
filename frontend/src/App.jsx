@@ -61,8 +61,8 @@ export default function App() {
               conversas" é idêntica nas três. */}
           <Route path="/" element={<RootRoute />}>
             <Route index element={<Home mode="record" />} />
-            <Route path="arquivo" element={<Home mode="file" />} />
-            <Route path="youtube" element={<Home mode="url" />} />
+            <Route path="audio" element={<Home mode="file" />} />
+            <Route path="video" element={<Home mode="url" />} />
           </Route>
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             {/* Rota própria por conversa: dá deep-link e faz o voltar do

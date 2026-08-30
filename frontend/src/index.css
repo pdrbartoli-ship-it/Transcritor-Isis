@@ -449,21 +449,23 @@ input::placeholder { color: var(--text-muted); }
    e as duas pílulas abriam uma gaveta que empurrava a página inteira. */
 .capture { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
+/* Três segmentos chapados, lado a lado e de larguras iguais. Sem moldura em
+   volta: o anel externo somava uma borda que competia com a do painel logo
+   abaixo e deixava o conjunto pesado. */
 .capture-tabs {
-  display: flex; align-items: center; gap: 2px;
-  padding: 3px; border-radius: 999px;
-  background: var(--surface-2); border: 1px solid var(--border);
+  width: 100%; max-width: 520px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
 }
 .capture-tabs a {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 15px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
   color: var(--text-muted); text-decoration: none;
-  font-size: 13px; font-weight: 500; white-space: nowrap;
+  font-size: 13.5px; font-weight: 500; white-space: nowrap;
   transition: background .15s, color .15s;
 }
-.capture-tabs a svg { flex-shrink: 0; opacity: .8; }
-.capture-tabs a:hover { color: var(--text); }
-.capture-tabs a.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.capture-tabs a svg { flex-shrink: 0; opacity: .75; }
+.capture-tabs a:hover { background: var(--hover); color: var(--text); }
+.capture-tabs a.on { background: var(--surface-2); color: var(--text); }
 .capture-tabs a.on svg { color: var(--accent); opacity: 1; }
 .capture-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Trocar de aba desmonta o painel; no meio de uma transcrição isso jogaria

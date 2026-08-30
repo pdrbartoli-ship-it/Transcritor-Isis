@@ -16,9 +16,9 @@ await p.waitForFunction(() => document.querySelectorAll('.conversation-card').le
 const alturas = []
 const recentes = []
 for (const [aba, hash, espera] of [
-  ['Gravar', '#/', '.record-btn.hero'],
-  ['Arquivo', '#/arquivo', '.drop-zone'],
-  ['YouTube', '#/youtube', '.url-form'],
+  ['Gravação', '#/', '.record-btn.hero'],
+  ['Áudio', '#/audio', '.drop-zone'],
+  ['Vídeo', '#/video', '.url-form'],
 ]) {
   await p.click(`.capture-tabs a:has-text("${aba}")`)
   await p.waitForSelector(espera, { timeout: 5000 })
@@ -36,15 +36,15 @@ console.log('altura do painel igual nas três:', new Set(alturas).size === 1, al
 console.log('"Últimas conversas" no mesmo y nas três:', new Set(recentes).size === 1, recentes)
 
 // cada rota abre direto, sem passar pela home
-await p.goto(base + '#/youtube'); await p.waitForSelector('.url-form')
-console.log('deep-link /youtube abre no painel certo:', await p.locator('.capture-tabs a.on').textContent())
+await p.goto(base + '#/video'); await p.waitForSelector('.url-form')
+console.log('deep-link /video abre no painel certo:', await p.locator('.capture-tabs a.on').textContent())
 console.log('cards de conversa presentes:', await p.locator('.conversation-card').count())
 
 // voltar do navegador percorre as abas
 await p.goBack(); await p.waitForTimeout(400)
-console.log('voltar sai de /youtube ->', await p.evaluate(() => location.hash))
+console.log('voltar sai de /video ->', await p.evaluate(() => location.hash))
 
-await p.goto(base + '#/arquivo'); await p.waitForSelector('.drop-zone')
+await p.goto(base + '#/audio'); await p.waitForSelector('.drop-zone')
 await p.click('.nav-item:has-text("Tema")'); await p.click('.modal .seg button:has-text("Escuro")'); await p.click('.modal .btn-primary')
 await p.waitForTimeout(300)
 await p.screenshot({ path: '.test-results/cap-dark.png' })
