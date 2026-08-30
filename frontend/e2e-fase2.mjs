@@ -117,6 +117,15 @@ await step('deep-link direto funciona', async () => {
   await page.waitForSelector('.chapter-row', { timeout: 15000 })
 })
 
+await step('falas trazem quem falou', async () => {
+  await page.goto(convUrl.replace(/\/?$/, '/') + 'timeline')
+  await page.waitForSelector('.chapter-detail .fala', { timeout: 15000 })
+  const nomes = await page.locator('.chapter-detail .fala-speaker').allTextContents()
+  if (!nomes.length) throw new Error('nenhuma fala atribuída')
+  console.log('       ' + [...new Set(nomes)].join(', '))
+  await page.screenshot({ path: `${OUT}/fase2-timeline-nomes.png`, fullPage: true })
+})
+
 await step('baixar a transcrição entrega .txt com tempos', async () => {
   await page.goto(convUrl)
   await page.waitForSelector('.btn-download', { timeout: 15000 })

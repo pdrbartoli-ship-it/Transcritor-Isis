@@ -1,0 +1,21 @@
+import { chromium } from 'playwright'
+import { readFileSync } from 'fs'
+const creds = JSON.parse(readFileSync('../e2e/credentials.json', 'utf8'))
+const b = await chromium.launch()
+const p = await b.newPage({ viewport: { width: 380, height: 800 } })
+await p.goto(creds.dev_url || 'http://localhost:5173/')
+await p.waitForLoadState('networkidle')
+await p.click('text=Entrar ou criar conta').catch(()=>{})
+await p.waitForSelector('input[type="email"]'); await p.click('text=Acessar')
+await p.fill('input[type="email"]', creds.email)
+await p.fill('input[type="password"]', creds.password)
+await p.click('button[type="submit"]')
+await p.waitForSelector('.home', { timeout: 25000 })
+await p.waitForFunction(() => document.querySelectorAll('.conversation-card').length > 0, { timeout: 20000 })
+await p.locator('.conversation-card', { hasText: '[TESTE FASE 2]' }).first().click()
+await p.waitForSelector('.topic-grid', { timeout: 15000 })
+await p.screenshot({ path: '.test-results/fase2-mobile.png', fullPage: true })
+// overflow horizontal é o defeito clássico dessas telas
+const over = await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+console.log('scroll horizontal:', over ? 'SIM (defeito)' : 'não')
+await b.close()
