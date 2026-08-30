@@ -62,6 +62,86 @@ VIDEO_HOSTS = [
 ]
 
 
+# O deno é instalado pelo buildCommand do render.yaml fora do PATH do processo,
+# então o yt-dlp precisa ser apontado para ele. Sem runtime JS o YouTube falha
+# com "Signature solving failed".
+DENO_PATHS = [
+    os.environ.get("DENO_BIN", ""),
+    "/opt/render/project/.deno/bin/deno",
+    shutil.which("deno") or "",
+]
+
+
+def js_runtime_args() -> list[str]:
+    """Argumentos que dizem ao yt-dlp onde está o runtime JS, se houver um."""
+    for path in DENO_PATHS:
+        if path and os.path.exists(path):
+            return ["--js-runtimes", f"deno:{path}"]
+    return []
+
+
+def is_video_url(url: str) -> bool:
+    """True para links de plataformas de vídeo; o resto é tratado como artigo."""
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return any(host == h or host.endswith("." + h) for h in VIDEO_HOSTS)
+
+
+def is_youtube_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return host in ("youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be") \
+        or host.endswith(".youtube.com")
+
+
+def extract_youtube_id(url: str) -> str | None:
+    """Aceita as formas que as pessoas realmente colam: watch?v=, youtu.be/,
+    /shorts/, /embed/ e /live/."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host == "youtu.be":
+        candidate = parsed.path.lstrip("/").split("/")[0]
+    elif parsed.path == "/watch":
+        candidate = (parse_qs(parsed.query).get("v") or [""])[0]
+    else:
+        match = re.match(r"^/(?:shorts|embed|live|v)/([^/?#]+)", parsed.path)
+        candidate = match.group(1) if match else ""
+    return candidate if re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate) else None
+
+
+# oEmbed devolve o título do vídeo em uma requisição, sem cookies e sem baixar
+# nada — bem mais barato que perguntar ao yt-dlp só pelo nome.
+OEMBED_ENDPOINTS = {
+    "youtube.com": "https://www.youtube.com/oembed",
+    "youtu.be": "https://www.youtube.com/oembed",
+    "vimeo.com": "https://vimeo.com/api/oembed.json",
+    "tiktok.com": "https://www.tiktok.com/oembed",
+}
+
+
+async def fetch_video_title(url: str) -> str | None:
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    endpoint = next(
+        (e for h, e in OEMBED_ENDPOINTS.items() if host == h or host.endswith("." + h)),
+        None,
+    )
+    if not endpoint:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                endpoint,
+                params={"url": url, "format": "json"},
+                timeout=10.0,
+                follow_redirects=True,
+            )
+        if resp.status_code == 200:
+            title = (resp.json() or {}).get("title")
+            return title.strip() if isinstance(title, str) and title.strip() else None
+    except Exception:
+        # Título é enfeite: se falhar, o insight do modelo vira o nome da conversa.
+        pass
+    return None
+
+
 class Usage(BaseModel):
     """Consumo de uma operação, para o app registrar quanto cada usuário gasta.
     Tokens cobrem as chamadas de texto (Claude); audio_seconds cobre a
