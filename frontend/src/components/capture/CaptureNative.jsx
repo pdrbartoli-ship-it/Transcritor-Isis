@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { IconMic, IconFile, IconLink } from '../Icons'
+import { IconMic, IconFile } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
+import { ProcessingBox, RecordingReview, UrlForm, CaptureSecondary } from './CaptureShared'
 
 // Captura no celular. Diferenças reais em relação ao desktop:
 // - não existe arrastar arquivo: o alvo vira um botão de toque, sem a área
@@ -17,7 +17,6 @@ export default function CaptureNative({ capture, variant }) {
     submitRecording, submitFile, submitUrl,
   } = capture
 
-  const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const fileRef = useRef()
 
@@ -60,15 +59,8 @@ export default function CaptureNative({ capture, variant }) {
         )}
       </div>
 
-      <div className="capture-divider">ou envie um arquivo / link</div>
-
-      <div className="capture-secondary">
-        <div className="capture-tabs">
-          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><IconFile /> Arquivo</button>
-          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><IconLink /> Link</button>
-        </div>
-
-        {mode === 'file' ? (
+      <CaptureSecondary loading={loading}>
+        {mode => mode === 'file' ? (
           <>
             <input
               ref={fileRef}
@@ -92,7 +84,7 @@ export default function CaptureNative({ capture, variant }) {
         ) : (
           <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
         )}
-      </div>
+      </CaptureSecondary>
 
       {error && <div className="alert alert-error">{error}</div>}
     </>

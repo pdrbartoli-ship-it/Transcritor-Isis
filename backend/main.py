@@ -4,6 +4,7 @@ import re
 import hashlib
 import asyncio
 import httpx
+import anthropic
 import shutil
 import tempfile
 import subprocess
@@ -45,6 +46,11 @@ OTA_MANIFEST_URL = os.environ.get(
 
 MAX_CHUNK_BYTES = 23 * 1024 * 1024
 
+# Duração de cada bloco do `split_audio`. Os timestamps que o Whisper devolve
+# são relativos ao bloco, então o offset de cada um é o índice vezes isto —
+# sem somar, o segundo bloco de uma reunião de 40min voltaria a marcar 00:00.
+CHUNK_SECONDS = 900
+
 # O arquivo inteiro passa pela memória do processo antes de ir para o disco
 # temporário; acima disso o Render derruba o worker e o usuário vê um 502 sem
 # explicação. Melhor recusar cedo, com um texto que diz o que fazer.
@@ -72,6 +78,27 @@ class TranscriptionResult(BaseModel):
     chunks_used: int
     duration_estimate: str
     title: str | None = None
+    # Trechos com tempo, vindos do Whisper. É a base do resumo minuto a minuto
+    # e dos recortes que cada tópico/tarefa mostra — sem eles a tela de
+    # conversa só teria texto corrido.
+    segments: list[dict] = []
+    # Título, resumo, 4 tópicos, tarefas e capítulos, de uma chamada só.
+    insights: dict | None = None
+    duration_s: int = 0
+    usage: Usage = Usage()
+
+
+class InsightsRequest(BaseModel):
+    """Reanálise de uma conversa já transcrita. Os segmentos são opcionais
+    porque as conversas antigas foram gravadas antes de existirem — sem eles a
+    análise ainda sai, só sem tempos confiáveis."""
+    transcript: str
+    segments: list[dict] = []
+
+
+class InsightsResponse(BaseModel):
+    insights: dict
+    summary: str
     usage: Usage = Usage()
 
 
@@ -300,7 +327,7 @@ def format_duration(total_seconds: float) -> str:
         return f"~{hours}h{mins:02d}min"
 
 
-def split_audio(input_path: str, tmpdir: str, seconds_per_chunk: int = 900) -> list[str]:
+def split_audio(input_path: str, tmpdir: str, seconds_per_chunk: int = CHUNK_SECONDS) -> list[str]:
     """Fatia em pedaços de tamanho fixo com o muxer `segment`, copiando o áudio.
 
     O modo antigo — um `ffmpeg -ss/-t` por pedaço, recodificando cada um —
@@ -364,16 +391,19 @@ def sniff_container(data: bytes) -> str | None:
 async def transcribe_chunk(
     client: httpx.AsyncClient, audio_bytes: bytes, chunk_index: int,
     name: str = "audio.m4a", mime: str = "audio/m4a",
-) -> str:
+) -> tuple[str, list[dict]]:
     # O nome importa: a API do Groq decide pela extensão se aceita o arquivo,
     # então ele precisa combinar com o container que está sendo enviado.
     #
     # Sem `language` o Whisper detecta o idioma sozinho: fixá-lo em "pt" fazia o
     # modelo tentar traduzir/forçar português em áudios em outros idiomas.
+    # `verbose_json` em vez de `text`: o Whisper já calcula os tempos de cada
+    # trecho, e pedir texto puro os jogava fora. Custa o mesmo e é o que
+    # sustenta o resumo minuto a minuto e os recortes por tópico/to-do.
     files = {
         "file": (name, io.BytesIO(audio_bytes), mime),
         "model": (None, "whisper-large-v3-turbo"),
-        "response_format": (None, "text"),
+        "response_format": (None, "verbose_json"),
     }
     try:
         response = await client.post(
@@ -388,123 +418,359 @@ async def transcribe_chunk(
         raise HTTPException(status_code=502, detail=f"Erro de conexão com serviço de transcrição: {e}")
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Erro na transcrição (parte {chunk_index + 1}): {response.text}")
-    return response.text.strip()
 
+    payload = response.json()
+    offset = chunk_index * CHUNK_SECONDS
+    segments = []
+    for seg in payload.get("segments") or []:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        segments.append({
+            "start": round(float(seg.get("start") or 0.0) + offset, 2),
+            "end": round(float(seg.get("end") or 0.0) + offset, 2),
+            "text": text,
+        })
 
-# O tom e o estilo escolhidos nas Configurações só mudam o resultado se virarem
-# instruções fortes e no fim do prompt — como uma linha discreta no meio do
-# texto, o modelo praticamente as ignorava.
-TONE_MAP = {
-    "Formal": "Escreva em registro formal e profissional: frases completas, vocabulário preciso, sem gírias, sem emojis decorativos no corpo do texto.",
-    "Casual": "Escreva em registro casual e acessível: frases curtas, linguagem do dia a dia, como se explicasse para um amigo. Evite jargão.",
-    "Técnico": "Escreva em registro técnico e denso: preserve os termos exatos usados na fonte, seja específico com números, nomes e definições, sem simplificar conceitos.",
-}
-STYLE_MAP = {
-    "Tópicos": "Estruture TODO o conteúdo em listas com marcadores curtos. Não escreva parágrafos corridos.",
-    "Parágrafos": "Escreva em parágrafos corridos e bem encadeados. Não use listas com marcadores.",
-}
+    # `text` vem pronto no verbose_json; recompor a partir dos segmentos só
+    # como rede de segurança para uma resposta sem eles.
+    full = (payload.get("text") or "").strip() or " ".join(s["text"] for s in segments)
+    return full, segments
+
 
 LANGUAGE_RULE = (
-    "IDIOMA: escreva a resposta inteira no MESMO idioma da transcrição. "
-    "Se a transcrição está em espanhol, responda em espanhol; se em inglês, em inglês; "
+    "IDIOMA: escreva TODOS os textos no MESMO idioma da transcrição. "
+    "Se a transcrição está em espanhol, escreva em espanhol; se em inglês, em inglês; "
     "se em português, em português. Não traduza o conteúdo."
 )
 
+# Uma passada só. Antes eram cinco chamadas em potencial (título, resumo,
+# tópicos, tarefas, capítulos); tudo isso sai do mesmo JSON, sobre a mesma
+# leitura da transcrição. É o que torna o custo por captura previsível.
+INSIGHTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "summary_bullets": {"type": "array", "items": {"type": "string"}},
+        "speakers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "name": {"type": ["string", "null"]},
+                    "confidence": {"type": "string", "enum": ["alta", "media", "baixa"]},
+                },
+                "required": ["label", "name", "confidence"],
+                "additionalProperties": False,
+            },
+        },
+        "topics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "time_refs": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}},
+                    },
+                },
+                "required": ["label", "detail", "time_refs"],
+                "additionalProperties": False,
+            },
+        },
+        "todos": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string"},
+                    "description": {"type": "string"},
+                    "owners": {"type": "array", "items": {"type": "string"}},
+                    "due": {"type": ["string", "null"]},
+                    "time_ref": {"type": "array", "items": {"type": "number"}},
+                },
+                "required": ["task", "description", "owners", "due", "time_ref"],
+                "additionalProperties": False,
+            },
+        },
+        "chapters": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "start": {"type": "number"},
+                    "end": {"type": "number"},
+                    "title": {"type": "string"},
+                    "bullets": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["start", "end", "title", "bullets"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["title", "summary_bullets", "speakers", "topics", "todos", "chapters"],
+    "additionalProperties": False,
+}
 
-# Sem um teto explícito de palavras, o modelo às vezes esbarra no max_tokens e
-# a resposta é cortada no meio da frase. Pedir um limite bem abaixo do teto
-# técnico dá folga pra ele sempre terminar sozinho.
-SUMMARY_WORD_LIMIT = {"detailed": 550, "concise": 180}
+INSIGHTS_INSTRUCTIONS = f"""Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula), com marcadores de tempo no formato [mm:ss] ou [h:mm:ss] a cada trecho. Extraia dela, de uma vez só, os campos pedidos.
+
+Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, sem adjetivo de entusiasmo. Quem lê quer decidir, não se entreter.
+
+- **title**: 3 a 7 palavras nomeando o assunto da conversa. Sem aspas, sem ponto final.
+- **summary_bullets**: 3 a 6 bullets curtos com o essencial. Cada um uma frase.
+- **speakers**: quem fala, inferido do próprio conteúdo (alguém é chamado pelo nome, se apresenta, ou assina uma fala). `label` é sempre "Locutor 1", "Locutor 2"… na ordem em que aparecem. `name` é o nome inferido, ou null se não houver pista nenhuma. `confidence` é "alta" só quando a pessoa é nomeada de forma inequívoca e repetida; "media" quando há uma pista só; "baixa" quando é palpite. NÃO invente nomes: sem pista, name é null. Se a gravação é claramente de uma pessoa só, devolva um único locutor.
+- **topics**: EXATAMENTE 4 tópicos, os mais importantes da conversa. `label` é curtíssimo, 2 a 4 palavras, como uma etiqueta ("Política comercial", "Dimensionamento de equipes"). `detail` são 3 a 5 bullets em markdown (cada linha começando com "- ") desenvolvendo o tópico. `time_refs` são os intervalos [início, fim] em SEGUNDOS onde o tópico é discutido, tirados dos marcadores de tempo.
+- **todos**: ações concretas que ficaram combinadas — algo que alguém precisa fazer depois. `task` é curtíssimo e começa por verbo ("Revisar apresentação do Q4"). `description` é uma frase dizendo o que precisa ser feito. `owners` são os nomes dos responsáveis (lista vazia se não ficou claro). `due` é o prazo como foi dito ("até sexta", "no fim do mês") ou null. `time_ref` é o intervalo [início, fim] em segundos onde a ação foi combinada. Se a conversa não combinou nenhuma ação, devolva uma lista VAZIA — não invente tarefas para preencher espaço.
+- **chapters**: a conversa dividida em seções sequenciais por assunto, tipicamente entre 4 e 12. Cada uma com `start` e `end` em segundos, um `title` curto (igual em espírito aos labels de tópico) e 2 a 4 `bullets` com o que foi dito ali. As seções devem cobrir a conversa inteira, em ordem, sem buraco e sem sobreposição: o `start` de uma é o `end` da anterior, a primeira começa em 0 e a última termina no último marcador de tempo.
+
+{LANGUAGE_RULE}"""
 
 
-def build_summary_prompt(transcript: str, detailed: bool, prefs: dict) -> str:
-    word_limit = SUMMARY_WORD_LIMIT["detailed" if detailed else "concise"]
-    rules = [
-        LANGUAGE_RULE,
-        f"Limite de {word_limit} palavras no total. Termine sempre em uma frase completa dentro desse limite — nunca corte a resposta no meio.",
-    ]
-    if prefs.get("tone"):
-        rules.append(TONE_MAP.get(prefs["tone"], f"Tom: {prefs['tone']}."))
-    if prefs.get("style"):
-        rules.append(STYLE_MAP.get(prefs["style"], f"Estilo: {prefs['style']}."))
+def format_timed_transcript(segments: list[dict], window: int = 30) -> str:
+    """Transcrição com marcadores de tempo, agrupada em janelas de ~30s.
 
-    # Repetidas no fim, logo antes da transcrição, as regras pesam bem mais.
-    pref_instruction = "\n\nREGRAS OBRIGATÓRIAS:\n- " + "\n- ".join(rules)
+    Marcar cada segmento do Whisper (2-8s) custaria muito token para pouca
+    precisão; a janela de 30s dá ao modelo referência suficiente para montar
+    capítulos e recortes, com ~3% de overhead."""
+    if not segments:
+        return ""
 
-    if detailed:
-        return f"""Você recebeu uma transcrição. Crie um resumo DETALHADO E EXTENSO.{pref_instruction}
-
-**🎯 Tema principal** — uma frase resumindo o assunto
-
-**📌 Pontos principais** — cobertura completa de todos os tópicos abordados, com sub-pontos quando necessário
-
-**🔍 Análise aprofundada** — desenvolvimento dos temas mais relevantes, com contexto e nuances importantes
-
-**✅ Conclusões / Ações** — o que foi decidido, combinado ou concluído
-
-**💬 Citações relevantes** — trechos importantes ou falas marcantes (se houver)
-
-**📎 Observações** — contexto adicional, ressalvas ou detalhes complementares
-
-Priorize os pontos mais relevantes dentro do limite de palavras — é melhor cobrir bem o essencial do que tentar encaixar tudo e cortar a resposta pela metade.
-Mantenha as seções acima, mas escreva os títulos no idioma da transcrição (estão em português só como referência) e apresente o conteúdo delas no formato pedido nas REGRAS OBRIGATÓRIAS.
-
-Transcrição:
-{transcript}"""
-    else:
-        return f"""Você recebeu uma transcrição. Crie um resumo estruturado e conciso.{pref_instruction}
-
-**🎯 Tema principal** — uma frase resumindo o assunto
-
-**📌 Pontos principais** — os tópicos mais importantes discutidos
-
-**✅ Conclusões / Ações** — o que foi decidido, combinado ou concluído (se houver)
-
-**💬 Observações** — contexto ou detalhes relevantes (se houver)
-
-Seja direto e use linguagem natural.
-Mantenha as seções acima, mas escreva os títulos no idioma da transcrição (estão em português só como referência) e apresente o conteúdo delas no formato pedido nas REGRAS OBRIGATÓRIAS.
-
-Transcrição:
-{transcript}"""
+    lines, bucket, bucket_start = [], [], None
+    for seg in segments:
+        if bucket_start is None:
+            bucket_start = seg["start"]
+        bucket.append(seg["text"])
+        if seg["end"] - bucket_start >= window:
+            lines.append(f"[{format_timestamp(bucket_start)}] {' '.join(bucket)}")
+            bucket, bucket_start = [], None
+    if bucket:
+        lines.append(f"[{format_timestamp(bucket_start or 0)}] {' '.join(bucket)}")
+    return "\n".join(lines)
 
 
-def read_usage(payload: dict) -> tuple[int, int]:
+def format_timestamp(seconds: float) -> str:
+    total = int(seconds)
+    h, m, sec = total // 3600, (total % 3600) // 60, total % 60
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m:02d}:{sec:02d}"
+
+
+def summary_markdown(insights: dict) -> str:
+    """`sessions.summary` continua existindo em texto: o app antigo em cache e
+    o download da conversa ainda o leem. Derivado, nunca gerado à parte."""
+    bullets = insights.get("summary_bullets") or []
+    return "\n".join(f"- {b}" for b in bullets)
+
+
+def anthropic_client() -> "anthropic.AsyncAnthropic":
+    return anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+
+def read_usage(payload) -> tuple[int, int]:
     """Tokens de uma resposta da Anthropic. Ausência de `usage` não pode
     derrubar a operação — medição é secundária ao resultado."""
-    usage = payload.get("usage") or {}
-    return int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
+    usage = getattr(payload, "usage", None)
+    if usage is None:
+        return 0, 0
+    return int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
 
 
-async def summarize(client: httpx.AsyncClient, transcript: str, detailed: bool = False, prefs: dict = {}) -> tuple[str, int, int]:
-    model = "claude-sonnet-4-6" if detailed else "claude-haiku-4-5-20251001"
-    max_tokens = 3000 if detailed else 1024
+# Acima disto a transcrição inteira numa chamada só fica cara e o modelo perde
+# o fio; aí vale o map-reduce sobre os blocos que o áudio já foi partido.
+MAX_SINGLE_PASS_CHARS = 160_000
 
-    response = await client.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{
-                "role": "user",
-                "content": build_summary_prompt(transcript, detailed, prefs),
-            }]
-        },
-        timeout=120.0,
+INSIGHTS_MODEL = "claude-sonnet-5"
+
+# Perguntas curtas sobre um contexto que já vem pronto — não precisa do modelo
+# que faz a extração.
+CHAT_MODEL = "claude-haiku-4-5"
+
+
+async def call_insights(prompt: str, schema: dict, max_tokens: int = 8000) -> tuple[dict, int, int]:
+    client = anthropic_client()
+    try:
+        response = await client.messages.create(
+            model=INSIGHTS_MODEL,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+            output_config={"format": {"type": "json_schema", "schema": schema}},
+        )
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao analisar a conversa: {e}")
+
+    text = next((b.text for b in response.content if b.type == "text"), None)
+    if not text:
+        raise HTTPException(status_code=502, detail="A análise da conversa voltou vazia.")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="A análise da conversa voltou num formato inesperado.")
+    return data, *read_usage(response)
+
+
+async def extract_insights(transcript: str, segments: list[dict]) -> tuple[dict, int, int]:
+    """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
+    chamada só, sobre a transcrição com marcadores de tempo."""
+    body = format_timed_transcript(segments) or transcript
+
+    if len(body) <= MAX_SINGLE_PASS_CHARS:
+        insights, tin, tout = await call_insights(
+            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA
+        )
+        return normalize_insights(insights, segments), tin, tout
+
+    return await extract_insights_long(body, segments)
+
+
+# Só o que o passo de consolidação precisa ver — mandar as transcrições
+# inteiras de novo anularia a economia do map-reduce.
+REDUCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": INSIGHTS_SCHEMA["properties"]["title"],
+        "summary_bullets": INSIGHTS_SCHEMA["properties"]["summary_bullets"],
+        "topics": INSIGHTS_SCHEMA["properties"]["topics"],
+    },
+    "required": ["title", "summary_bullets", "topics"],
+    "additionalProperties": False,
+}
+
+PART_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "speakers": INSIGHTS_SCHEMA["properties"]["speakers"],
+        "todos": INSIGHTS_SCHEMA["properties"]["todos"],
+        "chapters": INSIGHTS_SCHEMA["properties"]["chapters"],
+    },
+    "required": ["speakers", "todos", "chapters"],
+    "additionalProperties": False,
+}
+
+
+async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, int, int]:
+    """Transcrição longa: cada parte gera seus capítulos e tarefas em paralelo,
+    e uma segunda chamada pequena — alimentada só pelos títulos de capítulo —
+    consolida título, resumo e os 4 tópicos."""
+    lines = body.split("\n")
+    per_part = max(1, len(lines) * MAX_SINGLE_PASS_CHARS // max(1, len(body)))
+    parts = ["\n".join(lines[i:i + per_part]) for i in range(0, len(lines), per_part)]
+
+    results = await asyncio.gather(*[
+        call_insights(
+            f"{INSIGHTS_INSTRUCTIONS}\n\nEsta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
+            "Extraia apenas locutores, tarefas e capítulos DESTA parte. Os tempos já são absolutos "
+            "em relação à conversa inteira — use-os como estão.\n\n"
+            f"Transcrição (parte {i + 1}):\n{part}",
+            PART_SCHEMA,
+        )
+        for i, part in enumerate(parts)
+    ])
+
+    speakers, todos, chapters = [], [], []
+    in_tokens = out_tokens = 0
+    for data, tin, tout in results:
+        speakers.extend(data.get("speakers") or [])
+        todos.extend(data.get("todos") or [])
+        chapters.extend(data.get("chapters") or [])
+        in_tokens += tin
+        out_tokens += tout
+
+    outline = "\n".join(
+        f"[{format_timestamp(c.get('start', 0))}] {c.get('title', '')}: "
+        + " ".join(c.get("bullets") or [])
+        for c in chapters
     )
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Erro ao gerar resumo: {response.text}")
-    payload = response.json()
-    return payload["content"][0]["text"], *read_usage(payload)
+    reduced, tin, tout = await call_insights(
+        f"{INSIGHTS_INSTRUCTIONS}\n\nAbaixo está o roteiro de uma conversa longa, seção por seção. "
+        "Com base nele, produza apenas title, summary_bullets e os 4 topics da conversa inteira. "
+        "Os time_refs devem usar os tempos das seções.\n\n"
+        f"Roteiro:\n{outline}",
+        REDUCE_SCHEMA,
+        max_tokens=4000,
+    )
+    in_tokens += tin
+    out_tokens += tout
+
+    merged = {
+        **reduced,
+        "speakers": dedupe_speakers(speakers),
+        "todos": todos,
+        "chapters": chapters,
+    }
+    return normalize_insights(merged, segments), in_tokens, out_tokens
 
 
-async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, int, str, float]:
-    """Returns (full_transcript, num_chunks, duration_str, total_seconds).
+def dedupe_speakers(speakers: list[dict]) -> list[dict]:
+    """Cada parte numera seus locutores do zero, então "Locutor 1" da parte 2
+    não é o mesmo da parte 1. O nome é a única identidade confiável; os sem
+    nome viram um locutor genérico só."""
+    by_name, anonymous = {}, False
+    for s in speakers:
+        name = (s.get("name") or "").strip()
+        if not name:
+            anonymous = True
+            continue
+        if name not in by_name:
+            by_name[name] = s
+    out = [
+        {**s, "label": f"Locutor {i}"}
+        for i, s in enumerate(by_name.values(), 1)
+    ]
+    if anonymous:
+        out.append({"label": f"Locutor {len(out) + 1}", "name": None, "confidence": "baixa"})
+    return out
+
+
+def normalize_insights(insights: dict, segments: list[dict]) -> dict:
+    """Aparo do que o modelo devolve, para a UI nunca precisar se defender.
+
+    Um schema garante os tipos, não a coerência: capítulos fora de ordem ou um
+    quinto tópico continuam sendo saída válida. Melhor consertar aqui, uma vez,
+    do que em cada tela."""
+    duration = segments[-1]["end"] if segments else 0.0
+
+    topics = (insights.get("topics") or [])[:4]
+
+    chapters = sorted(
+        (c for c in (insights.get("chapters") or []) if isinstance(c.get("start"), (int, float))),
+        key=lambda c: c["start"],
+    )
+    # A timeline é desenhada a partir destes intervalos: um buraco vira um vão
+    # na barra, e uma sobreposição, um bloco em cima do outro.
+    for i, chapter in enumerate(chapters):
+        chapter["start"] = max(0.0, float(chapter["start"]))
+        end = chapters[i + 1]["start"] if i + 1 < len(chapters) else duration
+        chapter["end"] = float(max(chapter["start"], end))
+    if chapters:
+        chapters[0]["start"] = 0.0
+        chapters[-1]["end"] = max(duration, chapters[-1]["start"])
+
+    return {
+        **insights,
+        "topics": topics,
+        "chapters": chapters,
+        "todos": insights.get("todos") or [],
+        "speakers": insights.get("speakers") or [],
+        "summary_bullets": insights.get("summary_bullets") or [],
+        "duration_s": round(duration),
+    }
+
+
+def join_chunks(results: list[tuple[str, list[dict]]]) -> tuple[str, list[dict]]:
+    """Junta os blocos preservando os segmentos. Os offsets já foram aplicados
+    em transcribe_chunk, então aqui basta concatenar na ordem."""
+    texts, segments = [], []
+    for text, segs in results:
+        if text:
+            texts.append(text)
+        segments.extend(segs)
+    return " ".join(texts), segments
+
+
+async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, list[dict], int, str, float]:
+    """Returns (full_transcript, segments, num_chunks, duration_str, total_seconds).
 
     Dois caminhos. Se o arquivo já está num container que o Groq aceita, não é
     vídeo e cabe no limite, ele vai como veio — o caso do áudio do WhatsApp.
@@ -555,7 +821,7 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, i
             for i, (data, name, mime) in enumerate(chunks)
         ]
         try:
-            transcripts = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
         except HTTPException:
             # O envio direto depende do Groq aceitar o container que chegou.
             # Se ele recusar, refazemos pelo caminho antigo em vez de devolver
@@ -564,10 +830,11 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, i
                 raise
             return await process_converted_audio(audio_bytes, filename)
 
-    return " ".join(transcripts), len(chunks), duration_str, total_seconds
+    transcript, segments = join_chunks(results)
+    return transcript, segments, len(chunks), duration_str, total_seconds
 
 
-async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[str, int, str, float]:
+async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[str, list[dict], int, str, float]:
     """Caminho antigo, sempre passando pelo ffmpeg. Serve de rede de segurança
     para quando o envio direto é recusado pelo Groq."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -591,9 +858,10 @@ async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[st
 
     async with httpx.AsyncClient() as client:
         tasks = [transcribe_chunk(client, data, i) for i, data in enumerate(chunks_bytes)]
-        transcripts = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
 
-    return " ".join(transcripts), len(chunks_bytes), format_duration(total_seconds), total_seconds
+    transcript, segments = join_chunks(results)
+    return transcript, segments, len(chunks_bytes), format_duration(total_seconds), total_seconds
 
 
 # Um pedido idêntico que chega enquanto o primeiro ainda está em andamento
@@ -627,8 +895,8 @@ async def run_once(key: str, build):
 
 
 def capture_key(*parts: str) -> str:
-    """Mesma entrada + mesmas preferências = mesma chave. As preferências
-    entram porque o resumo muda com tom, formato e nível de detalhe."""
+    """Mesma entrada = mesma chave. A análise não tem mais parâmetros de
+    usuário (tom e formato saíram das Configurações), então o conteúdo basta."""
     return hashlib.sha256("\x00".join(parts).encode()).hexdigest()
 
 
@@ -638,18 +906,9 @@ async def health():
 
 
 @app.post("/transcribe", response_model=TranscriptionResult)
-async def transcribe(
-    file: UploadFile = File(...),
-    detailed: bool = Form(False),
-    preferences: str = Form("{}"),
-):
+async def transcribe(file: UploadFile = File(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
-
-    try:
-        prefs = json.loads(preferences)
-    except Exception:
-        prefs = {}
 
     audio_bytes = await file.read()
     filename = file.filename or "audio.m4a"
@@ -663,53 +922,41 @@ async def transcribe(
         )
 
     async def build() -> TranscriptionResult:
-        full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
+        full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
 
-        async with httpx.AsyncClient() as client:
-            summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+        insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
 
         return TranscriptionResult(
             transcript=full_transcript,
-            summary=summary,
+            summary=summary_markdown(insights),
             chunks_used=num_chunks,
             duration_estimate=duration_str,
+            title=insights.get("title"),
+            segments=segments,
+            insights=insights,
+            duration_s=insights.get("duration_s") or round(audio_seconds),
             usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
         )
 
     # O conteúdo do arquivo é a identidade: o mesmo áudio reenviado tem o mesmo
     # hash, mesmo que o nome mude (o compartilhamento do Android põe um prefixo
     # de tempo no nome a cada envio).
-    key = capture_key(
-        "file", hashlib.sha256(audio_bytes).hexdigest(),
-        str(detailed), str(prefs.get("tone")), str(prefs.get("style")),
-    )
+    key = capture_key("file", hashlib.sha256(audio_bytes).hexdigest())
     return await run_once(key, build)
 
 
 @app.post("/process-url", response_model=TranscriptionResult)
-async def process_url(
-    url: str = Form(...),
-    detailed: bool = Form(False),
-    preferences: str = Form("{}"),
-):
+async def process_url(url: str = Form(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
-    try:
-        prefs = json.loads(preferences)
-    except Exception:
-        prefs = {}
-
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
-    key = capture_key(
-        "url", url.strip(),
-        str(detailed), str(prefs.get("tone")), str(prefs.get("style")),
-    )
-    return await run_once(key, lambda: build_url_result(url, detailed, prefs))
+    key = capture_key("url", url.strip())
+    return await run_once(key, lambda: build_url_result(url))
 
 
-async def build_url_result(url: str, detailed: bool, prefs: dict) -> TranscriptionResult:
+async def build_url_result(url: str) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
@@ -717,6 +964,7 @@ async def build_url_result(url: str, detailed: bool, prefs: dict) -> Transcripti
                 raise HTTPException(status_code=400, detail="URL do YouTube inválida.")
 
             full_transcript = None
+            segments = []
             num_chunks = 1
             duration_str = "–"
             audio_seconds = 0.0
@@ -771,7 +1019,7 @@ async def build_url_result(url: str, detailed: bool, prefs: dict) -> Transcripti
                     audio_path = os.path.join(tmpdir, audio_files[0])
                     with open(audio_path, "rb") as f:
                         audio_bytes = f.read()
-                full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
+                full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
 
             # Step 3: nothing configured — clear error with instructions
             if full_transcript is None:
@@ -810,7 +1058,7 @@ async def build_url_result(url: str, detailed: bool, prefs: dict) -> Transcripti
                 with open(audio_path, "rb") as f:
                     audio_bytes = f.read()
 
-            full_transcript, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
+            full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
 
     else:
         # Extract text from article/news page
@@ -824,24 +1072,47 @@ async def build_url_result(url: str, detailed: bool, prefs: dict) -> Transcripti
             raise HTTPException(status_code=400, detail="Não foi possível extrair conteúdo legível desta página.")
 
         full_transcript = text.strip()
+        segments = []
         num_chunks = 1
         duration_str = f"~{len(full_transcript.split()) // 200} min de leitura"
         audio_seconds = 0.0
 
-    async with httpx.AsyncClient() as client:
-        summary, in_tokens, out_tokens = await summarize(client, full_transcript, detailed=detailed, prefs=prefs)
+    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
 
-    # Prefer the real video/page title (e.g. the YouTube title) so the session
-    # isn't named after a raw URL.
-    title = await fetch_video_title(url) if is_video_url(url) else None
+    # O título real do vídeo/página ganha do que o modelo inferiu: a conversa
+    # não deve se chamar pela URL crua, nem por um resumo do que o vídeo é
+    # quando o próprio YouTube já diz o nome dele.
+    title = (await fetch_video_title(url) if is_video_url(url) else None) or insights.get("title")
 
     return TranscriptionResult(
         transcript=full_transcript,
-        summary=summary,
+        summary=summary_markdown(insights),
         chunks_used=num_chunks,
         duration_estimate=duration_str,
         title=title,
+        segments=segments,
+        insights=insights,
+        duration_s=insights.get("duration_s") or round(audio_seconds),
         usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+    )
+
+
+@app.post("/insights", response_model=InsightsResponse)
+async def insights(request: InsightsRequest):
+    """Gera os campos da tela de conversa a partir de uma transcrição que já
+    existe. É o caminho das conversas capturadas antes desta versão: reanalisar
+    o texto guardado custa uma chamada de texto, contra re-transcrever o áudio
+    — que nem existe mais, já que nunca guardamos as mídias."""
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chave de API não configurada.")
+    if not request.transcript.strip():
+        raise HTTPException(status_code=400, detail="Não há transcrição para analisar.")
+
+    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments)
+    return InsightsResponse(
+        insights=data,
+        summary=summary_markdown(data),
+        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens),
     )
 
 
@@ -864,24 +1135,13 @@ async def chat(request: ChatRequest):
 
     briefing = f"\n\nSobre esta pasta: {request.folder_description}" if request.folder_description else ""
 
-    # As preferências das Configurações valem aqui também — antes o chat as
-    # ignorava por completo, o que fazia a tela de ajustes parecer decorativa.
-    prefs = request.preferences or {}
-    style_rules = []
-    if prefs.get("tone"):
-        style_rules.append(TONE_MAP.get(prefs["tone"], f"Tom: {prefs['tone']}."))
-    # No chat o formato vale para respostas com vários pontos: obrigar uma
-    # resposta de uma linha a virar lista deixaria a conversa artificial.
-    if prefs.get("style") == "Tópicos":
-        style_rules.append("Quando a resposta tiver vários pontos, apresente-os em lista com marcadores curtos.")
-    elif prefs.get("style") == "Parágrafos":
-        style_rules.append("Escreva em parágrafos corridos, evitando listas com marcadores.")
-    style_rules.append(
-        "Responda com profundidade, desenvolvendo o raciocínio e trazendo os detalhes relevantes."
-        if request.detailed else
-        "Responda de forma enxuta e direta ao ponto, sem rodeios."
+    # Registro fixo, igual ao dos resumos: neutro e direto. As Configurações de
+    # tom e formato saíram do produto — ninguém as ajustava e elas faziam a
+    # mesma pergunta render respostas diferentes sem o usuário entender por quê.
+    style_block = (
+        "\n- Responda de forma enxuta e direta ao ponto, em registro neutro, sem rodeios."
+        "\n- Quando a resposta tiver vários pontos, apresente-os em lista com marcadores curtos."
     )
-    style_block = "\n- " + "\n- ".join(style_rules)
 
     system = f"""Você conhece a fundo o material reunido na pasta "{request.client_name}" e conversa com o usuário sobre esse conteúdo.{briefing}
 
@@ -903,38 +1163,28 @@ REGRAS OBRIGATÓRIAS:
     ]
     messages.append({"role": "user", "content": request.question})
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                # Mesma regra do resumo: "Detalhado" nas Configurações troca o
-                # modelo, não só o tamanho da resposta.
-                "model": "claude-sonnet-4-6" if request.detailed else "claude-haiku-4-5-20251001",
-                "max_tokens": 4096 if request.detailed else 2048,
-                "system": system,
-                "messages": messages,
-            },
-            timeout=120.0,
+    client = anthropic_client()
+    try:
+        response = await client.messages.create(
+            model=CHAT_MODEL,
+            max_tokens=2048,
+            system=system,
+            messages=messages,
         )
-        if response.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {response.text}")
-        payload = response.json()
-        answer = payload["content"][0]["text"]
-        in_tokens, out_tokens = read_usage(payload)
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
 
-        # On the first turn, generate a short title for the conversation list.
-        title = None
-        if request.make_title:
-            title, title_in, title_out = await generate_chat_title(client, request.question, answer)
-            # O título é uma segunda chamada ao modelo; somar aqui evita que
-            # esse consumo fique invisível na medição.
-            in_tokens += title_in
-            out_tokens += title_out
+    answer = next((b.text for b in response.content if b.type == "text"), "")
+    in_tokens, out_tokens = read_usage(response)
+
+    # On the first turn, generate a short title for the conversation list.
+    title = None
+    if request.make_title:
+        title, title_in, title_out = await generate_chat_title(request.question, answer)
+        # O título é uma segunda chamada ao modelo; somar aqui evita que
+        # esse consumo fique invisível na medição.
+        in_tokens += title_in
+        out_tokens += title_out
 
     return ChatResponse(
         answer=answer,
@@ -943,33 +1193,21 @@ REGRAS OBRIGATÓRIAS:
     )
 
 
-async def generate_chat_title(client: httpx.AsyncClient, question: str, answer: str) -> tuple[str | None, int, int]:
+async def generate_chat_title(question: str, answer: str) -> tuple[str | None, int, int]:
     """Short 3-6 word title for a conversation, à la NotebookLM. Best-effort —
     falls back to None so the caller can use the question itself.
     Devolve também os tokens gastos, para o chamador somá-los ao total."""
     try:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 24,
-                "system": "Gere um título curto (3 a 6 palavras) que resuma o tema da conversa, no mesmo idioma da pergunta do usuário. Responda APENAS o título, sem aspas, sem pontuação final.",
-                "messages": [{"role": "user", "content": f"Pergunta: {question}\n\nResposta: {answer[:600]}"}],
-            },
-            timeout=30.0,
+        resp = await anthropic_client().messages.create(
+            model=CHAT_MODEL,
+            max_tokens=24,
+            system="Gere um título curto (3 a 6 palavras) que resuma o tema da conversa, no mesmo idioma da pergunta do usuário. Responda APENAS o título, sem aspas, sem pontuação final.",
+            messages=[{"role": "user", "content": f"Pergunta: {question}\n\nResposta: {answer[:600]}"}],
         )
-        if resp.status_code == 200:
-            payload = resp.json()
-            t = payload["content"][0]["text"].strip().strip('"').strip()
-            return t[:80] or None, *read_usage(payload)
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        return text.strip().strip('"').strip()[:80] or None, *read_usage(resp)
     except Exception:
-        pass
-    return None, 0, 0
+        return None, 0, 0
 
 
 @app.post("/app-update", response_model=AppUpdateResponse)
@@ -1027,25 +1265,15 @@ async def folder_briefing(request: FolderBriefingRequest):
 Escreva de 1 a 2 frases que descrevam do que esta pasta trata: qual é o assunto, quem fala (se der para saber) e que tipo de material é (aula, reunião, entrevista, podcast, anotação...).
 Escreva no mesmo idioma do conteúdo. Responda APENAS a descrição, sem preâmbulo e sem aspas."""
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 200,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=60.0,
+    try:
+        response = await anthropic_client().messages.create(
+            model=CHAT_MODEL, max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
         )
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Erro ao gerar descrição da pasta: {response.text}")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao gerar descrição da pasta: {e}")
 
-    text = response.json()["content"][0]["text"].strip().strip('"').strip()
+    text = next((b.text for b in response.content if b.type == "text"), "").strip().strip('"').strip()
     return FolderBriefingResponse(description=text[:400] or None)
 
 
@@ -1091,24 +1319,14 @@ Regras:
 Responda APENAS com um JSON válido, sem texto extra, no formato:
 {{"folder_id": "<id existente ou null>", "suggested_new_name": "<assunto macro para nova pasta ou null>", "suggested_chat_name": "<assunto específico para o chat>", "reason": "<uma frase curta explicando a escolha>"}}"""
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 300,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=60.0,
+    try:
+        response = await anthropic_client().messages.create(
+            model=CHAT_MODEL, max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
         )
-        if response.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Erro ao sugerir pasta: {response.text}")
-        raw = response.json()["content"][0]["text"].strip()
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao sugerir pasta: {e}")
+    raw = next((b.text for b in response.content if b.type == "text"), "").strip()
 
     # The model may wrap the JSON in ```json fences — strip them defensively.
     if raw.startswith("```"):

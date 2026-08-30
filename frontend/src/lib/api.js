@@ -85,48 +85,37 @@ async function postJson(path, payload, { retries = 1 } = {}) {
   }
 }
 
-function capturePayload(preferences) {
-  const formData = new FormData()
-  formData.append('detailed', preferences.detailed ? 'true' : 'false')
-  formData.append('preferences', JSON.stringify({
-    tone: preferences.tone || 'Formal',
-    style: preferences.style || 'Tópicos',
-  }))
-  return formData
-}
-
-export async function transcribeFile(file, preferences = {}) {
+export async function transcribeFile(file) {
   await assertReadable(file)
-  const formData = capturePayload(preferences)
+  const formData = new FormData()
   formData.append('file', file)
   return handleResponse(await postWithRetry('/transcribe', formData))
 }
 
-export async function processUrl(url, preferences = {}) {
-  const formData = capturePayload(preferences)
+export async function processUrl(url) {
+  const formData = new FormData()
   formData.append('url', url)
   return handleResponse(await postWithRetry('/process-url', formData))
 }
 
-// As preferências das Configurações (nível, tom, formato) valem tanto no resumo
-// da captura quanto aqui: o backend escolhe o modelo pelo `detailed` e aplica
-// tom/formato no system prompt.
+// Reanálise de uma conversa que já tem transcrição. É o caminho das conversas
+// capturadas antes desta versão, que não têm `insights` nem `segments`: custa
+// uma chamada de texto e não depende da mídia original, que nunca guardamos.
+export async function generateInsights(transcript, segments = []) {
+  return postJson('/insights', { transcript, segments })
+}
+
 export async function chatWithSessions(
   question, clientName, sessions,
-  { history = [], makeTitle = false, folderDescription = null, preferences = {} } = {},
+  { history = [], makeTitle = false, folderDescription = null } = {},
 ) {
   return postJson('/chat', {
-      question,
-      client_name: clientName,
-      sessions,
-      history,
-      make_title: makeTitle,
-      folder_description: folderDescription,
-      detailed: !!preferences.detailed,
-      preferences: {
-        tone: preferences.tone || 'Formal',
-        style: preferences.style || 'Tópicos',
-      },
+    question,
+    client_name: clientName,
+    sessions,
+    history,
+    make_title: makeTitle,
+    folder_description: folderDescription,
   })
 }
 

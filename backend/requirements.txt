@@ -1,6 +1,9 @@
 fastapi==0.115.0
 uvicorn==0.30.6
 httpx==0.27.2
+# SDK oficial da Anthropic: necessário para structured outputs
+# (output_config.format) e cache_control sem montar JSON na mão.
+anthropic>=0.40.0
 python-multipart==0.0.12
 pydantic==2.9.2
 imageio[ffmpeg]

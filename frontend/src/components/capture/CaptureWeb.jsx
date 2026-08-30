@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { IconMic, IconFile, IconLink } from '../Icons'
+import { IconMic } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm } from './CaptureShared'
+import { ProcessingBox, RecordingReview, UrlForm, CaptureSecondary } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
 // sentido e o vocabulário é "clique".
@@ -13,7 +13,6 @@ export default function CaptureWeb({ capture, variant }) {
     submitRecording, submitFile, submitUrl,
   } = capture
 
-  const [mode, setMode] = useState('file')
   const [url, setUrl] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef()
@@ -57,15 +56,8 @@ export default function CaptureWeb({ capture, variant }) {
         )}
       </div>
 
-      <div className="capture-divider">ou envie um arquivo / link</div>
-
-      <div className="capture-secondary">
-        <div className="capture-tabs">
-          <button className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}><IconFile /> Arquivo</button>
-          <button className={mode === 'url' ? 'active' : ''} onClick={() => setMode('url')}><IconLink /> Link</button>
-        </div>
-
-        {mode === 'file' ? (
+      <CaptureSecondary loading={loading}>
+        {mode => mode === 'file' ? (
           <div
             className={`drop-zone ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`}
             onClick={() => !loading && fileRef.current?.click()}
@@ -86,7 +78,7 @@ export default function CaptureWeb({ capture, variant }) {
         ) : (
           <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
         )}
-      </div>
+      </CaptureSecondary>
 
       {error && <div className="alert alert-error">{error}</div>}
     </>

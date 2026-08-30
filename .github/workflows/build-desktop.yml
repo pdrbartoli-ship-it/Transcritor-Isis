@@ -13,7 +13,7 @@ name: Build Desktop (Windows)
 on:
   workflow_dispatch:
   push:
-    branches: [app-nativo-windows]
+    branches: [main, app-nativo-windows]
     paths:
       - 'frontend/**'
       - '.github/workflows/build-desktop.yml'
@@ -46,6 +46,16 @@ jobs:
 
       - name: Compilar o app nativo
         run: cd frontend && npx tauri build
+
+      # O nome que o Tauri gera carrega a versão (Dito_0.1.0_x64-setup.exe), e a
+      # landing precisa de um link fixo. Publicar também uma cópia com nome
+      # estável evita que subir a versão quebre o botão "Baixar o app" — que já
+      # tinha acontecido, daí o aviso no comentário do Landing.jsx.
+      - name: Duplicar instalador com nome estável
+        shell: bash
+        run: |
+          cd frontend/src-tauri/target/release/bundle/nsis
+          cp "$(ls *-setup.exe | head -1)" Dito-setup.exe
 
       - name: Publicar instalador na Release
         uses: softprops/action-gh-release@v2

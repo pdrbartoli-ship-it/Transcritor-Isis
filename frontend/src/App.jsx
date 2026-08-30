@@ -6,7 +6,7 @@ import Landing from './pages/Landing'
 import Layout from './components/Layout'
 import useDeepLinks from './lib/useDeepLinks'
 import Home from './pages/Home'
-import FolderView from './pages/FolderView'
+import Conversa from './pages/Conversa'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
@@ -55,7 +55,10 @@ export default function App() {
             <Route index element={<Home />} />
           </Route>
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route path="/folders/:folderId" element={<FolderView />} />
+            {/* Rota própria por conversa: dá deep-link e faz o voltar do
+                navegador funcionar, o que o modelo antigo (tudo em state
+                dentro de uma pasta) não permitia. */}
+            <Route path="/conversa/:id" element={<Conversa />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

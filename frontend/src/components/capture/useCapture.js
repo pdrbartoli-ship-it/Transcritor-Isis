@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { transcribeFile, processUrl, wakeBackend } from '../../lib/api'
-import { getPrefs } from '../../lib/prefs'
 import { track } from '../../lib/analytics'
 import { isTauriApp } from '../../lib/platform'
 import { estimateSeconds, readMediaDuration } from './estimate'
@@ -163,7 +162,7 @@ export function useCapture({ onResult }) {
     const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
     const result = await runCapture(() => {
       const file = new File([recordedBlob], filename, { type: recordedBlob.type })
-      return transcribeFile(file, getPrefs())
+      return transcribeFile(file)
     }, seconds)
     if (!result) return
     if (isEmpty(result)) {
@@ -184,7 +183,7 @@ export function useCapture({ onResult }) {
       durationSec,
       bytes: file.size,
     })
-    const result = await runCapture(() => transcribeFile(file, getPrefs()), seconds)
+    const result = await runCapture(() => transcribeFile(file), seconds)
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair áudio/texto deste arquivo.'); return }
     track('captura', {
@@ -200,7 +199,7 @@ export function useCapture({ onResult }) {
     const clean = url.trim()
     if (!clean) return false
     const result = await runCapture(
-      () => processUrl(clean, getPrefs()),
+      () => processUrl(clean),
       estimateSeconds({ kind: 'link' }),
     )
     if (!result) return false

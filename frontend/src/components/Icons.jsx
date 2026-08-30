@@ -73,3 +73,14 @@ export const IconPin = (p) => (
 export const IconArchive = (p) => (
   <svg {...base} {...p}><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><line x1="10" y1="12" x2="14" y2="12" /></svg>
 )
+// Seta de "leva a outro lugar". Fica sempre visível nos cards navegáveis —
+// no touch não há hover para revelar a afordância.
+export const IconArrowRight = (p) => (
+  <svg {...base} {...p}><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+)
+export const IconSearch = (p) => (
+  <svg {...base} {...p}><circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" /></svg>
+)
+export const IconCard = (p) => (
+  <svg {...base} {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+)

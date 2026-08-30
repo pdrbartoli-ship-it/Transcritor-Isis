@@ -50,7 +50,7 @@ export default function FeedbackModal({ onClose }) {
         ) : (
           <>
             <div className="modal-header">
-              <h3>Fale com a gente</h3>
+              <h3>Deixe um feedback para gente!</h3>
               <button className="btn-icon" onClick={onClose}><IconClose /></button>
             </div>
             <p className="text-muted text-sm" style={{ marginBottom: 14 }}>

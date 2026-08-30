@@ -1,25 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { suggestFolder, folderBriefing } from '../lib/api'
+import { createConversation, formatCapturedAt, formatDurationLabel } from '../lib/conversas'
 import CapturePanel from '../components/CapturePanel'
-import FolderSuggestionModal from '../components/FolderSuggestionModal'
+import { IconArrowRight } from '../components/Icons'
 
 export default function Home() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { folders, refreshFolders } = useOutletContext()
-
+  const { conversations, refreshConversations, loadingConversations } = useOutletContext()
   const location = useLocation()
 
-  const [pending, setPending] = useState(null)      // { result, sourceType, sourceName }
-  const [suggestion, setSuggestion] = useState(null) // { folder_id, suggested_new_name, reason }
-  // True between the capture finishing and the folder suggestion coming back.
-  // Keeps the processing screen up so there's no gap showing the home screen.
-  const [awaitingSuggestion, setAwaitingSuggestion] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [shared, setShared] = useState(null)        // vindo do "Compartilhar" de outro app
+  const [error, setError] = useState(null)
+  const [shared, setShared] = useState(null)   // vindo do "Compartilhar" de outro app
 
   // O Layout deposita aqui o que foi compartilhado. Limpamos o state da rota em
   // seguida para que voltar a esta tela não reprocesse o mesmo conteúdo.
@@ -29,138 +23,85 @@ export default function Home() {
     navigate('.', { replace: true, state: null })
   }, [location.state, navigate])
 
-  // After a capture finishes, ask the backend which folder it belongs to.
-  // CapturePanel keeps showing the processing screen (via extraLoading) until
-  // this settles, so the user never sees the plain home screen in between.
+  // A captura terminou: a conversa já existe e o usuário vai direto para ela.
+  // Antes havia um passo no meio pedindo que ele escolhesse uma pasta antes de
+  // ver qualquer resultado — era a maior fricção do fluxo.
   async function handleResult(result, sourceType, sourceName) {
-    setPending({ result, sourceType, sourceName })
-    setAwaitingSuggestion(true)
-    try {
-      const s = await suggestFolder(result.transcript, folders)
-      setSuggestion(s)
-    } catch {
-      // If suggestion fails, still let the user pick a folder manually.
-      setSuggestion({ folder_id: null, suggested_new_name: null, reason: '' })
-    } finally {
-      setAwaitingSuggestion(false)
-    }
-  }
-
-  // The chat name chosen in the modal titles both the source and the
-  // conversation the user lands on, so they read as one thing across the app.
-  async function createSession(folderId, chatName) {
-    const { result, sourceType, sourceName } = pending
-    const title = chatName?.trim() || sourceName || `Sessão ${new Date().toLocaleDateString('pt-BR')}`
-    const { data, error } = await supabase.from('sessions').insert({
-      client_id: folderId,
-      user_id: user.id,
-      title,
-      source_type: sourceType,
-      transcript: result.transcript,
-      summary: result.summary,
-    }).select().single()
-    if (error) throw error
-    return data
-  }
-
-  // Descrição curta da pasta, usada como contexto do assistente no chat.
-  // Best-effort: sem ela o chat ainda funciona com as transcrições.
-  async function saveBriefing(folderId, folderName, transcript) {
-    try {
-      const { description } = await folderBriefing(folderName, [transcript.slice(0, 1500)])
-      if (description) await supabase.from('clients').update({ description }).eq('id', folderId)
-    } catch {}
-  }
-
-  // Best-effort: a failure here shouldn't block the capture from being saved.
-  async function createChat(folderId, chatName, fallbackTitle) {
-    const { data } = await supabase.from('chats').insert({
-      client_id: folderId,
-      user_id: user.id,
-      title: chatName?.trim() || fallbackTitle,
-    }).select().single()
-    return data || null
-  }
-
-  async function handleConfirm(folderId, chatName) {
     setSaving(true)
+    setError(null)
     try {
-      const session = await createSession(folderId, chatName)
-      const chat = await createChat(folderId, chatName, session.title)
-      // Só na primeira fonte: depois disso o FolderView mantém o briefing em dia.
-      const target = folders.find(f => f.id === folderId)
-      if (target && !target.description) {
-        await saveBriefing(folderId, target.name, pending.result.transcript)
-      }
-      await refreshFolders()
-      navigate(`/folders/${folderId}`, { state: { newSession: session, openChat: chat } })
+      const conversation = await createConversation(user.id, result, sourceType, sourceName)
+      await refreshConversations()
+      navigate(`/conversa/${conversation.id}`)
     } catch (err) {
-      alert(`Erro ao salvar: ${err.message}`)
+      setError(`Não foi possível salvar a conversa: ${err.message}`)
       setSaving(false)
     }
-  }
-
-  async function handleCreateNew(name, chatName) {
-    setSaving(true)
-    try {
-      const { data: folder, error } = await supabase.from('clients').insert({
-        user_id: user.id,
-        name: name.trim() || `Pasta ${new Date().toLocaleDateString('pt-BR')}`,
-      }).select().single()
-      if (error) throw error
-      const session = await createSession(folder.id, chatName)
-      const chat = await createChat(folder.id, chatName, session.title)
-      await saveBriefing(folder.id, folder.name, pending.result.transcript)
-      await refreshFolders()
-      navigate(`/folders/${folder.id}`, { state: { newSession: session, openChat: chat } })
-    } catch (err) {
-      alert(`Erro ao criar pasta: ${err.message}`)
-      setSaving(false)
-    }
-  }
-
-  function closeSuggestion() {
-    setSuggestion(null)
-    setPending(null)
   }
 
   return (
     <div className="home">
       <div className="home-greeting">
         <h1>O que vamos registrar hoje?</h1>
-        <p className="text-muted">Grave uma conversa ou envie um arquivo — a gente organiza pra você.</p>
+        <p className="text-muted">Grave, envie um arquivo ou cole um link — a gente transcreve e organiza.</p>
       </div>
-
-      {folders.length === 0 && (
-        <div className="onboarding">
-          <h3>Como funciona</h3>
-          <ol>
-            <li>Grave uma conversa, envie um arquivo de áudio/vídeo ou cole um link.</li>
-            <li>O Dito transcreve e cria um resumo automaticamente.</li>
-            <li>Sugerimos uma pasta para guardar e você conversa com o conteúdo por ali.</li>
-          </ol>
-        </div>
-      )}
 
       <CapturePanel
         onResult={handleResult}
         variant="hero"
         autoCapture={shared}
         onAutoCaptureDone={() => setShared(null)}
-        extraLoading={awaitingSuggestion}
+        extraLoading={saving}
       />
 
-      {suggestion && pending && (
-        <FolderSuggestionModal
-          suggestion={suggestion}
-          folders={folders}
-          sourceName={pending.sourceName}
-          saving={saving}
-          onConfirm={handleConfirm}
-          onCreateNew={handleCreateNew}
-          onClose={closeSuggestion}
-        />
-      )}
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <section className="recent">
+        <h2 className="recent-title">Últimas conversas</h2>
+
+        {loadingConversations ? (
+          <div className="recent-empty"><span className="spinner spinner-sm" /> Carregando…</div>
+        ) : conversations.length === 0 ? (
+          <div className="recent-empty">
+            Suas conversas aparecem aqui depois da primeira gravação, arquivo ou link.
+          </div>
+        ) : (
+          <ul className="conversation-list">
+            {conversations.map(c => (
+              <ConversationRow key={c.id} conversation={c} onOpen={() => navigate(`/conversa/${c.id}`)} />
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
+  )
+}
+
+// Card clicável. A seta fica sempre visível, não só no hover: no celular não
+// existe hover, e sem ela nada indica que a linha leva a algum lugar.
+export function ConversationRow({ conversation, onOpen, excerpt }) {
+  const duration = formatDurationLabel(conversation.duration_s)
+  return (
+    <li>
+      <div
+        className="conversation-card"
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() }
+        }}
+      >
+        <div className="conversation-main">
+          <span className="conversation-title">{conversation.title}</span>
+          <span className="conversation-meta">
+            {formatCapturedAt(conversation.created_at)}
+            {duration && <> · {duration}</>}
+          </span>
+          {excerpt && <span className="conversation-excerpt">{excerpt}</span>}
+        </div>
+        <IconArrowRight className="card-arrow" width={18} height={18} />
+      </div>
+    </li>
   )
 }
