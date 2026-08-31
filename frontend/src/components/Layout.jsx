@@ -124,6 +124,15 @@ export default function Layout() {
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
+  // "Ver todas" da home: o arquivo completo é a barra lateral, então o link
+  // leva até ela em vez de abrir uma tela nova — no celular ela é gaveta, e no
+  // desktop pode estar recolhida.
+  function showAllConversations() {
+    setCollapsed(false)
+    try { localStorage.setItem('dito-sidebar-collapsed', '0') } catch {}
+    setDrawerOpen(true)
+  }
+
   function toggleCollapsed() {
     setCollapsed(v => {
       const next = !v
@@ -281,7 +290,7 @@ export default function Layout() {
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
         </div>
         <div className="content">
-          <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, showAllConversations }} />
         </div>
       </div>
 

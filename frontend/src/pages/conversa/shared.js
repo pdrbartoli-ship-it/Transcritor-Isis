@@ -52,12 +52,6 @@ export function groupBySpeaker(segments, turns) {
   return blocks
 }
 
-// Nomes de locutor são inferidos do que foi dito, não de diarização de áudio —
-// o aviso só aparece quando há um nome que pode estar errado.
-export function speakersAreUncertain(insights) {
-  return (insights?.speakers || []).some(s => s.name && s.confidence !== 'alta')
-}
-
 // .txt montado no cliente a partir dos segmentos. Não precisa de servidor e sai
 // com os tempos e os nomes que a tela mostra.
 export function buildTranscriptFile(conversation) {

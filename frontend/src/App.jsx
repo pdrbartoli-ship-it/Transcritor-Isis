@@ -57,8 +57,8 @@ export default function App() {
               depois de confirmar precisa continuar nesta tela até o redirect. */}
           <Route path="/confirm" element={<ConfirmEmail />} />
           {/* Uma rota por origem de captura: a home é a de gravar, e as outras
-              duas são a mesma página com o painel trocado — "Últimas
-              conversas" é idêntica nas três. */}
+              duas são a mesma página com o painel trocado — a lista de
+              retomada é idêntica nas três. */}
           <Route path="/" element={<RootRoute />}>
             <Route index element={<Home mode="record" />} />
             <Route path="audio" element={<Home mode="file" />} />

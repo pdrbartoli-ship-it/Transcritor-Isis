@@ -336,6 +336,189 @@ Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, se
 {LANGUAGE_RULE}"""
 
 
+# Containers que o Groq aceita como chegaram. Mandar o arquivo original poupa
+# uma passada inteira de ffmpeg — e o áudio do WhatsApp, o caso mais comum do
+# app, é justamente o que se beneficia.
+#
+# O valor é o nome enviado ao Groq — é pela extensão dele que a API decide se
+# aceita o arquivo, então um ".opus" precisa se apresentar como ".ogg".
+DIRECT_CONTAINERS = {
+    "ogg": ("audio.ogg", "audio/ogg"),
+    "flac": ("audio.flac", "audio/flac"),
+    "wav": ("audio.wav", "audio/wav"),
+    "mp3": ("audio.mp3", "audio/mpeg"),
+    "m4a": ("audio.m4a", "audio/m4a"),
+}
+
+# Teto do arquivo mandado direto: o limite do Groq é 25 MB no plano gratuito.
+MAX_DIRECT_BYTES = 23 * 1024 * 1024
+
+
+def probe_media(input_path: str) -> tuple[float, bool]:
+    """Duração em segundos e se há faixa de vídeo de verdade.
+
+    Lê o cabeçalho com o próprio ffmpeg em vez do ffprobe: o pacote
+    imageio-ffmpeg **não distribui o ffprobe** (só `get_ffmpeg_exe`), então a
+    versão anterior levantava AttributeError, caía no `except` e devolvia 0.0
+    para todo arquivo — o que zerava `audio_seconds` e fazia todo áudio ser
+    rotulado "menos de 1 minuto".
+
+    `ffmpeg -i` sem saída sai com código 1 de propósito; o que interessa está
+    no stderr. Só lê cabeçalho, então custa milissegundos.
+    """
+    try:
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", input_path],
+            capture_output=True, text=True,
+        )
+        stderr = result.stderr or ""
+    except Exception:
+        return 0.0, False
+
+    total_seconds = 0.0
+    match = re.search(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)", stderr)
+    if match:
+        hours, minutes, seconds = match.groups()
+        total_seconds = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+    # Capa de álbum entra como stream de vídeo (mjpeg/png, "attached pic") —
+    # tratá-la como vídeo mandaria um MP3 comum para o caminho lento à toa.
+    has_video = any(
+        "Video:" in line
+        and "attached pic" not in line
+        and not re.search(r"Video:\s*(mjpeg|png|bmp|gif)", line)
+        for line in stderr.splitlines()
+    )
+    return total_seconds, has_video
+
+
+def sniff_container(data: bytes) -> str | None:
+    """Formato pelos bytes iniciais, não pelo nome do arquivo.
+
+    O compartilhamento do Android costuma entregar nomes sem extensão ou com a
+    extensão errada; o cabeçalho não mente."""
+    if data[:4] == b"OggS":
+        return "ogg"
+    if data[:4] == b"fLaC":
+        return "flac"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "wav"
+    if data[4:8] == b"ftyp":
+        return "m4a"
+    if data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
+        return "mp3"
+    return None
+
+
+def extract_audio(input_path: str, output_path: str):
+    """Normaliza qualquer container com faixa de áudio para m4a. Levanta
+    HTTPException com a causa provável quando o ffmpeg recusa o arquivo — um
+    500 genérico não diz ao usuário se o problema é o formato ou o conteúdo."""
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    result = subprocess.run([
+        ffmpeg, "-y", "-i", input_path,
+        "-vn", "-acodec", "aac", "-b:a", "64k",
+        output_path
+    ], capture_output=True, text=True)
+    if result.returncode != 0:
+        stderr = result.stderr or ""
+        name = os.path.basename(input_path)
+        if "does not contain any stream" in stderr or "Output file #0 does not contain" in stderr:
+            detail = f"O arquivo \"{name}\" não tem faixa de áudio — envie um áudio ou um vídeo com som."
+        elif "Invalid data found" in stderr or "moov atom not found" in stderr:
+            detail = f"O arquivo \"{name}\" parece incompleto ou corrompido. Tente baixá-lo novamente e reenviar."
+        elif "Unknown format" in stderr or "Invalid argument" in stderr:
+            detail = f"Não reconhecemos o formato de \"{name}\". Envie um áudio ou vídeo comum (MP3, M4A, WAV, OPUS, MP4, MOV…)."
+        else:
+            detail = f"Não foi possível processar o arquivo \"{name}\". Verifique se ele abre normalmente no seu aparelho."
+        raise HTTPException(status_code=400, detail=detail)
+
+
+def split_audio(input_path: str, tmpdir: str, seconds_per_chunk: int = CHUNK_SECONDS) -> list[str]:
+    """Fatia em pedaços de tamanho fixo com o muxer `segment`, copiando o áudio.
+
+    O modo antigo — um `ffmpeg -ss/-t` por pedaço, recodificando cada um —
+    dependia da duração total, que vinha 0 do `get_duration` quebrado: os
+    pedaços saíam com `-t 0`, isto é, vazios. Aqui o ffmpeg corta sozinho, numa
+    passada só e sem recodificar, então não precisa saber a duração.
+    """
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    pattern = os.path.join(tmpdir, "chunk_%03d.m4a")
+    subprocess.run([
+        ffmpeg, "-y", "-i", input_path,
+        "-f", "segment", "-segment_time", str(seconds_per_chunk),
+        "-c:a", "copy", "-vn",
+        pattern
+    ], capture_output=True, check=True)
+    return sorted(
+        os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
+        if f.startswith("chunk_") and f.endswith(".m4a")
+    )
+
+
+async def transcribe_chunk(
+    client: httpx.AsyncClient, audio_bytes: bytes, chunk_index: int,
+    name: str = "audio.m4a", mime: str = "audio/m4a",
+) -> tuple[str, list[dict]]:
+    # O nome importa: a API do Groq decide pela extensão se aceita o arquivo,
+    # então ele precisa combinar com o container que está sendo enviado.
+    #
+    # Sem `language` o Whisper detecta o idioma sozinho: fixá-lo em "pt" fazia o
+    # modelo tentar traduzir/forçar português em áudios em outros idiomas.
+    # `verbose_json` em vez de `text`: o Whisper já calcula os tempos de cada
+    # trecho, e pedir texto puro os jogava fora. Custa o mesmo e é o que
+    # sustenta o resumo minuto a minuto e os recortes por tópico/to-do.
+    files = {
+        "file": (name, io.BytesIO(audio_bytes), mime),
+        "model": (None, "whisper-large-v3-turbo"),
+        "response_format": (None, "verbose_json"),
+    }
+    try:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            files=files,
+            timeout=180.0,
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"Tempo esgotado na transcrição (parte {chunk_index + 1}). Tente um arquivo menor.")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Erro de conexão com serviço de transcrição: {e}")
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Erro na transcrição (parte {chunk_index + 1}): {response.text}")
+
+    payload = response.json()
+    offset = chunk_index * CHUNK_SECONDS
+    segments = []
+    for seg in payload.get("segments") or []:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        segments.append({
+            "start": round(float(seg.get("start") or 0.0) + offset, 2),
+            "end": round(float(seg.get("end") or 0.0) + offset, 2),
+            "text": text,
+        })
+
+    # `text` vem pronto no verbose_json; recompor a partir dos segmentos só
+    # como rede de segurança para uma resposta sem eles.
+    full = (payload.get("text") or "").strip() or " ".join(s["text"] for s in segments)
+    return full, segments
+
+
+def format_duration(total_seconds: float) -> str:
+    minutes = total_seconds / 60
+    if minutes < 1:
+        return "menos de 1 minuto"
+    elif minutes < 60:
+        return f"~{int(minutes)} minuto" + ("" if int(minutes) == 1 else "s")
+    else:
+        hours = int(minutes // 60)
+        mins = int(minutes % 60)
+        return f"~{hours}h{mins:02d}min"
+
+
 def format_timed_transcript(segments: list[dict], window: int = 30) -> str:
     """Transcrição com marcadores de tempo, agrupada em janelas de ~30s.
 
@@ -817,6 +1000,24 @@ async def process_url(url: str = Form(...)):
     return await run_once(key, lambda: build_url_result(url))
 
 
+def supadata_segments(content) -> list[dict]:
+    """Legendas do Supadata no mesmo formato dos segmentos do Whisper.
+
+    Os tempos chegam em milissegundos (`offset` e `duration`), que é o que
+    separa uma legenda utilizável de um bloco de texto sem relógio."""
+    if not isinstance(content, list):
+        return []
+    segments = []
+    for item in content:
+        text = (item.get("text") or "").strip() if isinstance(item, dict) else ""
+        if not text:
+            continue
+        start = float(item.get("offset") or 0) / 1000
+        end = start + float(item.get("duration") or 0) / 1000
+        segments.append({"start": start, "end": max(end, start), "text": text})
+    return segments
+
+
 async def build_url_result(url: str) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
@@ -837,13 +1038,27 @@ async def build_url_result(url: str) -> TranscriptionResult:
                         resp = await sup_client.get(
                             "https://api.supadata.ai/v1/youtube/transcript",
                             headers={"x-api-key": SUPADATA_API_KEY},
-                            params={"videoId": video_id, "text": "true"},
+                            # text=false devolve a legenda em pedaços com tempo.
+                            # Pedindo texto corrido, o vídeo entrava sem
+                            # segmento nenhum e a conversa perdia o resumo
+                            # minuto a minuto e os recortes de cada tópico.
+                            params={"videoId": video_id, "text": "false"},
                             timeout=30.0,
                         )
                     if resp.status_code == 200:
-                        content = resp.json().get("content", "")
-                        if content:
-                            full_transcript = content
+                        content = resp.json().get("content")
+                        segments = supadata_segments(content)
+                        full_transcript = (
+                            " ".join(s["text"] for s in segments) if segments
+                            else (content if isinstance(content, str) else None)
+                        ) or None
+                        if segments:
+                            # A duração vem da legenda, mas `audio_seconds`
+                            # continua zero de propósito: ele é o medidor de
+                            # minutos transcritos pelo Groq, e por este caminho
+                            # não passou áudio nenhum.
+                            duration_str = format_duration(segments[-1]["end"])
+                        elif full_transcript:
                             total_words = len(full_transcript.split())
                             duration_str = f"~{max(1, total_words // 150)} min"
                 except Exception:

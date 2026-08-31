@@ -791,46 +791,49 @@ input::placeholder { color: var(--text-muted); }
 }
 
 
-/* ---------- Conversas: lista e cards ---------- */
+/* ---------- Conversas: lista de retomada ---------- */
 
-/* Toda a sinalização de "isto abre algo" mora aqui: a seta permanente (no
-   touch não existe hover para revelá-la), a borda que reage ao ponteiro e o
-   foco visível para quem navega pelo teclado. */
-.recent { width: 100%; margin: 56px 0 0; }
-.recent-title { font-family: var(--font-serif); font-size: 17px; font-weight: 500; margin-bottom: 14px; }
+/* A coluna de retomada acompanha a largura da captura: uma espinha só no
+   centro da tela. A grade larga embaixo de um herói estreito era o que fazia a
+   home parecer duas páginas empilhadas. */
+.recent { width: 100%; max-width: 620px; margin: 56px auto 0; }
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.recent-title { font-family: var(--font-serif); font-size: 15px; font-weight: 500; color: var(--text-muted); }
+.recent-all { background: transparent; color: var(--text-muted); font-size: 12.5px; padding: 2px 4px; border-radius: var(--radius-sm); }
+.recent-all:hover { color: var(--text); }
 .recent-empty { padding: 22px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; text-align: center; }
 
-/* Grade que se ajusta à janela: 3 colunas no desktop largo, 2 no médio, 1 no
-   estreito. A coluna única de 620px deixava metade da tela vazia num monitor
-   comum, e cada card tinha duas linhas de conteúdo dentro de uma caixa alta. */
-.conversation-list {
-  list-style: none; display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+.conversation-list { list-style: none; display: flex; flex-direction: column; }
+
+/* Linha fina, sem moldura: o que separa uma da outra é o filete de baixo. A
+   sinalização de "isto abre" fica no fundo que reage ao ponteiro e no foco
+   visível para quem navega pelo teclado. */
+.conversation-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 10px; margin: 0 -10px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: background .15s;
 }
-.conversation-card {
-  height: 100%;
-  display: flex; flex-direction: column; gap: 7px;
-  padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); cursor: pointer;
-  transition: border-color .15s, background .15s;
+.conversation-list li + li .conversation-row { border-top: 1px solid var(--border); border-top-left-radius: 0; border-top-right-radius: 0; }
+.conversation-row:hover { background: var(--surface-2); }
+.conversation-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.conversation-row .row-icon { flex-shrink: 0; opacity: .6; margin-top: 2px; }
+.row-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.row-head { display: flex; align-items: baseline; gap: 12px; }
+/* Uma linha só, com reticências: a data à direita precisa de lugar fixo para a
+   coluna de datas ficar alinhada entre as três linhas. */
+.row-title {
+  flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.conversation-card:hover { border-color: var(--text-muted); background: var(--surface-2); }
-.conversation-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.conversation-meta {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+.row-when {
+  flex-shrink: 0; font-size: 11.5px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.conversation-meta svg { flex-shrink: 0; opacity: .7; }
-.conversation-meta .dot-sep { opacity: .5; }
-/* Duas linhas no máximo, para todos os cards da fileira terminarem na mesma
-   altura mesmo com títulos de tamanhos bem diferentes. */
-.conversation-title {
-  font-size: 14.5px; font-weight: 500; line-height: 1.35;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.conversation-excerpt {
-  font-size: 12.5px; color: var(--text-muted); line-height: 1.5;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.row-when .dot-sep { opacity: .5; }
+.row-excerpt {
+  font-size: 12.5px; color: var(--text-muted); line-height: 1.45;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* ---------- Sidebar: busca e lista plana ---------- */
@@ -994,9 +997,6 @@ input::placeholder { color: var(--text-muted); }
 
 /* ---------- Locutores e ações ---------- */
 
-.speaker-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.speaker-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; background: var(--surface-2); font-size: 12.5px; }
-.speaker-guess { color: var(--text-muted); font-size: 11px; }
 
 .btn-download { display: inline-flex; align-items: center; gap: 7px; }
 .empty-insights { padding: 24px; border: 1px dashed var(--border); border-radius: var(--radius); text-align: center; margin-bottom: 28px; }

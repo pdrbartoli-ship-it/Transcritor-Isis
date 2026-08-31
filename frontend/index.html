@@ -17,12 +17,14 @@
     <script>
       // Apply saved theme before render to avoid a flash of the wrong theme.
       (function () {
-        try {
-          var t = localStorage.getItem('dito-theme') || 'light';
-          document.documentElement.setAttribute('data-theme', t);
-        } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
+        var t = 'light';
+        try { t = localStorage.getItem('dito-theme') || 'light'; } catch (e) {}
+        document.documentElement.setAttribute('data-theme', t);
+        // A barra do PWA instalado sai do theme-color, e o Chrome a lê antes
+        // do React montar — deixar para o setTheme abriria a janela com a
+        // barra clara sobre um app escuro.
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', t === 'dark' ? '#262624' : '#faf9f5');
       })();
     </script>
   </head>

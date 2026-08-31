@@ -7,7 +7,7 @@ import ConversaHeader from './ConversaHeader'
 import { track } from '../../lib/analytics'
 import {
   formatTimestamp, formatRange, sliceSegments,
-  buildTranscriptFile, downloadText, safeFilename, speakersAreUncertain,
+  buildTranscriptFile, downloadText, safeFilename,
 } from './shared'
 
 // Visão geral: os quatro blocos que o usuário pode aprofundar. Cada um é uma
@@ -64,7 +64,7 @@ export default function Conversa() {
   if (!insights) {
     return (
       <div className="conversa">
-        <ConversaHeader conversation={conversation} backTo="/" backLabel="Conversas" />
+        <ConversaHeader conversation={conversation} />
         {error && <div className="alert alert-error">{error}</div>}
         <div className="empty-insights">
           <p>Esta conversa foi capturada antes da nova análise, então ainda não tem tópicos, tarefas nem linha do tempo.</p>
@@ -89,8 +89,6 @@ export default function Conversa() {
     <div className="conversa">
       <ConversaHeader
         conversation={conversation}
-        backTo="/"
-        backLabel="Conversas"
         action={<DownloadButton onClick={download} />}
       />
       {error && <div className="alert alert-error">{error}</div>}
@@ -179,25 +177,6 @@ export default function Conversa() {
                 {(current.bullets || []).map((b, i) => <li key={i}>{b}</li>)}
               </ul>
             </Card>
-          )}
-        </section>
-      )}
-
-      {insights.speakers?.length > 0 && (
-        <section className="conversa-block">
-          <h2>Quem falou</h2>
-          <div className="speaker-row">
-            {insights.speakers.map((s, i) => (
-              <span key={i} className="speaker-chip">
-                {s.name || s.label}
-                {s.name && s.confidence !== 'alta' && <span className="speaker-guess">?</span>}
-              </span>
-            ))}
-          </div>
-          {speakersAreUncertain(insights) && (
-            <p className="text-muted text-sm">
-              Os nomes são deduzidos do que foi dito na conversa, não da voz — os marcados com “?” podem estar errados.
-            </p>
           )}
         </section>
       )}
