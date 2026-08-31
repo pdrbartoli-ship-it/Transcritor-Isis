@@ -5,9 +5,10 @@ import { generateInsights } from '../../lib/api'
 import { IconChevron, IconDownload } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import { track } from '../../lib/analytics'
+import { showToast } from '../../lib/toast'
 import {
   formatTimestamp, formatRange, sliceSegments,
-  buildTranscriptFile, downloadText, safeFilename,
+  buildTranscriptFile, downloadOrShareText, safeFilename,
 } from './shared'
 
 // Visão geral: os quatro blocos que o usuário pode aprofundar. Cada um é uma
@@ -49,9 +50,15 @@ export default function Conversa() {
     }
   }
 
-  function download() {
+  async function download() {
     track('download_transcricao')
-    downloadText(safeFilename(conversation.title), buildTranscriptFile(conversation))
+    const filename = safeFilename(conversation.title)
+    const result = await downloadOrShareText(filename, buildTranscriptFile(conversation))
+    if (result === 'shared') {
+      showToast(`Transcrição compartilhada · ${filename}`)
+    } else if (result === 'downloaded') {
+      showToast(`Transcrição baixada · ${filename}`, { detail: 'Verifique a pasta de downloads do seu aparelho.' })
+    }
   }
 
   // Saber quais blocos são realmente abertos é o que vai dizer o que manter e

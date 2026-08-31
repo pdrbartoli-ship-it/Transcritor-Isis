@@ -445,6 +445,13 @@ input::placeholder { color: var(--text-muted); }
 .home-greeting h1 { font-family: var(--font-serif); font-size: 30px; font-weight: 500; letter-spacing: -0.01em; }
 .home-greeting p { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
 
+/* Versão ampliada do seletor de origem da barra lateral: aqui ele é a
+   primeira decisão da tela, não um detalhe pequeno ao lado da navegação. */
+.home-capture-nav {
+  margin: 0 0 36px; padding: 5px; gap: 4px; max-width: 420px; width: 100%;
+}
+.home-capture-nav a { padding: 12px 8px; gap: 7px; font-size: 14px; border-radius: 9px; }
+
 .hero-record { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .record-btn-group { display: flex; gap: 28px; }
 .record-btn-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -498,112 +505,10 @@ input::placeholder { color: var(--text-muted); }
 .url-form { display: flex; gap: 8px; }
 .url-form input { flex: 1; }
 
-/* ── Folder workspace ───────────────────────────────────── */
-.folder-view { display: flex; flex-direction: column; height: 100%; }
-.folder-header { height: var(--header-h); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 0 20px; flex-shrink: 0; background: var(--bg); }
-.folder-header .avatar { width: 30px; height: 30px; font-size: 12px; }
-.folder-header h2 { font-family: var(--font-serif); font-size: 18px; font-weight: 500; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.folder-rename-input { flex: 1; min-width: 0; font-family: var(--font-serif); font-size: 18px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); }
-
-/* tabs: Conversas | Fontes */
-.folder-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.folder-tabs button {
-  display: flex; align-items: center; gap: 7px; padding: 9px 14px;
-  font-size: 13.5px; font-weight: 500; color: var(--text-muted);
-  background: transparent; border-bottom: 2px solid transparent; margin-bottom: -1px;
-}
-.folder-tabs button:hover { color: var(--text); }
-.folder-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
-.tab-count { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }
-
-/* conversation list */
-.chat-list { flex: 1; overflow-y: auto; padding: 12px; max-width: 740px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
-.chat-list-item {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 13px 14px; border-radius: var(--radius-sm); background: transparent; position: relative;
-}
-.chat-list-item:hover { background: var(--hover); }
-.chat-list-item.pending { opacity: 0.6; }
-.chat-list-main { flex: 1; min-width: 0; }
-.chat-list-title { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat-list-preview { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-.chat-list-date { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
-.chat-list-del { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--text-muted); opacity: 0; transition: opacity 0.12s; }
-.chat-list-item:hover .chat-list-del { opacity: 1; }
-.chat-list-del:hover { background: var(--danger-bg); color: var(--danger); }
-
-/* sources tab */
-.sources-panel { flex: 1; overflow-y: auto; padding: 20px; max-width: 740px; width: 100%; margin: 0 auto; }
-/* O painel de captura é mais estreito (440px) que o painel de fontes (740px): sem
-   margem automática ele encostaria à esquerda, desalinhado do botão de gravar. */
-.sources-panel .capture-divider,
-.sources-panel .capture-panel { margin-left: auto; margin-right: auto; }
-.sources-panel .capture-divider { margin-top: 22px; margin-bottom: 14px; }
-.sources-panel h4 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; color: var(--text-muted); }
-.sessions-list { display: flex; flex-direction: column; gap: 8px; }
-.session-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
-.session-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.session-card h5 { font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.session-card h5:hover { color: var(--accent); }
-.session-preview { margin-top: 6px; line-height: 1.5; }
-.session-transcript { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; line-height: 1.65; color: var(--text-muted); white-space: pre-wrap; }
-.transcript-toggle { margin-top: 10px; }
-.transcript-toggle .session-transcript { max-height: 320px; overflow-y: auto; }
-
 /* ── Markdown das respostas ─────────────────────────────── */
-/* As regras de bolha ficavam duplicadas aqui e na seção do chat da conversa,
-   com tamanhos diferentes — e era esta cópia que impunha a serifa ao corpo. */
 .md p { margin-bottom: 6px; }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 .md strong { font-weight: 600; }
-
-/* File attachment chip (Claude-style) shown in the chat for the session doc */
-.file-chip {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; max-width: 340px; margin-top: 10px;
-  padding: 10px 12px; text-align: left;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.file-chip:hover { border-color: var(--accent); background: var(--surface-2); }
-.file-chip-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; flex-shrink: 0;
-  border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent);
-}
-.file-chip-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.file-chip-name { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-chip-meta { font-size: 11.5px; color: var(--text-muted); }
-.file-chip-download { color: var(--text-muted); flex-shrink: 0; display: flex; }
-.file-chip:hover .file-chip-download { color: var(--accent); }
-
-.chat-input { display: flex; gap: 8px; padding: 14px 20px 18px; flex-shrink: 0; max-width: 740px; width: 100%; margin: 0 auto; align-items: flex-end; }
-/* O textarea cresce com o conteúdo (altura via JS). O raio grande da pílula só
-   funciona com uma linha; a partir daí um raio menor evita o texto encostar na
-   curva. */
-.chat-input textarea {
-  flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 22px;
-  padding: 12px 18px;
-  box-shadow: var(--shadow);
-  resize: none;
-  overflow-y: hidden;
-  line-height: 1.45;
-  max-height: 180px;
-  font-family: inherit;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.chat-input textarea:focus { border-color: var(--accent); }
-.chat-input textarea::placeholder { color: var(--text-muted); }
-.chat-input .btn-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-text); }
-.chat-input .btn-icon:hover:not(:disabled) { background: var(--accent-hover); }
-.chat-input .btn-icon:disabled { opacity: 0.4; }
 
 /* ── Avatar ─────────────────────────────────────────────── */
 .avatar { width: 40px; height: 40px; background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
@@ -762,19 +667,6 @@ input::placeholder { color: var(--text-muted); }
 }
 .suggestion-input-wrap input:focus { outline: none; }
 
-/* ── Chat starter (estado vazio da aba Conversas) ───────── */
-.chat-starter { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 30px 20px; width: 100%; }
-.chat-starter h2 { font-family: var(--font-serif); font-size: 26px; font-weight: 500; text-align: center; }
-.chat-starter .chat-input { padding: 0; }
-.starter-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.starter-chip {
-  display: flex; align-items: center; gap: 8px; padding: 9px 15px;
-  border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
-  color: var(--text); font-size: 13px; box-shadow: var(--shadow);
-}
-.starter-chip:hover { background: var(--surface-2); border-color: var(--accent); }
-.starter-chip svg { color: var(--accent); flex-shrink: 0; }
-
 /* ── Mobile ─────────────────────────────────────────────── */
 @media (max-width: 760px) {
   .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 60; transform: translateX(-100%); width: var(--sidebar-w); box-shadow: var(--shadow); }
@@ -786,55 +678,10 @@ input::placeholder { color: var(--text-muted); }
   .topbar-mobile .hamburger { background: transparent; color: var(--text); width: 36px; height: 36px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
   .home { padding: 6vh 18px 40px; }
   .home-greeting h1 { font-size: 25px; }
-  .bubble { max-width: 92%; }
+  .message .bubble { max-width: 92%; }
   .url-form { flex-direction: column; }
 }
 
-
-/* ---------- Conversas: lista de retomada ---------- */
-
-/* A coluna de retomada acompanha a largura da captura: uma espinha só no
-   centro da tela. A grade larga embaixo de um herói estreito era o que fazia a
-   home parecer duas páginas empilhadas. */
-.recent { width: 100%; max-width: 620px; margin: 56px auto 0; }
-.recent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.recent-title { font-family: var(--font-serif); font-size: 15px; font-weight: 500; color: var(--text-muted); }
-.recent-all { background: transparent; color: var(--text-muted); font-size: 12.5px; padding: 2px 4px; border-radius: var(--radius-sm); }
-.recent-all:hover { color: var(--text); }
-.recent-empty { padding: 22px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; text-align: center; }
-
-.conversation-list { list-style: none; display: flex; flex-direction: column; }
-
-/* Linha fina, sem moldura: o que separa uma da outra é o filete de baixo. A
-   sinalização de "isto abre" fica no fundo que reage ao ponteiro e no foco
-   visível para quem navega pelo teclado. */
-.conversation-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 11px 10px; margin: 0 -10px;
-  border-radius: var(--radius-sm); cursor: pointer;
-  transition: background .15s;
-}
-.conversation-list li + li .conversation-row { border-top: 1px solid var(--border); border-top-left-radius: 0; border-top-right-radius: 0; }
-.conversation-row:hover { background: var(--surface-2); }
-.conversation-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.conversation-row .row-icon { flex-shrink: 0; opacity: .6; margin-top: 2px; }
-.row-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.row-head { display: flex; align-items: baseline; gap: 12px; }
-/* Uma linha só, com reticências: a data à direita precisa de lugar fixo para a
-   coluna de datas ficar alinhada entre as três linhas. */
-.row-title {
-  flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; line-height: 1.35;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.row-when {
-  flex-shrink: 0; font-size: 11.5px; color: var(--text-muted);
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.row-when .dot-sep { opacity: .5; }
-.row-excerpt {
-  font-size: 12.5px; color: var(--text-muted); line-height: 1.45;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 
 /* ---------- Sidebar: busca e lista plana ---------- */
 
@@ -1014,24 +861,23 @@ input::placeholder { color: var(--text-muted); }
 /* ---------- Chat da conversa ---------- */
 
 .chat-page { display: flex; flex-direction: column; min-height: calc(100vh - 120px); }
-.chat-tabs { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
-.chat-tabs button { padding: 6px 16px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; }
-.chat-tabs button:hover { border-color: var(--accent); color: var(--accent); }
-.chat-tabs button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
-.chat-tabs .chat-new { margin-left: auto; border-style: dashed; }
 
-.chat-messages { flex: 1; display: flex; flex-direction: column; gap: 14px; padding-bottom: 16px; max-width: 740px; width: 100%; }
+/* Turnos mais espaçados: cada pergunta e resposta precisa de ar em volta para
+   não ler como uma pilha de caixas — é isso, mais a resposta sem moldura
+   embaixo, que aproxima o visual do Claude. */
+.chat-messages { flex: 1; display: flex; flex-direction: column; gap: 30px; padding-bottom: 16px; max-width: 740px; width: 100%; }
 .message { display: flex; }
 .message.user { justify-content: flex-end; }
-/* Sans, não serifa: a divisão serifa-display / sans-corpo é o que faz a paleta
-   creme ler como produto. Serifa em 13,5px era, ainda por cima, o texto mais
-   lido do app no tamanho em que a serifa perde. */
-.message .bubble { max-width: 78%; padding: 12px 16px; border-radius: var(--radius); font-size: 15px; line-height: 1.65; }
-.message.user .bubble { background: var(--accent); color: var(--accent-text, #fff); }
-.message.assistant .bubble { background: var(--surface); border: 1px solid var(--border); }
-.message .md p { margin: 0 0 8px; }
+.message .bubble { font-size: 15px; line-height: 1.7; }
+/* A pergunta do usuário é uma pílula neutra — sem o laranja saturado, que
+   competia com a resposta pela atenção em vez de só marcar "isto foi você". */
+.message.user .bubble { max-width: 72%; padding: 10px 16px; border-radius: var(--radius); background: var(--surface-2); color: var(--text); }
+/* A resposta não é uma caixa: é texto corrido na largura da coluna, como uma
+   leitura contínua — nem fundo, nem borda, nem raio. */
+.message.assistant .bubble { width: 100%; padding: 0; }
+.message .md p { margin: 0 0 12px; }
 .message .md p:last-child { margin-bottom: 0; }
-.message .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.message .md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 .chat-starter { text-align: center; padding: 48px 20px; color: var(--text-muted); }
 .chat-starter > svg { color: var(--text-muted); opacity: .55; }
@@ -1051,14 +897,33 @@ input::placeholder { color: var(--text-muted); }
 .chat-input .btn-icon { color: var(--accent); }
 .chat-input .btn-icon:disabled { color: var(--text-muted); opacity: .5; }
 
-.chat-history { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.chat-history-item { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; transition: border-color .15s; }
-.chat-history-item:hover { border-color: var(--accent); }
-.chat-history-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chat-history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.chat-history-title { font-size: 13.5px; font-weight: 500; }
-.chat-history-preview { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-history-date { font-size: 11.5px; color: var(--text-muted); }
-
 .conversa-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .conversa-actions .btn-primary { display: inline-flex; align-items: center; gap: 7px; }
+
+.toast-stack {
+  position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
+  z-index: 1000; display: flex; flex-direction: column; gap: 8px;
+  width: 100%; max-width: 380px; padding: 0 16px;
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  padding: 12px 14px; font-size: 13.5px; color: var(--text);
+  animation: toast-in .18s ease-out;
+}
+.toast-icon { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+.toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.toast-msg { line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast-detail { font-size: 12px; color: var(--text-muted); }
+.toast-action {
+  flex-shrink: 0; align-self: center; font-size: 12.5px; font-weight: 600;
+  color: var(--accent); background: transparent; padding: 4px 6px;
+}
+.toast-action:hover { text-decoration: underline; }
+.toast-close { flex-shrink: 0; color: var(--text-muted); padding: 2px; margin-top: 1px; }
+.toast-close:hover { color: var(--text); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

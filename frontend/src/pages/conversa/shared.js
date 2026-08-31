@@ -3,6 +3,8 @@
 // IA de novo, então abrir um tópico, uma tarefa ou um intervalo é instantâneo
 // e não custa nada.
 
+import { isNative, platformName } from '../../lib/platform'
+
 export function formatTimestamp(seconds) {
   const total = Math.max(0, Math.floor(seconds || 0))
   const h = Math.floor(total / 3600)
@@ -78,6 +80,28 @@ export function downloadText(filename, content) {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+// No Android o link de download some numa pasta que o usuário não sabe achar
+// dentro da WebView. A folha de compartilhamento nativa (Web Share API, já
+// suportada pelo WebView do sistema) resolve isso de graça: o próprio usuário
+// escolhe "Salvar em Arquivos", "Abrir com" etc. Nas outras plataformas o
+// download comum já deixa o navegador/SO oferecer onde salvar.
+export async function downloadOrShareText(filename, content) {
+  if (isNative() && platformName() === 'android') {
+    try {
+      const file = new File([content], filename, { type: 'text/plain' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename })
+        return 'shared'
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return 'cancelled'
+      // Sem suporte a compartilhar arquivo: cai para o download comum.
+    }
+  }
+  downloadText(filename, content)
+  return 'downloaded'
 }
 
 // Nome de arquivo seguro nos três sistemas, sem depender do título ser curto
