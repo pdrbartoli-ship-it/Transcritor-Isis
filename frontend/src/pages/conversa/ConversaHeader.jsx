@@ -1,23 +1,15 @@
-import { useNavigate } from 'react-router-dom'
-import { IconChevron } from '../../components/Icons'
 import { formatCapturedAt, formatDurationLabel, displayTitle } from '../../lib/conversas'
 
-// Cabeçalho comum. Nas telas de detalhe o voltar leva à visão geral da própria
-// conversa, não à home: sair do zoom não deveria custar o contexto inteiro. Na
-// visão geral não há voltar próprio — sair dela é sair da conversa, e para isso
-// já existem as setas da barra lateral.
-export default function ConversaHeader({ conversation, backTo, backLabel, title, subtitle, action }) {
-  const navigate = useNavigate()
+// Cabeçalho comum das telas de conversa. Sem link de voltar próprio: a
+// navegação entre elas já é coberta pelas setas de histórico da barra
+// lateral, e repeti-lo aqui era o mesmo controle duas vezes.
+export default function ConversaHeader({ conversation, title, subtitle, action }) {
   const duration = formatDurationLabel(conversation.duration_s)
 
   return (
     <>
       <div className="conversa-topbar">
-        {backTo ? (
-          <button className="back-link" onClick={() => navigate(backTo)}>
-            <IconChevron width={14} height={14} style={{ transform: 'rotate(180deg)' }} /> {backLabel}
-          </button>
-        ) : <span />}
+        <span />
         {action}
       </div>
       <header className="conversa-head">

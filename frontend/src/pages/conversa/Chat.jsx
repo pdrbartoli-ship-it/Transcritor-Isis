@@ -7,7 +7,6 @@ import { track } from '../../lib/analytics'
 import ChatTextarea from '../../components/chat/ChatTextarea'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconTrash, IconMessage } from '../../components/Icons'
-import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 
 // Cada mensagem reenvia o histórico; sem teto, uma conversa longa cresce sem
@@ -151,8 +150,6 @@ export default function Chat() {
     <div className="conversa chat-page">
       <ConversaHeader
         conversation={conversation}
-        backTo=".."
-        backLabel={displayTitle(conversation)}
         title="Pergunte qualquer coisa"
         subtitle={activeChat?.title || 'Sobre esta conversa'}
       />

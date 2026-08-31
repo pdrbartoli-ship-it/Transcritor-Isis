@@ -1,5 +1,4 @@
 import { useParams, useOutletContext } from 'react-router-dom'
-import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 import Trecho from './Trecho'
 import { formatRange, sliceSegments } from './shared'
@@ -15,7 +14,7 @@ export default function Topico() {
   if (!topic) {
     return (
       <div className="conversa">
-        <ConversaHeader conversation={conversation} backTo=".." backLabel="Voltar à conversa" />
+        <ConversaHeader conversation={conversation} />
         <p className="text-muted">Este tópico não existe mais nesta conversa.</p>
       </div>
     )
@@ -30,8 +29,6 @@ export default function Topico() {
     <div className="conversa">
       <ConversaHeader
         conversation={conversation}
-        backTo=".."
-        backLabel={displayTitle(conversation)}
         title={topic.label}
         subtitle={(topic.time_refs || []).map(([a, b]) => formatRange(a, b)).join('  ·  ')}
       />

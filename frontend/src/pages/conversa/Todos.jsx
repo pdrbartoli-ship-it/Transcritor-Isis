@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useOutletContext } from 'react-router-dom'
 import { IconChevron } from '../../components/Icons'
-import { displayTitle } from '../../lib/conversas'
 import ConversaHeader from './ConversaHeader'
 import Trecho from './Trecho'
 
@@ -19,8 +18,6 @@ export default function Todos() {
     <div className="conversa">
       <ConversaHeader
         conversation={conversation}
-        backTo=".."
-        backLabel={displayTitle(conversation)}
         title="Lista de to do's"
         subtitle={todos.length === 1 ? '1 ação combinada' : `${todos.length} ações combinadas`}
       />
