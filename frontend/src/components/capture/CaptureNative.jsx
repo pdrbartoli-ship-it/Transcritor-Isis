@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { IconMic, IconFile } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm, MODE_TITLE } from './CaptureShared'
+import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE } from './CaptureShared'
 
 // Captura no celular. Diferenças reais em relação ao desktop:
 // - não existe arrastar arquivo: o alvo vira um botão de toque, sem a área
@@ -9,11 +9,12 @@ import { ProcessingBox, RecordingReview, UrlForm, MODE_TITLE } from './CaptureSh
 // - o vocabulário é "toque", não "clique";
 // - o aviso do microfone fala de permissão do aparelho, não do navegador —
 //   é lá que o usuário precisa ir resolver.
-export default function CaptureNative({ capture, variant, mode = 'record' }) {
+export default function CaptureNative({ capture, variant, mode = 'record', mini }) {
   const {
     loading, waking, error, elapsed, estimate,
-    isRecording, recordedBlob, recordingTime,
+    isRecording, isPaused, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
+    pauseRecording, resumeRecording,
     submitRecording, submitFile, submitUrl,
   } = capture
 
@@ -43,9 +44,17 @@ export default function CaptureNative({ capture, variant, mode = 'record' }) {
               </button>
               <p className="record-label">
                 {isRecording
-                  ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
+                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} — {formatTime(recordingTime)}</>
                   : 'Toque para gravar'}
               </p>
+              {isRecording && (
+                <RecordingControls
+                  paused={isPaused}
+                  onPause={pauseRecording}
+                  onResume={resumeRecording}
+                  mini={mini}
+                />
+              )}
               {variant === 'hero' && !isRecording && (
                 <p className="mic-hint">Mantenha a tela ligada enquanto grava.</p>
               )}

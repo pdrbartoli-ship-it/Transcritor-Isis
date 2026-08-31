@@ -12,6 +12,7 @@ import Topico from './pages/conversa/Topico'
 import Todos from './pages/conversa/Todos'
 import Timeline from './pages/conversa/Timeline'
 import Chat from './pages/conversa/Chat'
+import Mini from './pages/Mini'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
@@ -47,6 +48,13 @@ function DeepLinks() {
 }
 
 export default function App() {
+  // A janelinha flutuante do app nativo sai antes de tudo: ela não tem rota,
+  // barra lateral nem sessão, e só mostra a gravação que a janela principal
+  // está fazendo. Montar o AuthProvider aqui colocaria uma SEGUNDA instância do
+  // supabase-js na mesma origem, disputando a renovação do mesmo token com a
+  // janela principal — risco gratuito numa janela que não lê nada do banco.
+  if (window.location.hash.startsWith('#/mini')) return <Mini />
+
   return (
     <AuthProvider>
       <HashRouter>

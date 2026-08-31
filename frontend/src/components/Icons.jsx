@@ -84,3 +84,19 @@ export const IconSearch = (p) => (
 export const IconCard = (p) => (
   <svg {...base} {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
 )
+export const IconPause = (p) => (
+  <svg {...base} {...p}><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+)
+export const IconPlay = (p) => (
+  <svg {...base} {...p}><path d="M7 4l12 8-12 8z" /></svg>
+)
+// Encerrar: o quadrado dentro do círculo é o "stop" universal, e o círculo o
+// separa do pausar — dois quadrados soltos lado a lado seriam quase o mesmo
+// desenho num botão de 15px.
+export const IconStopCircle = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="9" /><rect x="9" y="9" width="6" height="6" rx="1" /></svg>
+)
+// Destacar a gravação numa janelinha flutuante.
+export const IconPopOut = (p) => (
+  <svg {...base} {...p}><path d="M14 3h7v7" /><path d="M21 3l-9 9" /><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" /></svg>
+)

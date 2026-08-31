@@ -11,6 +11,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       commands::start_recording,
       commands::stop_recording,
+      commands::set_recording_paused,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

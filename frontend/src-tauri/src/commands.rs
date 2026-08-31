@@ -54,3 +54,18 @@ pub fn stop_recording(state: State<RecordingState>) -> Result<String, String> {
     handle.stop()?;
     Ok(path)
 }
+
+/// Pausa/retoma a gravação em andamento. Devolve o estado resultante, para o
+/// JS não precisar torcer para o seu palpite bater com o do Rust.
+#[tauri::command]
+pub fn set_recording_paused(paused: bool, state: State<RecordingState>) -> Result<bool, String> {
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| "estado de gravação corrompido".to_string())?;
+    let handle = guard
+        .as_ref()
+        .ok_or_else(|| "nenhuma gravação em andamento".to_string())?;
+    handle.set_paused(paused);
+    Ok(handle.is_paused())
+}

@@ -470,7 +470,12 @@ input::placeholder { color: var(--text-muted); }
 .record-btn.recording { border-color: var(--record); background: var(--accent-soft); color: var(--record); animation: pulse-ring 1.4s ease-in-out infinite; }
 .record-label { font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 7px; min-height: 20px; }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--record); animation: blink 1s step-start infinite; }
+/* Pausado o ponto para de piscar e perde a cor de gravação: é o sinal que se lê
+   sem ler, de longe. */
+.rec-dot.paused { animation: none; background: var(--text-muted); }
 .record-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.record-controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.record-controls .btn-ghost { display: inline-flex; align-items: center; gap: 6px; }
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse-ring {
   0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.22); }
@@ -899,6 +904,52 @@ input::placeholder { color: var(--text-muted); }
 
 .conversa-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .conversa-actions .btn-primary { display: inline-flex; align-items: center; gap: 7px; }
+
+/* ---------- Janelinha de gravação (picture-in-picture) ---------- */
+
+/* A janela nasce com o corpo vazio do navegador/sistema; sem isto ela abriria
+   branca, com margem, por baixo do componente. */
+.mini-body { margin: 0; overflow: hidden; background: var(--bg); }
+
+.mini-recorder {
+  display: flex; align-items: center; gap: 11px;
+  box-sizing: border-box; width: 100%; height: 100%; min-height: 96px;
+  padding: 0 14px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px;
+  font-family: var(--font-sans);
+  /* A janela nativa não tem barra de título: é arrastando o corpo dela que se
+     tira ela da frente, e o cursor precisa dizer isso. */
+  cursor: default; user-select: none;
+}
+.mini-brand { flex-shrink: 0; }
+.mini-brand .brand { font-size: 20px; cursor: default; }
+
+/* As cinco barras da onda — o mesmo sinal de "estou ouvindo" da referência. */
+.mini-wave { display: flex; align-items: center; gap: 3px; height: 26px; flex-shrink: 0; }
+.mini-wave span {
+  width: 3px; height: 100%; border-radius: 2px; background: var(--accent);
+  animation: mini-wave 1s ease-in-out infinite;
+}
+.mini-wave.paused span { animation: none; height: 5px; background: var(--text-muted); }
+@keyframes mini-wave {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+.mini-status { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mini-time { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mini-label { font-size: 11px; color: var(--text-muted); }
+
+.mini-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.mini-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.mini-btn:hover { background: var(--hover); color: var(--text); }
+.mini-btn.stop:hover { color: var(--record); }
+.mini-btn.close { width: 24px; height: 24px; }
 
 .toast-stack {
   position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);

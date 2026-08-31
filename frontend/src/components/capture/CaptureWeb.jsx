@@ -1,17 +1,18 @@
 import { useState, useRef } from 'react'
 import { IconMic } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, UrlForm, MODE_TITLE } from './CaptureShared'
+import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
 // sentido e o vocabulário é "clique". Cada origem tem a sua rota, e este
 // componente mostra só a que está aberta — antes as três disputavam a mesma
 // tela e a gaveta empurrava o resto da página para baixo ao abrir.
-export default function CaptureWeb({ capture, variant, mode = 'record' }) {
+export default function CaptureWeb({ capture, variant, mode = 'record', mini }) {
   const {
     loading, waking, error, elapsed, estimate,
-    isRecording, recordedBlob, recordingTime,
+    isRecording, isPaused, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
+    pauseRecording, resumeRecording,
     submitRecording, submitFile, submitUrl,
   } = capture
 
@@ -42,9 +43,17 @@ export default function CaptureWeb({ capture, variant, mode = 'record' }) {
               </button>
               <p className="record-label">
                 {isRecording
-                  ? <><span className="rec-dot" /> Gravando — {formatTime(recordingTime)}</>
+                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} — {formatTime(recordingTime)}</>
                   : 'Clique para gravar'}
               </p>
+              {isRecording && (
+                <RecordingControls
+                  paused={isPaused}
+                  onPause={pauseRecording}
+                  onResume={resumeRecording}
+                  mini={mini}
+                />
+              )}
             </>
           ) : (
             <RecordingReview

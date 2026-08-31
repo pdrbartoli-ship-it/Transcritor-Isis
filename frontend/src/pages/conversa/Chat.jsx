@@ -48,6 +48,7 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
   const bottomRef = useRef(null)
+  const firstScrollRef = useRef(true)
 
   // Carrega a thread existente desta conversa, se houver, antes de qualquer
   // outra coisa: perguntar de novo precisa enxergar o que já foi perguntado.
@@ -56,6 +57,7 @@ export default function Chat() {
     setReady(false)
     setChatId(null)
     setMessages([])
+    firstScrollRef.current = true
     ;(async () => {
       const { data: chat } = await supabase
         .from('chats').select('id')
@@ -75,9 +77,18 @@ export default function Chat() {
     return () => { cancelled = true }
   }, [conversation.id])
 
+  // Reentrar numa conversa que já tem histórico disparava uma sequência de
+  // rolagens ANIMADAS em cima da outra — carregou o histórico, entrou a
+  // pergunta, entrou o "Pensando…", entrou a resposta — e a tela sacudia do
+  // topo até o fim quatro vezes. A primeira posição é um salto seco: ninguém
+  // precisa ver a tela percorrer meses de conversa. Só o que chega DEPOIS,
+  // com o usuário já olhando, rola suave.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending])
+    if (!ready) return
+    const behavior = firstScrollRef.current ? 'auto' : 'smooth'
+    firstScrollRef.current = false
+    bottomRef.current?.scrollIntoView({ behavior, block: 'end' })
+  }, [messages, sending, ready])
 
   // Pergunta digitada na barra fixa da conversa: chega pelo state da rota e é
   // enviada assim que a thread termina de carregar — antes disso, `messages`

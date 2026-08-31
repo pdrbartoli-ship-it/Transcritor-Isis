@@ -25,6 +25,7 @@ export function useCapture({ onResult }) {
   const [estimate, setEstimate] = useState(null) // segundos previstos, null = desconhecido
 
   const [isRecording, setIsRecording] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
 
@@ -32,6 +33,27 @@ export function useCapture({ onResult }) {
   const chunksRef = useRef([])
   const timerRef = useRef(null)
   const unlistenWarningRef = useRef(null)
+
+  // O cronômetro contava +1 por tick de setInterval. Isso funciona enquanto a
+  // janela está na frente e quebra exatamente quando ela não está: minimizada
+  // (ou em aba de fundo) o navegador estrangula os timers, e a gravação
+  // aparecia com metade do tempo que tinha de verdade. Guardando os instantes
+  // e derivando o tempo de Date.now(), um tick atrasado só se corrige sozinho
+  // no tick seguinte — e é o mesmo cálculo que a janelinha flutuante usa.
+  const startedAtRef = useRef(null)
+  const pausedMsRef = useRef(0)
+  const pausedAtRef = useRef(null)
+
+  function elapsedSeconds() {
+    if (!startedAtRef.current) return 0
+    const until = pausedAtRef.current ?? Date.now()
+    return Math.max(0, Math.floor((until - startedAtRef.current - pausedMsRef.current) / 1000))
+  }
+
+  function startTimer() {
+    clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => setRecordingTime(elapsedSeconds()), 500)
+  }
 
   useEffect(() => () => {
     clearInterval(timerRef.current)
@@ -54,7 +76,57 @@ export function useCapture({ onResult }) {
     setRecordedBlob(null)
     setRecordingTime(0)
     setIsRecording(false)
+    setIsPaused(false)
+    startedAtRef.current = null
+    pausedMsRef.current = 0
+    pausedAtRef.current = null
     chunksRef.current = []
+  }
+
+  function beginTiming() {
+    startedAtRef.current = Date.now()
+    pausedMsRef.current = 0
+    pausedAtRef.current = null
+    setRecordingTime(0)
+    startTimer()
+  }
+
+  // Pausar no app nativo é o Rust parando de escrever no .wav (os dispositivos
+  // seguem abertos); no navegador é o próprio MediaRecorder. Nos dois casos o
+  // relógio para junto, senão o tempo mostrado não seria o tempo do áudio.
+  async function pauseRecording() {
+    if (!isRecording || pausedAtRef.current) return
+    try {
+      if (isTauriApp()) {
+        await invoke('set_recording_paused', { paused: true })
+      } else if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.pause()
+      }
+    } catch (err) {
+      setError(typeof err === 'string' ? err : 'Não foi possível pausar a gravação.')
+      return
+    }
+    pausedAtRef.current = Date.now()
+    setIsPaused(true)
+    setRecordingTime(elapsedSeconds())
+  }
+
+  async function resumeRecording() {
+    if (!isRecording || !pausedAtRef.current) return
+    try {
+      if (isTauriApp()) {
+        await invoke('set_recording_paused', { paused: false })
+      } else if (mediaRecorderRef.current?.state === 'paused') {
+        mediaRecorderRef.current.resume()
+      }
+    } catch (err) {
+      setError(typeof err === 'string' ? err : 'Não foi possível retomar a gravação.')
+      return
+    }
+    pausedMsRef.current += Date.now() - pausedAtRef.current
+    pausedAtRef.current = null
+    setIsPaused(false)
+    startTimer()
   }
 
   async function startRecording() {
@@ -71,8 +143,7 @@ export function useCapture({ onResult }) {
         })
         await invoke('start_recording')
         setIsRecording(true)
-        setRecordingTime(0)
-        timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+        beginTiming()
       } catch (err) {
         setError(typeof err === 'string' ? err : 'Não foi possível iniciar a gravação.')
       }
@@ -92,16 +163,22 @@ export function useCapture({ onResult }) {
       }
       recorder.start()
       setIsRecording(true)
-      setRecordingTime(0)
-      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000)
+      beginTiming()
     } catch (err) {
       setError(micErrorMessage(err))
     }
   }
 
   async function stopRecording() {
+    // O tempo final é fixado ANTES de parar o relógio: `recordingTime` é o que
+    // alimenta a estimativa de processamento mais adiante, e um último tick
+    // que não chegasse a rodar deixaria a gravação com alguns segundos a menos.
+    const finalSeconds = elapsedSeconds()
+
     if (isTauriApp()) {
       setIsRecording(false)
+      setIsPaused(false)
+      setRecordingTime(finalSeconds)
       clearInterval(timerRef.current)
       unlistenWarningRef.current?.()
       unlistenWarningRef.current = null
@@ -119,6 +196,8 @@ export function useCapture({ onResult }) {
       mediaRecorderRef.current.stop()
     }
     setIsRecording(false)
+    setIsPaused(false)
+    setRecordingTime(finalSeconds)
     clearInterval(timerRef.current)
   }
 
@@ -214,8 +293,15 @@ export function useCapture({ onResult }) {
   return {
     loading, waking, error, setError,
     elapsed, estimate,
-    isRecording, recordedBlob, recordingTime,
+    isRecording, isPaused, recordedBlob, recordingTime,
+    // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
+    // relógio dela a partir deles, em vez de receber um contador que atrasa
+    // junto com os timers da janela minimizada.
+    startedAt: startedAtRef.current,
+    pausedMs: pausedMsRef.current,
+    pausedAt: pausedAtRef.current,
     startRecording, stopRecording, resetRecording,
+    pauseRecording, resumeRecording,
     submitRecording, submitFile, submitUrl,
   }
 }

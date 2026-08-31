@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { usePlatform } from '../lib/platform'
 import { sharedFileToFile } from '../lib/sharedContent'
 import { useCapture } from './capture/useCapture'
+import { useMiniRecorder } from './recorder/useMiniRecorder'
+import MiniRecorder from './recorder/MiniRecorder'
 import CaptureWeb from './capture/CaptureWeb'
 import CaptureNative from './capture/CaptureNative'
 
@@ -25,6 +28,20 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
   const { isNative, isMobile } = usePlatform()
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
+
+  // A janelinha flutuante mora aqui, e não dentro de CaptureWeb/CaptureNative,
+  // porque é aqui que a gravação existe: as duas telas são só desenho, e a
+  // janelinha precisa da mesma gravação que elas mostram.
+  const mini = useMiniRecorder({
+    isRecording: capture.isRecording,
+    isPaused: capture.isPaused,
+    startedAt: capture.startedAt,
+    pausedMs: capture.pausedMs,
+    pausedAt: capture.pausedAt,
+    onPause: capture.pauseRecording,
+    onResume: capture.resumeRecording,
+    onStop: capture.stopRecording,
+  })
 
   useEffect(() => {
     if (!autoCapture) return
@@ -66,7 +83,21 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
   // conversas" no mesmo lugar quando se troca de origem.
   return (
     <div className="capture-panel">
-      <View capture={viewCapture} variant={variant} mode={mode} />
+      <View capture={viewCapture} variant={variant} mode={mode} mini={mini} />
+      {/* No navegador a janelinha é um documento separado, mas no MESMO
+          contexto de JS: um portal desenha o React direto lá dentro, e o
+          estado chega sem passar por evento nenhum. */}
+      {mini.pipWindow && createPortal(
+        <MiniRecorder
+          seconds={capture.recordingTime}
+          paused={capture.isPaused}
+          onPause={capture.pauseRecording}
+          onResume={capture.resumeRecording}
+          onStop={() => { capture.stopRecording(); mini.close() }}
+          onClose={mini.close}
+        />,
+        mini.pipWindow.document.body,
+      )}
     </div>
   )
 }

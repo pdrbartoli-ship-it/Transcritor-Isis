@@ -1,4 +1,5 @@
 import { formatTime } from './estimate'
+import { IconPause, IconPlay, IconPopOut } from '../Icons'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
 // arquivo, textos do microfone, tamanho dos alvos de toque) fica em
@@ -39,6 +40,30 @@ export function ProcessingBox({ waking, estimate, elapsed }) {
         </div>
       )}
       <div className="processing-hint">⚠️ Não feche nem saia desta tela enquanto processa.</div>
+    </div>
+  )
+}
+
+// Controles que só existem com uma gravação em andamento: pausar/retomar e
+// destacar numa janelinha flutuante. Antes o botão grande era tudo — começar e
+// encerrar — e não havia como interromper sem encerrar de vez.
+//
+// "Destacar" só aparece onde a janelinha existe de verdade (app nativo, ou
+// Chrome/Edge no desktop). No app nativo ela também aparece sozinha quando o
+// Dito é minimizado; o botão é para quem quer deixá-la à vista antes disso.
+export function RecordingControls({ paused, onPause, onResume, mini }) {
+  return (
+    <div className="record-controls">
+      <button className="btn-ghost btn-sm" onClick={paused ? onResume : onPause}>
+        {paused
+          ? <><IconPlay width={14} height={14} /> Retomar</>
+          : <><IconPause width={14} height={14} /> Pausar</>}
+      </button>
+      {mini?.supported && !mini.isOpen && (
+        <button className="btn-ghost btn-sm" onClick={mini.open}>
+          <IconPopOut width={14} height={14} /> Destacar
+        </button>
+      )}
     </div>
   )
 }

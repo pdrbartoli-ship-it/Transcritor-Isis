@@ -30,6 +30,7 @@ const STARTUP_PROBE: Duration = Duration::from_millis(300);
 pub struct RecordingHandle {
     output_path: PathBuf,
     stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
     mic_handle: Option<JoinHandle<()>>,
     system_handle: Option<JoinHandle<()>>,
     mixer_handle: Option<JoinHandle<Result<(), String>>>,
@@ -38,6 +39,19 @@ pub struct RecordingHandle {
 impl RecordingHandle {
     pub fn output_path(&self) -> &PathBuf {
         &self.output_path
+    }
+
+    /// Pausar NÃO fecha os streams do WASAPI: os dispositivos seguem abertos e
+    /// entregando amostras, e é o mixer que para de escrevê-las no .wav. Fechar
+    /// e reabrir o dispositivo a cada pausa é justamente onde moram os bugs de
+    /// áudio (perfil de headset que troca, dispositivo que some), então o
+    /// caminho barato aqui também é o mais seguro.
+    pub fn set_paused(&self, paused: bool) {
+        self.pause_flag.store(paused, Ordering::SeqCst);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.pause_flag.load(Ordering::SeqCst)
     }
 
     pub fn stop(mut self) -> Result<(), String> {
@@ -59,6 +73,7 @@ impl RecordingHandle {
 
 pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<RecordingHandle, String> {
     let stop_flag = Arc::new(AtomicBool::new(false));
+    let pause_flag = Arc::new(AtomicBool::new(false));
 
     let (mic_tx, mic_rx) = bounded::<Vec<f32>>(64);
     let (sys_tx, sys_rx) = bounded::<Vec<f32>>(64);
@@ -109,15 +124,17 @@ pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<Recording
 
     let mixer_handle = {
         let output_path = output_path.clone();
+        let pause_flag = pause_flag.clone();
         thread::Builder::new()
             .name("audio-mixer".into())
-            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx))
+            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag))
             .map_err(|e| e.to_string())?
     };
 
     Ok(RecordingHandle {
         output_path,
         stop_flag,
+        pause_flag,
         mic_handle: Some(mic_handle),
         system_handle: Some(system_handle),
         mixer_handle: Some(mixer_handle),
@@ -259,6 +276,7 @@ fn mixer_loop(
     output_path: PathBuf,
     mic_rx: Receiver<Vec<f32>>,
     sys_rx: Receiver<Vec<f32>>,
+    pause_flag: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let spec = WavSpec {
         channels: CHANNELS,
@@ -284,6 +302,14 @@ fn mixer_loop(
 
         let mic_samples = mic_result.unwrap_or_default();
         let sys_samples = sys_result.unwrap_or_default();
+
+        // Em pausa as amostras são recebidas e descartadas: os canais precisam
+        // continuar sendo drenados (senão os `bounded(64)` enchem e travam as
+        // threads de captura), mas nada do trecho pausado entra no arquivo.
+        if pause_flag.load(Ordering::SeqCst) {
+            continue;
+        }
+
         let len = mic_samples.len().max(sys_samples.len());
 
         for i in 0..len {
