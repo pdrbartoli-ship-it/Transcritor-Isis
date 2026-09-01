@@ -6,12 +6,13 @@ import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
+import MeusDadosModal from './MeusDadosModal'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconShield,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -42,6 +43,7 @@ export default function Layout() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [listError, setListError] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showDados, setShowDados] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -245,6 +247,9 @@ export default function Layout() {
           <button className="nav-item" onClick={() => setShowPlan(true)}>
             <IconCard /> Meu plano
           </button>
+          <button className="nav-item" onClick={() => setShowDados(true)}>
+            <IconShield /> Meus dados
+          </button>
           <div className="foot-user">
             <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
             <span className="email">{user?.email}</span>
@@ -272,6 +277,7 @@ export default function Layout() {
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {showPlan && <PlanModal onClose={() => setShowPlan(false)} />}
+      {showDados && <MeusDadosModal onClose={() => setShowDados(false)} />}
       <Toast />
     </div>
   )

@@ -84,6 +84,9 @@ export const IconSearch = (p) => (
 export const IconCard = (p) => (
   <svg {...base} {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
 )
+export const IconShield = (p) => (
+  <svg {...base} {...p}><path d="M12 3l7 3v6c0 4.2-2.9 7.9-7 9-4.1-1.1-7-4.8-7-9V6z" /></svg>
+)
 export const IconPause = (p) => (
   <svg {...base} {...p}><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
 )
