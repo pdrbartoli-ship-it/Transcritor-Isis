@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { refecharCofreComChaveLocal } from '../lib/chaves'
 import { IconCheck, IconMail } from '../components/Icons'
 
 const MIN_PASSWORD = 8
@@ -69,6 +70,21 @@ export default function ConfirmEmail() {
     try {
       const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
+
+      // O cofre foi fechado com a senha ANTIGA — a nova não o abriria. Mas a
+      // chave não depende da senha para existir: ela está guardada aqui no
+      // aparelho. Neste computador (que é onde a pessoa quase sempre está),
+      // dá para refechar o cofre com a senha nova na hora, e ela não perde
+      // nada nem precisa de chave de recuperação nenhuma.
+      //
+      // Falhar aqui não pode derrubar a troca de senha: a senha já mudou, e o
+      // ChaveGate sabe lidar com o cofre desencontrado lá dentro.
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user?.id) await refecharCofreComChaveLocal(user.id, password)
+      } catch (err) {
+        console.error('refechar cofre após troca de senha:', err)
+      }
       setStatus('ok')
       setTimeout(() => navigate('/', { replace: true }), 1500)
     } catch (err) {

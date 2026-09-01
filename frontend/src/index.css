@@ -964,6 +964,11 @@ input::placeholder { color: var(--text-muted); }
 }
 .chave-senha-input:focus { outline: none; border-color: var(--accent); }
 
+/* A saída de emergência. Só aparece depois de a senha falhar — oferecê-la de
+   cara convidaria alguém a apagar o próprio acervo por impaciência. */
+.chave-recomeco { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); text-align: left; }
+.chave-recomeco p { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); margin-bottom: 12px; }
+
 /* ---------- Meus dados ---------- */
 
 .dados-bloco { padding: 16px 0; border-top: 1px solid var(--border); }

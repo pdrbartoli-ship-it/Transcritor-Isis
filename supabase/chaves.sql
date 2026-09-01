@@ -52,3 +52,14 @@ alter table public.sessions
 
 alter table public.chat_messages
   add column if not exists enc_version int;
+
+-- ── Atualização: chave de recuperação passa a ser OPCIONAL ──
+-- Rode este bloco também (ele é seguro de rodar mais de uma vez).
+--
+-- A chave de recuperação deixou de ser obrigatória no primeiro login: o caso
+-- comum de "esqueci a senha" é resolvido pelo próprio aparelho, que já tem a
+-- chave guardada e só precisa refechar o cofre com a senha nova. A chave de
+-- recuperação vira seguro opcional, gerado em "Meus dados" por quem quiser —
+-- e por isso estas duas colunas podem ficar vazias.
+alter table public.user_keys alter column recuperacao_salt  drop not null;
+alter table public.user_keys alter column recuperacao_cofre drop not null;

@@ -1,30 +1,30 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { temChave, criarChave, abrirComSenha } from '../lib/chaves'
+import { temChave, criarChave, abrirComSenha, recomecarCofre } from '../lib/chaves'
 import { temChaveNoAparelho } from '../lib/cofre'
-import ChaveRecuperacaoModal from './ChaveRecuperacaoModal'
+import { apagarInacessiveis } from '../lib/meusDados'
+import { showToast } from '../lib/toast'
 import { IconShield } from './Icons'
 
-// Garante que existe uma chave utilizável NESTE aparelho antes de deixar o app
-// funcionar. O login já cuida do caso normal, mas ele não cobre os três casos
-// em que a sessão existe e a chave não:
+// Garante que existe uma chave utilizável NESTE aparelho antes de o app rodar.
+// O login cobre o caso normal; isto cobre os três em que a sessão existe e a
+// chave não: quem já estava logado quando a criptografia subiu, quem limpou o
+// navegador, e quem voltou num aparelho onde a sessão sobreviveu e a chave não.
 //
-//   • quem já estava logado quando esta versão subiu;
-//   • quem limpou os dados do navegador;
-//   • quem voltou num perfil/aparelho onde a sessão sobreviveu e a chave não.
-//
-// Nesses casos o app não pode simplesmente seguir: sem chave, gravar uma
-// conversa nova falharia e as antigas apareceriam bloqueadas. Pedir a senha uma
-// vez resolve, e é muito melhor do que descobrir o problema no meio de uma
-// gravação.
+// A regra que não pode ser quebrada aqui: NUNCA prender o usuário. A primeira
+// versão desta tela pedia a senha e, se ela não abrisse o cofre (o que acontece
+// depois de um reset por e-mail), não oferecia mais nada — trancava a pessoa
+// para fora do app inteiro, inclusive das conversas antigas em texto puro, que
+// nem precisam de chave. Daí o "não lembro minha senha antiga": ele custa o
+// conteúdo cifrado, mas devolve a conta.
 export default function ChaveGate({ children }) {
   const { user } = useAuth()
   const [estado, setEstado] = useState('checando')  // checando | ok | desbloquear | criando
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState(null)
   const [ocupado, setOcupado] = useState(false)
-  const [chaveNova, setChaveNova] = useState(null)
+  const [oferecerRecomeco, setOferecerRecomeco] = useState(false)
 
   useEffect(() => {
     let cancelado = false
@@ -32,8 +32,6 @@ export default function ChaveGate({ children }) {
       if (!user?.id) return
       try {
         if (await temChaveNoAparelho()) { if (!cancelado) setEstado('ok'); return }
-        // Há cofre no banco? Então é caso de desbloquear. Se não há, esta conta
-        // ainda não tem chave e precisa criar uma.
         const existe = await temChave(user.id)
         if (!cancelado) setEstado(existe ? 'desbloquear' : 'criando')
       } catch {
@@ -45,33 +43,46 @@ export default function ChaveGate({ children }) {
     return () => { cancelado = true }
   }, [user?.id])
 
-  async function desbloquear(e) {
+  async function enviar(e) {
     e.preventDefault()
     setOcupado(true)
     setErro(null)
     try {
-      const dek = await abrirComSenha(user.id, senha)
-      if (!dek) throw new Error('sem cofre')
+      if (estado === 'criando') {
+        await criarChave(user.id, senha)
+      } else {
+        const dek = await abrirComSenha(user.id, senha)
+        if (!dek) throw new Error('sem cofre')
+      }
       setSenha('')
       setEstado('ok')
     } catch {
       // A decifragem é autenticada: senha errada FALHA, não devolve lixo. Por
       // isso dá para afirmar isto sem guardar hash de senha em lugar nenhum.
       setErro('Senha incorreta.')
+      setOferecerRecomeco(true)
     } finally {
       setOcupado(false)
     }
   }
 
-  async function criar(e) {
-    e.preventDefault()
+  // Cofre novo com a senha atual. O que estava cifrado com a chave antiga não
+  // volta — nem para nós — então é removido em vez de ficar de enfeite na
+  // lista. O aviso vem depois, não antes: o usuário precisa saber o que
+  // aconteceu, mas não precisa de mais um diálogo para atravessar.
+  async function recomecar() {
     setOcupado(true)
     setErro(null)
     try {
-      setChaveNova(await criarChave(user.id, senha))
+      await recomecarCofre(user.id, senha)
+      const apagadas = await apagarInacessiveis(user.id)
       setSenha('')
+      setEstado('ok')
+      if (apagadas > 0) {
+        showToast(`${apagadas} conversa(s) não podiam mais ser abertas e foram removidas`, { duration: 9000 })
+      }
     } catch {
-      setErro('Não foi possível preparar sua chave. Confira a senha e tente de novo.')
+      setErro('Não foi possível recomeçar. Tente de novo.')
     } finally {
       setOcupado(false)
     }
@@ -80,15 +91,6 @@ export default function ChaveGate({ children }) {
   async function sair() {
     await supabase.auth.signOut()
     window.location.reload()
-  }
-
-  if (chaveNova) {
-    return (
-      <ChaveRecuperacaoModal
-        chave={chaveNova}
-        onConfirmado={() => { setChaveNova(null); setEstado('ok') }}
-      />
-    )
   }
 
   if (estado === 'ok' || estado === 'checando') return children
@@ -103,12 +105,12 @@ export default function ChaveGate({ children }) {
           <h3>{criandoAgora ? 'Proteger suas conversas' : 'Desbloquear neste aparelho'}</h3>
           <p className="text-muted text-sm">
             {criandoAgora
-              ? 'Vamos criar sua chave de criptografia. A partir daí, suas conversas ficam ilegíveis para qualquer um que não seja você — nós inclusive.'
+              ? 'Vamos preparar a proteção das suas conversas. A partir daí elas ficam ilegíveis para qualquer um que não seja você — nós inclusive.'
               : 'Suas conversas são guardadas cifradas. Digite sua senha para abrir seu conteúdo neste aparelho.'}
           </p>
         </div>
 
-        <form onSubmit={criandoAgora ? criar : desbloquear}>
+        <form onSubmit={enviar}>
           <input
             type="password"
             className="chave-senha-input"
@@ -122,9 +124,22 @@ export default function ChaveGate({ children }) {
           <button className="btn-primary btn-full" disabled={ocupado || !senha}>
             {ocupado
               ? <><span className="spinner spinner-sm" /> Um instante…</>
-              : (criandoAgora ? 'Criar minha chave' : 'Desbloquear')}
+              : (criandoAgora ? 'Continuar' : 'Desbloquear')}
           </button>
         </form>
+
+        {oferecerRecomeco && !criandoAgora && (
+          <div className="chave-recomeco">
+            <p>
+              Trocou de senha por e-mail? Então o conteúdo antigo foi fechado com a senha
+              anterior e não pode mais ser aberto — <strong>nem por nós</strong>. Dá para
+              recomeçar: sua conta continua, as conversas anteriores são removidas.
+            </p>
+            <button className="btn-danger btn-full" onClick={recomecar} disabled={ocupado || !senha}>
+              Não lembro a senha antiga — recomeçar
+            </button>
+          </div>
+        )}
 
         <button className="btn-ghost btn-full" style={{ marginTop: 10 }} onClick={sair} disabled={ocupado}>
           Sair da conta

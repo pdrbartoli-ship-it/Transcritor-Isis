@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { displayTitle } from './conversas'
-import { decifrarLista, decifrarMensagens } from './cofre'
+import { decifrarLista, decifrarMensagens, ENC_ATUAL } from './cofre'
 
 // "Meus dados": levar tudo embora e apagar tudo. São as duas metades concretas
 // de "o dado é seu" — sem elas a frase é só marketing.
@@ -141,4 +141,30 @@ export async function deleteEverything(userId) {
     const { error } = await supabase.from(tabela).delete().eq('user_id', userId)
     if (error) throw error
   }
+}
+
+// Remove o que foi cifrado com uma chave que não existe mais. Acontece quando a
+// pessoa reseta a senha longe do aparelho de sempre e não tem chave de
+// recuperação: o conteúdo continua lá, íntegro e ilegível para todo mundo,
+// inclusive para nós. Guardá-lo seria acumular peso que ninguém jamais vai
+// abrir; deixá-lo na lista seria encher a tela de "(conteúdo bloqueado)".
+//
+// Só apaga o que está CIFRADO (enc_version = 1). As conversas antigas em texto
+// puro não dependem de chave nenhuma e não são tocadas.
+export async function apagarInacessiveis(userId) {
+  const { data: presas, error } = await supabase
+    .from('sessions').select('id')
+    .eq('user_id', userId).eq('enc_version', ENC_ATUAL)
+  if (error) throw error
+  if (!presas?.length) return 0
+
+  const ids = presas.map(s => s.id)
+  const { data: chats } = await supabase.from('chats').select('id').in('session_id', ids)
+  if (chats?.length) {
+    await supabase.from('chat_messages').delete().in('chat_id', chats.map(c => c.id))
+    await supabase.from('chats').delete().in('id', chats.map(c => c.id))
+  }
+  const { error: erroSessoes } = await supabase.from('sessions').delete().in('id', ids)
+  if (erroSessoes) throw erroSessoes
+  return ids.length
 }

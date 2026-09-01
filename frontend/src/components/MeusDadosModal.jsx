@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { fetchEverything, toMarkdown, toJson, deleteEverything } from '../lib/meusDados'
 import { downloadText, safeFilename } from '../pages/conversa/shared'
 import { showToast } from '../lib/toast'
 import { track } from '../lib/analytics'
-import { IconClose, IconDownload, IconTrash } from './Icons'
+import { IconClose, IconDownload, IconTrash, IconShield } from './Icons'
+import { gerarChaveRecuperacao, temChaveRecuperacao } from '../lib/chaves'
+import ChaveRecuperacaoModal from './ChaveRecuperacaoModal'
 
 // Confirmação por digitação, e não por "tem certeza?": apagar tudo é a única
 // ação do Dito que não tem volta nenhuma. Um clique a mais num diálogo de sim/
@@ -18,6 +20,26 @@ export default function MeusDadosModal({ onClose }) {
   const [texto, setTexto] = useState('')
   const [apagando, setApagando] = useState(false)
   const [erro, setErro] = useState(null)
+  const [temChaveRec, setTemChaveRec] = useState(null)
+  const [chaveGerada, setChaveGerada] = useState(null)
+  const [gerando, setGerando] = useState(false)
+
+  useEffect(() => {
+    temChaveRecuperacao(user.id).then(setTemChaveRec).catch(() => setTemChaveRec(false))
+  }, [user.id])
+
+  async function gerarChave() {
+    setGerando(true)
+    setErro(null)
+    try {
+      setChaveGerada(await gerarChaveRecuperacao(user.id))
+      setTemChaveRec(true)
+    } catch (err) {
+      setErro(err.message)
+    } finally {
+      setGerando(false)
+    }
+  }
 
   async function exportar() {
     setExportando(true)
@@ -56,12 +78,36 @@ export default function MeusDadosModal({ onClose }) {
     }
   }
 
+  if (chaveGerada) {
+    return <ChaveRecuperacaoModal chave={chaveGerada} onConfirmado={() => setChaveGerada(null)} />
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Meus dados</h3>
           <button className="btn-icon" onClick={onClose}><IconClose /></button>
+        </div>
+
+        <div className="dados-bloco">
+          <h4>Chave de recuperação</h4>
+          <p className="text-muted text-sm">
+            Suas conversas são cifradas com a sua senha — nem nós conseguimos abri-las.
+            Trocar de senha pelo seu aparelho de sempre funciona sozinho, sem chave nenhuma.
+            Ela só é necessária se você esquecer a senha <strong>e</strong> estiver num
+            aparelho novo. É um seguro: guarde num lugar seguro e esqueça que existe.
+          </p>
+          {temChaveRec === true && (
+            <p className="text-muted text-sm" style={{ marginBottom: 12 }}>
+              Você já tem uma chave. Gerar outra <strong>invalida a anterior</strong>.
+            </p>
+          )}
+          <button className="btn-secondary" onClick={gerarChave} disabled={gerando}>
+            {gerando
+              ? <><span className="spinner spinner-sm" /> Gerando…</>
+              : <><IconShield width={15} height={15} /> {temChaveRec ? 'Gerar uma nova chave' : 'Gerar minha chave'}</>}
+          </button>
         </div>
 
         <div className="dados-bloco">
