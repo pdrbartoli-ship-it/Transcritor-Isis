@@ -14,7 +14,7 @@ import { listConversations, searchConversations, formatCapturedAt, groupConversa
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconShield,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconShield, IconPlus,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -190,6 +190,13 @@ export default function Layout() {
             </button>
           </div>
         </div>
+
+        {/* Entrada permanente para começar algo, como no Claude. Antes só se
+            chegava à captura clicando na marca ou já estando na home — o que
+            deixava a ação mais frequente do app sem lugar fixo na tela. */}
+        <button className="sidebar-novo" onClick={() => navigate('/')}>
+          <IconPlus width={16} height={16} /> Novo
+        </button>
 
         {searchOpen && (
           <div className="sidebar-search">
