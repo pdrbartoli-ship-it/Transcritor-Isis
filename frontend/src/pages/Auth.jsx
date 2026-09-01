@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
+import { temChave, criarChave, abrirComSenha } from '../lib/chaves'
+import ChaveRecuperacaoModal from '../components/ChaveRecuperacaoModal'
 import { siteUrl } from '../lib/platform'
 
 const MIN_PASSWORD = 8
@@ -44,6 +46,8 @@ export default function Auth() {
   // sessão: a pessoa fica nesta tela até clicar no link que chegou por e-mail.
   const [awaitingConfirm, setAwaitingConfirm] = useState(false)
   const [resent, setResent] = useState(false)
+  // Chave recém-criada, esperando o usuário confirmar que guardou.
+  const [chaveNova, setChaveNova] = useState(null)
   const timerRef = useRef(null)
 
   // Se o componente sair de cena antes do timer, o redirecionamento não pode
@@ -63,6 +67,31 @@ export default function Auth() {
     setMessage(null)
   }
 
+  // A chave nasce aqui, no login, e não no cadastro: com a confirmação de
+  // e-mail ligada o signUp não abre sessão, e sem sessão a RLS barra a escrita
+  // na tabela de cofres. Como efeito colateral bem-vindo, isto também cria a
+  // chave para quem já tinha conta antes desta versão.
+  //
+  // Falhar aqui NÃO pode impedir o login: sem a fase 2 nada está cifrado
+  // ainda, então um erro de chave deixaria a pessoa de fora do app por um
+  // recurso que ainda não protege nada. Erra em silêncio e tenta de novo no
+  // próximo login.
+  // Devolve a chave de recuperação quando ela acabou de ser criada (e precisa
+  // ser mostrada), ou null quando só abriu o cofre que já existia.
+  async function prepararChave(user) {
+    if (!user?.id) return null
+    try {
+      if (await temChave(user.id)) {
+        await abrirComSenha(user.id, password)
+        return null
+      }
+      return await criarChave(user.id, password)
+    } catch (err) {
+      console.error('preparo da chave de criptografia:', err)
+      return null
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (mode === 'signup' && password.length < MIN_PASSWORD) {
@@ -75,8 +104,17 @@ export default function Auth() {
 
     try {
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail(email), password })
-        if (error) throw error
+        // O hold vem ANTES do login, pelo mesmo motivo do cadastro: assim que a
+        // sessão nasce, o PublicRoute redireciona no mesmo instante. Preparar a
+        // chave leva um segundo (duas derivações PBKDF2 de 600 mil iterações),
+        // e sem segurar aqui a tela da chave nunca chegaria a aparecer.
+        setHoldRedirect(true)
+        const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail(email), password })
+        if (error) { setHoldRedirect(false); throw error }
+
+        const chave = await prepararChave(data.user)
+        if (chave) setChaveNova(chave)
+        else setHoldRedirect(false)
       } else {
         // O hold precisa estar ativo antes da sessão nascer, senão o
         // PublicRoute redireciona no mesmo instante e a confirmação não aparece.
@@ -157,6 +195,17 @@ export default function Auth() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Vem antes de tudo: a sessão já existe neste ponto, e o que segura a pessoa
+  // aqui é o holdRedirect. Só sai depois de confirmar que guardou a chave.
+  if (chaveNova) {
+    return (
+      <ChaveRecuperacaoModal
+        chave={chaveNova}
+        onConfirmado={() => { setChaveNova(null); setHoldRedirect(false) }}
+      />
+    )
   }
 
   if (awaitingConfirm) {

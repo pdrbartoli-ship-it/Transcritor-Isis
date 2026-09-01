@@ -8,6 +8,7 @@ import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
 import MeusDadosModal from './MeusDadosModal'
 import Toast from './Toast'
+import { esquecerDoAparelho } from '../lib/chaves'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
 import {
@@ -127,6 +128,9 @@ export default function Layout() {
   }
 
   async function handleLogout() {
+    // A chave sai junto com a sessão. Deixá-la num computador compartilhado
+    // seria deixar o cofre destrancado para o próximo que logar ali.
+    await esquecerDoAparelho()
     await supabase.auth.signOut()
     navigate('/auth')
   }
