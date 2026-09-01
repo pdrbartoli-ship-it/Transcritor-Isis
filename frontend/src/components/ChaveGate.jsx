@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { temChave, criarChave, abrirComSenha, recomecarCofre } from '../lib/chaves'
+import { temChave, criarChave, abrirComSenha, recomecarCofre, recuperarComChave } from '../lib/chaves'
 import { temChaveNoAparelho } from '../lib/cofre'
 import { apagarInacessiveis } from '../lib/meusDados'
 import { showToast } from '../lib/toast'
@@ -25,6 +25,8 @@ export default function ChaveGate({ children }) {
   const [erro, setErro] = useState(null)
   const [ocupado, setOcupado] = useState(false)
   const [oferecerRecomeco, setOferecerRecomeco] = useState(false)
+  const [usandoChave, setUsandoChave] = useState(false)
+  const [chaveDigitada, setChaveDigitada] = useState('')
 
   useEffect(() => {
     let cancelado = false
@@ -61,6 +63,26 @@ export default function ChaveGate({ children }) {
       // isso dá para afirmar isto sem guardar hash de senha em lugar nenhum.
       setErro('Senha incorreta.')
       setOferecerRecomeco(true)
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  // O caminho que SALVA o conteúdo. A chave de recuperação abre o segundo
+  // cofre, de onde sai a mesma chave de dados de sempre — então o que estava
+  // cifrado continua abrindo. Por isso ele é oferecido antes do recomeço.
+  async function usarChaveRecuperacao(e) {
+    e.preventDefault()
+    setOcupado(true)
+    setErro(null)
+    try {
+      await recuperarComChave(user.id, chaveDigitada, senha)
+      setChaveDigitada('')
+      setSenha('')
+      setEstado('ok')
+      showToast('Conteúdo desbloqueado — nada foi perdido')
+    } catch {
+      setErro('Essa chave de recuperação não confere.')
     } finally {
       setOcupado(false)
     }
@@ -131,12 +153,37 @@ export default function ChaveGate({ children }) {
         {oferecerRecomeco && !criandoAgora && (
           <div className="chave-recomeco">
             <p>
-              Trocou de senha por e-mail? Então o conteúdo antigo foi fechado com a senha
-              anterior e não pode mais ser aberto — <strong>nem por nós</strong>. Dá para
-              recomeçar: sua conta continua, as conversas anteriores são removidas.
+              Trocou de senha por e-mail? Então o conteúdo foi fechado com a senha anterior.
+              Se você guardou uma chave de recuperação, ela abre tudo de volta —{' '}
+              <strong>sem perder nada</strong>.
+            </p>
+
+            {usandoChave ? (
+              <form onSubmit={usarChaveRecuperacao}>
+                <input
+                  className="chave-confirma-input"
+                  value={chaveDigitada}
+                  onChange={e => setChaveDigitada(e.target.value)}
+                  placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
+                  autoFocus
+                  disabled={ocupado}
+                />
+                <button className="btn-primary btn-full" disabled={ocupado || !chaveDigitada || !senha}>
+                  Desbloquear com a chave
+                </button>
+              </form>
+            ) : (
+              <button className="btn-secondary btn-full" onClick={() => setUsandoChave(true)} disabled={ocupado}>
+                Tenho uma chave de recuperação
+              </button>
+            )}
+
+            <p style={{ marginTop: 16 }}>
+              Sem a chave, o conteúdo cifrado não pode mais ser aberto — <strong>nem por nós</strong>.
+              Dá para recomeçar: sua conta continua, as conversas anteriores são removidas.
             </p>
             <button className="btn-danger btn-full" onClick={recomecar} disabled={ocupado || !senha}>
-              Não lembro a senha antiga — recomeçar
+              Não tenho a chave — recomeçar
             </button>
           </div>
         )}

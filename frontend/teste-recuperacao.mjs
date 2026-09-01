@@ -55,16 +55,19 @@ check('estado restaurado com a senha real', c1.voltou)
 console.log('\n== cenário 2: aparelho novo, senha resetada, sem chave de recuperação ==')
 // Estado idêntico ao pós-reset longe de casa: existe cofre, a senha não o abre,
 // e o aparelho não tem chave.
-const idPreso = await page.evaluate(async () => {
+const preso = await page.evaluate(async () => {
   const { supabase } = await import('/src/lib/supabase.js')
   const { createConversation } = await import('/src/lib/conversas.js')
   const { data: { user } } = await supabase.auth.getUser()
+  // Contagem relativa: o acervo do Pedro cresce entre execuções, e fixar um
+  // número faria o teste acusar falha só porque ele gravou uma conversa.
+  const antes = (await supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)).count
   const c = await createConversation(user.id, {
     transcript: 'conteudo que vai ficar preso', summary: 's', segments: [], insights: {}, title: 'Presa', duration_s: 1,
   }, 'record', 'x')
   const { esquecerDoAparelho } = await import('/src/lib/chaves.js')
   await esquecerDoAparelho()
-  return c.id
+  return { id: c.id, antes }
 })
 await page.reload(); await page.waitForTimeout(2500)
 check('a tela de desbloqueio aparece', (await page.locator('.chave-modal').count()) === 1)
@@ -94,9 +97,10 @@ const depois = await page.evaluate(async ({ idPreso }) => {
   const total = await supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
   const cif = await supabase.from('sessions').select('id').eq('user_id', user.id).eq('enc_version', 1)
   return { presaSumiu: !presa.data, total: total.count, aindaCifradas: cif.data?.length ?? 0 }
-}, { idPreso })
+}, { idPreso: preso.id })
 check('a conversa ilegível foi removida', depois.presaSumiu)
-check('as 34 antigas em texto puro seguem intactas', depois.total === 34, `(${depois.total})`)
+check('as conversas em texto puro seguem intactas', depois.total === preso.antes,
+      `(esperava ${preso.antes}, veio ${depois.total})`)
 check('não sobrou nada cifrado órfão', depois.aindaCifradas === 0)
 
 console.log('\n== gravar volta a funcionar com o cofre novo ==')
