@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { displayTitle } from './conversas'
+import { decifrarLista, decifrarMensagens } from './cofre'
 
 // "Meus dados": levar tudo embora e apagar tudo. São as duas metades concretas
 // de "o dado é seu" — sem elas a frase é só marketing.
@@ -23,9 +24,9 @@ async function fetchAllPages(build) {
 }
 
 export async function fetchEverything(userId) {
-  const conversas = await fetchAllPages(() =>
+  const conversasCruas = await fetchAllPages(() =>
     supabase.from('sessions')
-      .select('id, title, created_at, source_type, duration_s, transcript, summary, segments, insights')
+      .select('id, title, created_at, source_type, duration_s, transcript, summary, segments, insights, enc_version')
       .eq('user_id', userId)
       .order('created_at', { ascending: true }),
   )
@@ -37,14 +38,19 @@ export async function fetchEverything(userId) {
       .order('created_at', { ascending: true }),
   )
 
-  const mensagens = chats.length
+  const mensagensCruas = chats.length
     ? await fetchAllPages(() =>
         supabase.from('chat_messages')
-          .select('chat_id, role, content, created_at')
+          .select('chat_id, role, content, created_at, enc_version')
           .eq('user_id', userId)
           .order('created_at', { ascending: true }),
       )
     : []
+
+  // O backup sai em texto legível, sempre. Um arquivo cifrado seria inútil como
+  // backup: o objetivo dele é justamente sobreviver ao Dito, à senha e à chave.
+  const conversas = await decifrarLista(conversasCruas)
+  const mensagens = await decifrarMensagens(mensagensCruas)
 
   // As perguntas de cada conversa entram junto dela: no arquivo exportado, o
   // que o usuário quer reencontrar é "aquela reunião e o que perguntei sobre

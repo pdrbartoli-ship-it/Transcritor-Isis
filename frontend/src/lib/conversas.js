@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { cifrarLinha, decifrarLinha, decifrarLista, ENC_ATUAL } from './cofre'
 
 // Uma "conversa" é qualquer captura: gravação, arquivo de áudio/vídeo ou link.
 // No banco continua sendo a tabela `sessions` — o que mudou foi o produto, que
@@ -28,9 +29,9 @@ export async function ensureInbox(userId) {
 // cards da home mostram duas linhas de prévia — sem elas o card tem duas
 // linhas de conteúdo dentro de uma caixa alta, que é o que fazia a seção
 // parecer vazia mesmo cheia.
-const LIST_FIELDS = 'id, title, created_at, source_type, duration_s, summary'
+const LIST_FIELDS = 'id, title, created_at, source_type, duration_s, summary, enc_version'
 const LIST_FIELDS_BASE = 'id, title, created_at, source_type, summary'
-const FULL_FIELDS = 'id, title, created_at, source_type, transcript, summary, segments, insights, duration_s'
+const FULL_FIELDS = 'id, title, created_at, source_type, transcript, summary, segments, insights, duration_s, enc_version'
 const FULL_FIELDS_BASE = 'id, title, created_at, source_type, transcript, summary'
 
 // As colunas novas (segments, insights, duration_s) vêm de conversas.sql. Se o
@@ -57,14 +58,15 @@ export async function listConversations(userId, { limit = 50 } = {}) {
       .limit(limit),
     LIST_FIELDS, LIST_FIELDS_BASE,
   )
-  return data || []
+  return decifrarLista(data)
 }
 
 export async function getConversation(id) {
-  return selectWithFallback(
+  const linha = await selectWithFallback(
     fields => supabase.from('sessions').select(fields).eq('id', id).single(),
     FULL_FIELDS, FULL_FIELDS_BASE,
   )
+  return decifrarLinha(linha)
 }
 
 // Nomes de site conhecidos, para o rótulo dizer de onde veio em vez de repetir
@@ -125,18 +127,29 @@ export async function createConversation(userId, result, sourceType, fallbackNam
     duration_s: result.duration_s || 0,
   }
 
+  // A conversa nasce cifrada. Se não houver chave neste aparelho, cifrarLinha
+  // falha — e falhar é o certo: gravar em texto puro achando que cifrou seria
+  // o pior desfecho possível, porque ninguém ficaria sabendo.
+  const cifrada = await cifrarLinha(enriched)
+
   // Mesma proteção da listagem: sem a migração, gravar só o que já existia é
   // muito melhor do que perder a transcrição que acabou de custar tempo e API.
-  let { data, error } = await supabase.from('sessions').insert(enriched).select(LIST_FIELDS).single()
+  let { data, error } = await supabase.from('sessions').insert(cifrada).select(LIST_FIELDS).single()
   if (error?.code === MISSING_COLUMN) {
-    ({ data, error } = await supabase.from('sessions').insert(row).select(LIST_FIELDS_BASE).single())
+    const base = await cifrarLinha(row)
+    ;({ data, error } = await supabase.from('sessions').insert(base).select(LIST_FIELDS_BASE).single())
   }
   if (error) throw error
-  return data
+  invalidarBuscaLocal()
+  return decifrarLinha(data)
 }
 
-export async function renameConversation(id, title) {
-  const { error } = await supabase.from('sessions').update({ title }).eq('id', id)
+// Renomear tem de respeitar o formato da linha: cifrar o título de uma conversa
+// antiga (que segue em texto puro) deixaria a linha meio cifrada e o título
+// ilegível, porque a leitura decide pelo enc_version da linha inteira.
+export async function renameConversation(id, title, encVersion) {
+  const patch = encVersion === ENC_ATUAL ? await cifrarLinha({ title }) : { title }
+  const { error } = await supabase.from('sessions').update(patch).eq('id', id)
   if (error) throw error
 }
 
@@ -149,34 +162,61 @@ export async function deleteConversation(id) {
 // cujo TÍTULO casa (é o que ele costuma lembrar), depois as que só mencionam o
 // termo em algum ponto da transcrição. Uma conversa que aparece nos dois não é
 // repetida embaixo.
+//
+// Antes quem procurava era o Postgres, com `ilike` e índice. Com o conteúdo
+// cifrado isso deixou de ser possível: o banco vê bytes embaralhados, e um
+// `ilike` neles não casa com nada — ele não daria erro, apenas responderia
+// "não achei" para sempre, que é a pior forma de quebrar uma busca.
+//
+// Então o acervo é trazido, decifrado e procurado aqui. Na escala do Dito isso
+// é barato: uma hora de reunião dá ~50 KB de texto, e procurar em memória leva
+// milissegundos. O custo real é a primeira busca de cada sessão, que baixa o
+// acervo — por isso ele fica em cache até a lista mudar.
+const PAGINA = 200
+let cacheAcervo = { userId: null, linhas: null }
+
+export function invalidarBuscaLocal() {
+  cacheAcervo = { userId: null, linhas: null }
+}
+
+async function carregarAcervo(userId) {
+  if (cacheAcervo.userId === userId && cacheAcervo.linhas) return cacheAcervo.linhas
+
+  const todas = []
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase.from('sessions')
+      .select('id, title, created_at, source_type, duration_s, summary, transcript, enc_version')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(de, de + PAGINA - 1)
+    if (error) throw error
+    todas.push(...(data || []))
+    if (!data || data.length < PAGINA) break
+  }
+
+  const linhas = await decifrarLista(todas)
+  cacheAcervo = { userId, linhas }
+  return linhas
+}
+
 export async function searchConversations(userId, term) {
   const query = term.trim()
   if (!query) return { titles: [], transcripts: [] }
 
-  // `%` e `_` são curingas do ilike: sem escapar, buscar "100%" traz tudo.
-  const pattern = `%${query.replace(/[\\%_]/g, c => `\\${c}`)}%`
+  const acervo = await carregarAcervo(userId)
+  const alvo = query.toLowerCase()
+  const contem = texto => String(texto || '').toLowerCase().includes(alvo)
 
-  const [titles, byTranscript] = await Promise.all([
-    selectWithFallback(
-      fields => supabase.from('sessions').select(fields)
-        .eq('user_id', userId).ilike('title', pattern)
-        .order('created_at', { ascending: false }).limit(20),
-      LIST_FIELDS, LIST_FIELDS_BASE,
-    ),
-    selectWithFallback(
-      fields => supabase.from('sessions').select(fields)
-        .eq('user_id', userId).ilike('transcript', pattern)
-        .order('created_at', { ascending: false }).limit(20),
-      `${LIST_FIELDS}, transcript`, `${LIST_FIELDS_BASE}, transcript`,
-    ),
-  ])
+  const titles = acervo.filter(c => contem(c.title)).slice(0, 20)
+  const vistos = new Set(titles.map(c => c.id))
 
-  const seen = new Set((titles || []).map(c => c.id))
-  const transcripts = (byTranscript || [])
-    .filter(c => !seen.has(c.id))
+  const transcripts = acervo
+    .filter(c => !vistos.has(c.id) && contem(c.transcript))
+    .slice(0, 20)
+    // A transcrição inteira não vai para a tela: só o trecho em volta do termo.
     .map(c => ({ ...c, excerpt: excerptAround(c.transcript, query), transcript: undefined }))
 
-  return { titles: titles || [], transcripts }
+  return { titles: titles.map(c => ({ ...c, transcript: undefined })), transcripts }
 }
 
 // Trecho curto em volta da primeira ocorrência, para o resultado mostrar em que

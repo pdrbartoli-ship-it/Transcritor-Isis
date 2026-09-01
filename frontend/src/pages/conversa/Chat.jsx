@@ -8,6 +8,7 @@ import ChatTextarea from '../../components/chat/ChatTextarea'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import { cifrarMensagem, decifrarMensagens } from '../../lib/cofre'
 
 // Cada mensagem reenvia o histórico; sem teto, uma conversa longa cresce sem
 // parar. O corte é por mensagem, para uma resposta gigante não comer o espaço
@@ -68,9 +69,10 @@ export default function Chat() {
       if (chat) {
         setChatId(chat.id)
         const { data: msgs } = await supabase
-          .from('chat_messages').select('role, content')
+          .from('chat_messages').select('role, content, enc_version')
           .eq('chat_id', chat.id).order('created_at')
-        if (!cancelled) setMessages(msgs || [])
+        const abertas = await decifrarMensagens(msgs)
+        if (!cancelled) setMessages(abertas)
       }
       if (!cancelled) setReady(true)
     })()
@@ -148,9 +150,14 @@ export default function Chat() {
         id = data.id
         setChatId(id)
       }
+      // A pergunta e a resposta são conteúdo do usuário como qualquer outro:
+      // guardá-las em claro deixaria pela porta dos fundos justamente o resumo
+      // do que foi dito na conversa.
+      const pergunta = await cifrarMensagem(text)
+      const resposta = await cifrarMensagem(result.answer)
       await supabase.from('chat_messages').insert([
-        { chat_id: id, user_id: user.id, role: 'user', content: text },
-        { chat_id: id, user_id: user.id, role: 'assistant', content: result.answer },
+        { chat_id: id, user_id: user.id, role: 'user', ...pergunta },
+        { chat_id: id, user_id: user.id, role: 'assistant', ...resposta },
       ])
     } catch {}
   }

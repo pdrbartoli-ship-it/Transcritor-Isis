@@ -8,6 +8,7 @@ import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
 import MeusDadosModal from './MeusDadosModal'
 import Toast from './Toast'
+import ChaveGate from './ChaveGate'
 import { esquecerDoAparelho } from '../lib/chaves'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
@@ -274,7 +275,11 @@ export default function Layout() {
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
         </div>
         <div className="content">
-          <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
+          {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
+              gravar falharia e o que já existe apareceria bloqueado. */}
+          <ChaveGate>
+            <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
+          </ChaveGate>
         </div>
       </div>
 
