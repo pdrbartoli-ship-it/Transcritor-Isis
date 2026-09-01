@@ -5,9 +5,29 @@ import { IconClose, IconPause, IconPlay, IconStopCircle } from '../Icons'
 // Cada barra responde a uma fração diferente do nível, senão as cinco subiriam
 // e desceriam como um bloco só — que lê como uma barra de progresso, não como
 // som. As do meio reagem mais, como num medidor de verdade.
-const WAVE_WEIGHTS = [0.45, 0.8, 1, 0.75, 0.5]
+const WAVE_WEIGHTS = [0.55, 0.85, 1, 0.8, 0.6]
 const MIN_SCALE = 0.12
-const GAIN = 1.8
+
+// Faixa útil do medidor, em decibéis. O ouvido é logarítmico: a amplitude crua
+// da fala normal fica entre 0,03 e 0,15, então mapear 0..1 direto na altura
+// deixava a barra praticamente parada — era preciso gritar para mexer nela.
+// Em dB essa mesma fala ocupa a metade de cima da faixa, que é onde ela deve
+// estar. O piso em -58 dB fica logo abaixo do rumor de sala.
+const DB_FLOOR = -58
+const DB_CEIL = -8
+
+// Ataque instantâneo, queda suave — é assim que medidor de áudio se comporta.
+// Subir na hora é o que faz cada sílaba aparecer; descer devagar é o que evita
+// a barra piscar entre as sílabas. Antes quem amortecia era uma transição CSS
+// de 80ms, e como o desenho é reescrito a cada quadro ela reiniciava sem parar:
+// o valor mostrado nunca alcançava o real, justamente nos transientes.
+const RELEASE = 0.16
+
+function perceptual(level) {
+  if (level <= 0.00013) return 0            // -78 dB: silêncio digital
+  const db = 20 * Math.log10(level)
+  return Math.max(0, Math.min(1, (db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)))
+}
 
 // A janelinha em si — só desenho, nenhuma regra de gravação. Os dois
 // hospedeiros (a janela nativa do Windows e a janela de picture-in-picture do
@@ -35,12 +55,16 @@ export default function MiniRecorder({
     // quando esta aqui está sendo olhada.
     const view = barsRef.current[0]?.ownerDocument?.defaultView || window
     let raf = null
+    let shown = 0
 
     const draw = () => {
-      const level = paused ? 0 : (getLevel?.() || 0)
+      const target = paused ? 0 : perceptual(getLevel?.() || 0)
+      // Sobe de uma vez, desce interpolando.
+      shown = target > shown ? target : shown + (target - shown) * RELEASE
+
       barsRef.current.forEach((bar, i) => {
         if (!bar) return
-        const scale = Math.max(MIN_SCALE, Math.min(1, level * WAVE_WEIGHTS[i] * GAIN))
+        const scale = Math.max(MIN_SCALE, Math.min(1, shown * WAVE_WEIGHTS[i]))
         bar.style.transform = `scaleY(${scale})`
       })
       raf = view.requestAnimationFrame(draw)

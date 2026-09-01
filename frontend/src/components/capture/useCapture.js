@@ -76,7 +76,10 @@ export function useCapture({ onResult }) {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
       const analyser = ctx.createAnalyser()
-      analyser.fftSize = 512
+      // 2048 amostras ≈ 43ms a 48kHz. Com os 512 de antes cada leitura via só
+      // ~10ms, e como elas acontecem a cada 50ms, quatro quintos do áudio —
+      // picos de sílaba inclusive — passavam sem ser vistos.
+      analyser.fftSize = 2048
       ctx.createMediaStreamSource(stream).connect(analyser)
       audioCtxRef.current = ctx
 
@@ -100,7 +103,7 @@ export function useCapture({ onResult }) {
         levelRef.current = peak
       }
       read()
-      levelRafRef.current = setInterval(read, 50)
+      levelRafRef.current = setInterval(read, 40)
     } catch {
       // Sem medidor a gravação continua igual; só a onda fica parada.
     }

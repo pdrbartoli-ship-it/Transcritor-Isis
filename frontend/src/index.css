@@ -926,13 +926,14 @@ input::placeholder { color: var(--text-muted); }
 .mini-brand .brand { font-size: 17px; cursor: default; }
 
 /* As cinco barras da onda. A altura é escrita pelo JS a cada quadro, a partir
-   do áudio que está entrando; aqui fica só a aparência e o amortecimento que
-   evita o serrilhado entre uma leitura e a seguinte. */
+   do áudio que está entrando. Sem `transition` de propósito: o desenho já é
+   reescrito a cada quadro com queda suave própria, e uma transição por cima
+   disso só atrasaria o valor mostrado — era o que comia os transientes da
+   fala e fazia a barra parecer surda. */
 .mini-wave { display: flex; align-items: center; gap: 2.5px; height: 20px; flex-shrink: 0; }
 .mini-wave span {
   width: 2.5px; height: 100%; border-radius: 2px; background: var(--accent);
   transform: scaleY(0.12); transform-origin: center;
-  transition: transform .08s linear;
 }
 .mini-wave.paused span { background: var(--text-muted); }
 
