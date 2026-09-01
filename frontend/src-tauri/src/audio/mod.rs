@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
 
@@ -26,6 +26,10 @@ const CHANNELS: u16 = 1;
 /// se um dispositivo está mesmo disponível (usado só pra decidir se
 /// `start_recording` deve falhar por falta de mic *e* de saída de áudio).
 const STARTUP_PROBE: Duration = Duration::from_millis(300);
+/// De quanto em quanto tempo o nível de áudio vai para a janelinha. 100ms dá
+/// dez quadros por segundo — o bastante para a onda parecer viva sem inundar a
+/// ponte de eventos.
+const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct RecordingHandle {
     output_path: PathBuf,
@@ -125,9 +129,10 @@ pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<Recording
     let mixer_handle = {
         let output_path = output_path.clone();
         let pause_flag = pause_flag.clone();
+        let app = app.clone();
         thread::Builder::new()
             .name("audio-mixer".into())
-            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag))
+            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag, app))
             .map_err(|e| e.to_string())?
     };
 
@@ -268,6 +273,19 @@ fn capture_stream(
     Ok(())
 }
 
+/// Manda o pico acumulado para o JS e zera o acumulador, no máximo uma vez a
+/// cada `LEVEL_INTERVAL`. Chamado a cada volta do mixer; é ele que decide se
+/// já é hora de emitir, para a decisão não ficar repetida nos dois pontos de
+/// chamada (gravando e pausado).
+fn emit_level(app: &AppHandle, peak: &mut f32, last_at: &mut Instant) {
+    if last_at.elapsed() < LEVEL_INTERVAL {
+        return;
+    }
+    let _ = app.emit("recording-level", *peak);
+    *peak = 0.0;
+    *last_at = Instant::now();
+}
+
 /// Recebe blocos de amostras dos dois streams, soma+clampa amostra a
 /// amostra (com silêncio no lado que não tiver dado disponível — é assim
 /// que a degradação graciosa acontece: sem um dos dois streams, o outro
@@ -277,6 +295,7 @@ fn mixer_loop(
     mic_rx: Receiver<Vec<f32>>,
     sys_rx: Receiver<Vec<f32>>,
     pause_flag: Arc<AtomicBool>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let spec = WavSpec {
         channels: CHANNELS,
@@ -288,6 +307,11 @@ fn mixer_loop(
     let mut writer = WavWriter::new(BufWriter::new(file), spec).map_err(|e| e.to_string())?;
 
     let poll_timeout = Duration::from_millis(50);
+    // O nível vai para a janelinha desenhar a onda. Só o pico de cada janela de
+    // ~100ms é enviado: um evento por bloco de amostras seriam centenas por
+    // segundo para alimentar cinco barrinhas, e o olho não vê diferença.
+    let mut level_peak: f32 = 0.0;
+    let mut last_level_at = Instant::now();
 
     loop {
         let mic_result = mic_rx.recv_timeout(poll_timeout);
@@ -307,6 +331,10 @@ fn mixer_loop(
         // continuar sendo drenados (senão os `bounded(64)` enchem e travam as
         // threads de captura), mas nada do trecho pausado entra no arquivo.
         if pause_flag.load(Ordering::SeqCst) {
+            // Zerado, e não simplesmente sem emitir: sem isto a onda congelaria
+            // no último nível em vez de baixar quando a gravação pausa.
+            level_peak = 0.0;
+            emit_level(&app, &mut level_peak, &mut last_level_at);
             continue;
         }
 
@@ -316,11 +344,14 @@ fn mixer_loop(
             let mic_sample = mic_samples.get(i).copied().unwrap_or(0.0);
             let sys_sample = sys_samples.get(i).copied().unwrap_or(0.0);
             let mixed = (mic_sample + sys_sample).clamp(-1.0, 1.0);
+            level_peak = level_peak.max(mixed.abs());
             let sample_i16 = (mixed * i16::MAX as f32) as i16;
             writer
                 .write_sample(sample_i16)
                 .map_err(|e| e.to_string())?;
         }
+
+        emit_level(&app, &mut level_peak, &mut last_level_at);
     }
 
     writer.finalize().map_err(|e| e.to_string())?;

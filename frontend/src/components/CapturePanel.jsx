@@ -91,6 +91,7 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
         <MiniRecorder
           seconds={capture.recordingTime}
           paused={capture.isPaused}
+          getLevel={capture.getLevel}
           onPause={capture.pauseRecording}
           onResume={capture.resumeRecording}
           onStop={() => { capture.stopRecording(); mini.close() }}

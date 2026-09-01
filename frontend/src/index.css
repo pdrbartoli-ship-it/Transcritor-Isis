@@ -912,68 +912,72 @@ input::placeholder { color: var(--text-muted); }
 .mini-body { margin: 0; overflow: hidden; background: var(--bg); }
 
 .mini-recorder {
-  display: flex; align-items: center; gap: 11px;
-  box-sizing: border-box; width: 100%; height: 100%; min-height: 96px;
-  padding: 0 14px;
+  display: flex; align-items: center; gap: 9px;
+  box-sizing: border-box; width: 100%; height: 100%; min-height: 72px;
+  padding: 0 11px;
   background: var(--surface); color: var(--text);
-  border: 1px solid var(--border); border-radius: 14px;
+  border: 1px solid var(--border); border-radius: 12px;
   font-family: var(--font-sans);
   /* A janela nativa não tem barra de título: é arrastando o corpo dela que se
      tira ela da frente, e o cursor precisa dizer isso. */
   cursor: default; user-select: none;
 }
 .mini-brand { flex-shrink: 0; }
-.mini-brand .brand { font-size: 20px; cursor: default; }
+.mini-brand .brand { font-size: 17px; cursor: default; }
 
-/* As cinco barras da onda — o mesmo sinal de "estou ouvindo" da referência. */
-.mini-wave { display: flex; align-items: center; gap: 3px; height: 26px; flex-shrink: 0; }
+/* As cinco barras da onda. A altura é escrita pelo JS a cada quadro, a partir
+   do áudio que está entrando; aqui fica só a aparência e o amortecimento que
+   evita o serrilhado entre uma leitura e a seguinte. */
+.mini-wave { display: flex; align-items: center; gap: 2.5px; height: 20px; flex-shrink: 0; }
 .mini-wave span {
-  width: 3px; height: 100%; border-radius: 2px; background: var(--accent);
-  animation: mini-wave 1s ease-in-out infinite;
+  width: 2.5px; height: 100%; border-radius: 2px; background: var(--accent);
+  transform: scaleY(0.12); transform-origin: center;
+  transition: transform .08s linear;
 }
-.mini-wave.paused span { animation: none; height: 5px; background: var(--text-muted); }
-@keyframes mini-wave {
-  0%, 100% { transform: scaleY(0.25); }
-  50% { transform: scaleY(1); }
-}
+.mini-wave.paused span { background: var(--text-muted); }
 
-.mini-status { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mini-time { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.mini-label { font-size: 11px; color: var(--text-muted); }
+.mini-status { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0; }
+.mini-time { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mini-label { font-size: 10.5px; color: var(--text-muted); }
 
-.mini-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.mini-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 .mini-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: 50%;
+  width: 25px; height: 25px; border-radius: 50%;
   background: transparent; color: var(--text-muted); cursor: pointer;
 }
 .mini-btn:hover { background: var(--hover); color: var(--text); }
 .mini-btn.stop:hover { color: var(--record); }
-.mini-btn.close { width: 24px; height: 24px; }
+.mini-btn.close { width: 22px; height: 22px; }
 
+/* Uma linha só, largura do conteúdo, sem botão de fechar: é uma confirmação de
+   passagem, não uma caixa de diálogo. `width: max-content` é o que a mantém
+   justa ao texto em vez de esticada até um limite fixo. */
+/* A faixa ocupa a largura toda e centraliza o aviso; o aviso é que encolhe até
+   o próprio texto. Dar largura ao PAI é o que evita o ciclo: com o pai em
+   `max-content` e o filho em `max-width: 100%`, cada um depende da largura do
+   outro e o navegador resolve o impasse em zero — o aviso somia.
+   `pointer-events` impede que essa faixa invisível engula cliques da página. */
 .toast-stack {
-  position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
-  z-index: 1000; display: flex; flex-direction: column; gap: 8px;
-  width: 100%; max-width: 380px; padding: 0 16px;
+  position: fixed; left: 0; right: 0; bottom: 96px;
+  z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 16px; pointer-events: none;
 }
 .toast {
-  display: flex; align-items: flex-start; gap: 10px;
+  display: flex; align-items: center; gap: 9px;
+  max-width: min(440px, 100%); pointer-events: auto;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); box-shadow: var(--shadow);
-  padding: 12px 14px; font-size: 13.5px; color: var(--text);
-  animation: toast-in .18s ease-out;
+  border-radius: 999px; box-shadow: var(--shadow);
+  padding: 9px 16px; font-size: 13px; color: var(--text);
+  cursor: default; animation: toast-in .18s ease-out;
 }
-.toast-icon { flex-shrink: 0; margin-top: 1px; color: var(--accent); }
-.toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.toast-msg { line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.toast-detail { font-size: 12px; color: var(--text-muted); }
+.toast-icon { flex-shrink: 0; color: var(--accent); }
+.toast-msg { min-width: 0; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toast-action {
-  flex-shrink: 0; align-self: center; font-size: 12.5px; font-weight: 600;
-  color: var(--accent); background: transparent; padding: 4px 6px;
+  flex-shrink: 0; font-size: 12.5px; font-weight: 600;
+  color: var(--accent); background: transparent; padding: 2px 2px;
 }
 .toast-action:hover { text-decoration: underline; }
-.toast-close { flex-shrink: 0; color: var(--text-muted); padding: 2px; margin-top: 1px; }
-.toast-close:hover { color: var(--text); }
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

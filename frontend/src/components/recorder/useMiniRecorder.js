@@ -58,7 +58,7 @@ export function useMiniRecorder({
     }
     if (!('documentPictureInPicture' in window)) return
     try {
-      const pip = await window.documentPictureInPicture.requestWindow({ width: 268, height: 96 })
+      const pip = await window.documentPictureInPicture.requestWindow({ width: 232, height: 74 })
       copyStyles(pip)
       pip.addEventListener('pagehide', () => setPipWindow(null))
       setPipWindow(pip)

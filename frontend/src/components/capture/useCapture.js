@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { readFile } from '@tauri-apps/plugin-fs'
@@ -44,6 +44,20 @@ export function useCapture({ onResult }) {
   const pausedMsRef = useRef(0)
   const pausedAtRef = useRef(null)
 
+  // Nível do áudio, 0..1 — é o que faz a onda da janelinha reagir ao que está
+  // sendo dito em vez de pulsar sozinha. Uma onda decorativa mente: ela diz
+  // "estou captando" mesmo com o microfone mudo, que é justamente quando o
+  // usuário mais precisa saber a verdade.
+  //
+  // Fica num ref, e não em estado: isto muda dezenas de vezes por segundo, e
+  // como estado arrastaria a árvore inteira do painel de captura junto a cada
+  // quadro. Quem desenha a onda lê daqui no próprio ritmo (ver MiniRecorder).
+  const levelRef = useRef(0)
+  const audioCtxRef = useRef(null)
+  const levelRafRef = useRef(null)
+  const unlistenLevelRef = useRef(null)
+  const getLevel = useCallback(() => levelRef.current, [])
+
   function elapsedSeconds() {
     if (!startedAtRef.current) return 0
     const until = pausedAtRef.current ?? Date.now()
@@ -55,12 +69,61 @@ export function useCapture({ onResult }) {
     timerRef.current = setInterval(() => setRecordingTime(elapsedSeconds()), 500)
   }
 
+  // No navegador o nível sai do próprio stream do microfone, por um analisador
+  // do Web Audio. O pico da janela é mais legível que a média: fala normal tem
+  // muito silêncio entre as sílabas, e a média deixaria a onda quase parada.
+  function startLevelMeter(stream) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      ctx.createMediaStreamSource(stream).connect(analyser)
+      audioCtxRef.current = ctx
+
+      const buffer = new Uint8Array(analyser.frequencyBinCount)
+      // setInterval, e não requestAnimationFrame: o rAF da janela principal é
+      // congelado pelo navegador quando ela é minimizada — exatamente quando a
+      // janelinha existe para ser olhada. O intervalo é estrangulado nesse
+      // estado, mas não para, e quem desenha a onda amostra no ritmo da PRÓPRIA
+      // janela (que está visível), então a leitura continua chegando.
+      const read = () => {
+        // Pausado, o microfone continua aberto e o analisador continua ouvindo
+        // a sala — mas nada disso está sendo gravado, então a onda tem de
+        // ficar parada. Reportar o nível real aqui seria mentir ao contrário.
+        if (pausedAtRef.current) {
+          levelRef.current = 0
+          return
+        }
+        analyser.getByteTimeDomainData(buffer)
+        let peak = 0
+        for (const v of buffer) peak = Math.max(peak, Math.abs(v - 128) / 128)
+        levelRef.current = peak
+      }
+      read()
+      levelRafRef.current = setInterval(read, 50)
+    } catch {
+      // Sem medidor a gravação continua igual; só a onda fica parada.
+    }
+  }
+
+  function stopLevelMeter() {
+    clearInterval(levelRafRef.current)
+    levelRafRef.current = null
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+    unlistenLevelRef.current?.()
+    unlistenLevelRef.current = null
+    levelRef.current = 0
+  }
+
   useEffect(() => () => {
     clearInterval(timerRef.current)
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    stopLevelMeter()
     unlistenWarningRef.current?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Conta os segundos enquanto processa + avisa antes de sair da página.
@@ -142,6 +205,9 @@ export function useCapture({ onResult }) {
           setError(event.payload)
         })
         await invoke('start_recording')
+        // No app nativo quem mede o nível é o Rust, que já tem as amostras
+        // mixadas na mão — o JS aqui não vê o áudio em momento nenhum.
+        unlistenLevelRef.current = await listen('recording-level', e => { levelRef.current = e.payload || 0 })
         setIsRecording(true)
         beginTiming()
       } catch (err) {
@@ -160,10 +226,12 @@ export function useCapture({ onResult }) {
         stream.getTracks().forEach(t => t.stop())
         setRecordedBlob(new Blob(chunksRef.current, { type: 'audio/webm' }))
         clearInterval(timerRef.current)
+        stopLevelMeter()
       }
       recorder.start()
       setIsRecording(true)
       beginTiming()
+      startLevelMeter(stream)
     } catch (err) {
       setError(micErrorMessage(err))
     }
@@ -180,6 +248,7 @@ export function useCapture({ onResult }) {
       setIsPaused(false)
       setRecordingTime(finalSeconds)
       clearInterval(timerRef.current)
+      stopLevelMeter()
       unlistenWarningRef.current?.()
       unlistenWarningRef.current = null
       try {
@@ -293,7 +362,7 @@ export function useCapture({ onResult }) {
   return {
     loading, waking, error, setError,
     elapsed, estimate,
-    isRecording, isPaused, recordedBlob, recordingTime,
+    isRecording, isPaused, recordedBlob, recordingTime, getLevel,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
     // relógio dela a partir deles, em vez de receber um contador que atrasa
     // junto com os timers da janela minimizada.

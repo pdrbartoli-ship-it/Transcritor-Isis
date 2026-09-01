@@ -55,9 +55,9 @@ export default function Conversa() {
     const filename = safeFilename(conversation.title)
     const result = await downloadOrShareText(filename, buildTranscriptFile(conversation))
     if (result === 'shared') {
-      showToast(`Transcrição compartilhada · ${filename}`)
+      showToast('Transcrição compartilhada')
     } else if (result === 'downloaded') {
-      showToast(`Transcrição baixada · ${filename}`, { detail: 'Verifique a pasta de downloads do seu aparelho.' })
+      showToast(`Transcrição baixada · ${filename}`)
     }
   }
 

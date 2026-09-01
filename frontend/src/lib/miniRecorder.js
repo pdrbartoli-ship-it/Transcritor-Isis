@@ -18,8 +18,8 @@ const MINI_LABEL = 'mini'
 
 // Tamanho da janelinha, em pixels lógicos. Cabe o símbolo, a onda, o relógio e
 // os três botões sem apertar nada.
-const MINI_W = 268
-const MINI_H = 96
+const MINI_W = 232
+const MINI_H = 74
 const MARGIN = 24
 
 // Importação dinâmica: no navegador comum estes módulos nunca são carregados, e
@@ -101,6 +101,16 @@ export async function listenRecordingState(callback) {
   if (!isTauriApp()) return () => {}
   const { listen } = await tauriEvent()
   return listen(STATE_EVENT, event => callback(event.payload))
+}
+
+// Nível de áudio (0..1) para a onda. Vem do Rust, que é quem tem as amostras
+// mixadas, e é ouvido DIRETO pela janelinha — a janela principal está
+// minimizada quando a janelinha existe, e retransmitir por ela colocaria os
+// timers estrangulados dela no meio do caminho.
+export async function listenRecordingLevel(callback) {
+  if (!isTauriApp()) return () => {}
+  const { listen } = await tauriEvent()
+  return listen('recording-level', event => callback(event.payload || 0))
 }
 
 // ── Comandos: janelinha → principal ──────────────────────────
