@@ -152,16 +152,7 @@ a.btn-primary, a.btn-secondary, a.btn-ghost { display: inline-block; box-sizing:
   border: 1px solid var(--border);
 }
 .btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
-.btn-secondary, .btn-danger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-
-/* Contornado, não preenchido: um botão vermelho sólido puxa o olho e convida o
-   clique, que é o oposto do que "apagar tudo" precisa fazer. Ele só fica
-   sólido no hover, quando a intenção já é deliberada. */
-.btn-danger {
-  background: transparent; color: var(--danger);
-  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--danger);
-}
-.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 
 .btn-ghost {
   background: transparent;
@@ -930,77 +921,6 @@ input::placeholder { color: var(--text-muted); }
 
 .conversa-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .conversa-actions .btn-primary { display: inline-flex; align-items: center; gap: 7px; }
-
-/* ---------- Chave de recuperação ---------- */
-
-/* Sem clicar-fora-para-fechar e sem "x": pular esta tela custa o acervo no
-   primeiro reset de senha. O overlay mais opaco que o normal é proposital —
-   nada atrás dela é mais importante do que ela agora. */
-.chave-overlay { background: rgba(0,0,0,.62); }
-.chave-modal { max-width: 460px; text-align: center; }
-.chave-cabeca { margin-bottom: 20px; }
-.chave-escudo {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 46px; height: 46px; border-radius: 50%; margin-bottom: 12px;
-  background: var(--accent-soft); color: var(--accent);
-}
-.chave-cabeca h3 { font-family: var(--font-serif); font-size: 20px; font-weight: 500; margin-bottom: 8px; }
-.chave-cabeca p { line-height: 1.55; }
-
-/* Monoespaçada e generosa: isto vai ser copiado à mão de uma tela para um
-   papel, e é aí que um caractere ambíguo vira chamado de suporte. */
-.chave-valor {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 17px; font-weight: 600; letter-spacing: .06em;
-  padding: 16px 12px; margin-bottom: 12px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); user-select: all; word-break: break-all;
-}
-.chave-acoes { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
-.chave-aviso {
-  font-size: 12.5px; line-height: 1.5; text-align: left;
-  padding: 11px 13px; margin-bottom: 18px;
-  background: var(--danger-bg); color: var(--danger);
-  border-radius: var(--radius-sm);
-}
-.chave-confirma-label { display: block; font-size: 13px; text-align: left; margin-bottom: 7px; }
-.chave-confirma-input {
-  width: 100%; padding: 10px 12px; margin-bottom: 14px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 16px; letter-spacing: .12em; text-align: center; text-transform: uppercase;
-}
-.chave-confirma-input:focus { outline: none; border-color: var(--accent); }
-.chave-senha-input {
-  width: 100%; padding: 11px 13px; margin-bottom: 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
-  font-family: inherit; font-size: 14px;
-}
-.chave-senha-input:focus { outline: none; border-color: var(--accent); }
-
-/* A saída de emergência. Só aparece depois de a senha falhar — oferecê-la de
-   cara convidaria alguém a apagar o próprio acervo por impaciência. */
-.chave-recomeco { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); text-align: left; }
-.chave-recomeco p { font-size: 12.5px; line-height: 1.55; color: var(--text-muted); margin-bottom: 12px; }
-
-/* ---------- Meus dados ---------- */
-
-.dados-bloco { padding: 16px 0; border-top: 1px solid var(--border); }
-.dados-bloco:first-of-type { border-top: none; padding-top: 4px; }
-.dados-bloco h4 { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
-.dados-bloco p { margin-bottom: 12px; line-height: 1.55; }
-.dados-bloco.perigo h4 { color: var(--danger); }
-.dados-confirm-label { display: block; font-size: 13px; margin-bottom: 7px; }
-.dados-confirm-input {
-  width: 100%; padding: 9px 12px; margin-bottom: 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
-  font-family: inherit; font-size: 14px;
-}
-.dados-confirm-input:focus { outline: none; border-color: var(--danger); }
-.dados-confirm-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- Janelinha de gravação (picture-in-picture) ---------- */
 

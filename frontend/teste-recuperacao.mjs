@@ -17,105 +17,70 @@ async function logar() {
   await page.click('button[type="submit"]'); await page.waitForTimeout(4000)
 }
 
-console.log('\n== login não pede mais nada (chave de recuperação virou opcional) ==')
+console.log('\n== login não tem tela nenhuma de chave — nunca teve pra usuário comum ==')
 await logar()
-check('NÃO aparece tela obrigatória de chave', (await page.locator('.chave-modal').count()) === 0)
+check('nenhuma tela de chave aparece', (await page.locator('.chave-modal').count()) === 0)
 check('entra direto no app', (await page.locator('.app-shell').count()) === 1)
 
-console.log('\n== cenário 1: troquei a senha NO MEU APARELHO ==')
+console.log('\n== o caso comum: troquei a senha NO MEU APARELHO ==')
+// É o único caminho de recuperação que existe hoje: sem chave de recuperação,
+// sem tela de desbloqueio, o que resta é o refechamento automático que o
+// ConfirmEmail dispara depois de um reset de senha bem-sucedido.
 const c1 = await page.evaluate(async ({ senhaReal }) => {
- try {
-  const { supabase } = await import('/src/lib/supabase.js')
-  const { refecharCofreComChaveLocal, abrirComSenha } = await import('/src/lib/chaves.js')
-  const { encryptText, decryptText } = await import('/src/lib/crypto.js')
-  const { lerDoAparelho } = await import('/src/lib/chaves.js')
-  const { data: { user } } = await supabase.auth.getUser()
+  try {
+    const { supabase } = await import('/src/lib/supabase.js')
+    const { refecharCofreComChaveLocal, abrirComSenha, lerDoAparelho } = await import('/src/lib/chaves.js')
+    const { encryptText, decryptText } = await import('/src/lib/crypto.js')
+    const { data: { user } } = await supabase.auth.getUser()
 
-  // Cifra algo com a chave atual
-  const dek = await lerDoAparelho()
-  const segredo = await encryptText(dek, 'ata da reunião de ontem')
+    const dek = await lerDoAparelho()
+    const segredo = await encryptText(dek, 'ata da reunião de ontem')
 
-  // Simula o reset: refecha o cofre com uma senha NOVA usando a chave local
-  await refecharCofreComChaveLocal(user.id, 'senha-nova-123456')
+    // Simula o reset: refecha o cofre com uma senha NOVA usando a chave local.
+    await refecharCofreComChaveLocal(user.id, 'senha-nova-123456')
 
-  // A senha nova agora abre o cofre, e o conteúdo antigo continua legível
-  const dekNova = await abrirComSenha(user.id, 'senha-nova-123456')
-  const legivel = await decryptText(dekNova, segredo)
+    const dekNova = await abrirComSenha(user.id, 'senha-nova-123456')
+    const legivel = await decryptText(dekNova, segredo)
 
-  // Devolve tudo ao normal
-  await refecharCofreComChaveLocal(user.id, senhaReal)
-  return { legivel, voltou: !!(await abrirComSenha(user.id, senhaReal)) }
- } catch (e) { return { erro: String(e?.message || e?.name || JSON.stringify(e)) } }
+    // Devolve tudo ao normal.
+    await refecharCofreComChaveLocal(user.id, senhaReal)
+    return { legivel, voltou: !!(await abrirComSenha(user.id, senhaReal)) }
+  } catch (e) { return { erro: String(e?.message || e?.name || JSON.stringify(e)) } }
 }, { senhaReal: creds.password })
 if (c1.erro) console.log('  ERRO:', c1.erro)
 check('senha nova passa a abrir o cofre', c1.legivel === 'ata da reunião de ontem')
-check('NADA foi perdido — sem chave de recuperação nenhuma', c1.legivel === 'ata da reunião de ontem')
+check('nada foi perdido — sem chave de recuperação nenhuma', c1.legivel === 'ata da reunião de ontem')
 check('estado restaurado com a senha real', c1.voltou)
 
-console.log('\n== cenário 2: aparelho novo, senha resetada, sem chave de recuperação ==')
-// Estado idêntico ao pós-reset longe de casa: existe cofre, a senha não o abre,
-// e o aparelho não tem chave.
-const preso = await page.evaluate(async () => {
+console.log('\n== o caso aceito como risco: aparelho novo, sem a chave ==')
+// Sem ChaveGate, isto não trava mais tela nenhuma: só falha, pontualmente, na
+// ação que precisa da chave. É o risco que o Pedro decidiu aceitar em troca de
+// não complicar o login de todo mundo.
+const semChave = await page.evaluate(async () => {
   const { supabase } = await import('/src/lib/supabase.js')
   const { createConversation } = await import('/src/lib/conversas.js')
-  const { data: { user } } = await supabase.auth.getUser()
-  // Contagem relativa: o acervo do Pedro cresce entre execuções, e fixar um
-  // número faria o teste acusar falha só porque ele gravou uma conversa.
-  const antes = (await supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)).count
-  const c = await createConversation(user.id, {
-    transcript: 'conteudo que vai ficar preso', summary: 's', segments: [], insights: {}, title: 'Presa', duration_s: 1,
-  }, 'record', 'x')
   const { esquecerDoAparelho } = await import('/src/lib/chaves.js')
+  const { data: { user } } = await supabase.auth.getUser()
   await esquecerDoAparelho()
-  return { id: c.id, antes }
+  try {
+    await createConversation(user.id, {
+      transcript: 'não deveria gravar', summary: 's', segments: [], insights: {}, title: 'x', duration_s: 1,
+    }, 'record', 'x')
+    return { falhou: false }
+  } catch (e) {
+    return { falhou: true, mensagem: e.message }
+  }
 })
-await page.reload(); await page.waitForTimeout(2500)
-check('a tela de desbloqueio aparece', (await page.locator('.chave-modal').count()) === 1)
+check('sem chave, salvar cifrado FALHA (não grava em claro por engano)', semChave.falhou)
+console.log(`  mensagem: "${semChave.mensagem}"`)
 
-await page.locator('.chave-senha-input').fill('senha-que-nao-abre-o-cofre')
-await page.getByRole('button', { name: 'Desbloquear' }).click()
-await page.waitForTimeout(2500)
-check('avisa que a senha não abre', (await page.locator('.alert-error').textContent().catch(()=>'')) === 'Senha incorreta.')
-
-const saida = page.getByRole('button', { name: /recomeçar/i })
-check('OFERECE saída (antes prendia aqui para sempre)', await saida.count() > 0)
-await page.screenshot({ path: '.test-results/recomeco.png' })
-
-// Agora com a senha certa, o recomeço
-await page.locator('.chave-senha-input').fill(creds.password)
-await page.waitForTimeout(200)
-await saida.click()
-await page.waitForTimeout(4000)
-check('entrou no app depois de recomeçar', (await page.locator('.app-shell').count()) === 1)
-check('avisou o que aconteceu', (await page.locator('.toast').count()) > 0)
-if (await page.locator('.toast').count()) console.log('   aviso:', (await page.locator('.toast-msg').textContent()).trim())
-
-const depois = await page.evaluate(async ({ idPreso }) => {
+// Devolve a chave ao aparelho para não deixar a conta de teste travada.
+await page.evaluate(async ({ senha }) => {
   const { supabase } = await import('/src/lib/supabase.js')
+  const { abrirComSenha } = await import('/src/lib/chaves.js')
   const { data: { user } } = await supabase.auth.getUser()
-  const presa = await supabase.from('sessions').select('id').eq('id', idPreso).maybeSingle()
-  const total = await supabase.from('sessions').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
-  const cif = await supabase.from('sessions').select('id').eq('user_id', user.id).eq('enc_version', 1)
-  return { presaSumiu: !presa.data, total: total.count, aindaCifradas: cif.data?.length ?? 0 }
-}, { idPreso: preso.id })
-check('a conversa ilegível foi removida', depois.presaSumiu)
-check('as conversas em texto puro seguem intactas', depois.total === preso.antes,
-      `(esperava ${preso.antes}, veio ${depois.total})`)
-check('não sobrou nada cifrado órfão', depois.aindaCifradas === 0)
-
-console.log('\n== gravar volta a funcionar com o cofre novo ==')
-const novo = await page.evaluate(async () => {
-  const { supabase } = await import('/src/lib/supabase.js')
-  const { createConversation, getConversation } = await import('/src/lib/conversas.js')
-  const { data: { user } } = await supabase.auth.getUser()
-  const c = await createConversation(user.id, {
-    transcript: 'nova depois do recomeço', summary: 's', segments: [], insights: {}, title: 'Nova', duration_s: 1,
-  }, 'record', 'x')
-  const lida = await getConversation(c.id)
-  await supabase.from('sessions').delete().eq('id', c.id)
-  return lida.transcript
-})
-check('grava e lê normalmente depois do recomeço', novo === 'nova depois do recomeço')
+  await abrirComSenha(user.id, senha)
+}, { senha: creds.password })
 
 console.log(`\n${falhas === 0 ? 'TUDO OK' : 'HOUVE FALHAS'} — ${ok} passaram, ${falhas} falharam`)
 await browser.close()

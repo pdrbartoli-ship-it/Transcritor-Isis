@@ -68,10 +68,10 @@ export default function Auth() {
   // ligada o signUp não abre sessão, e sem sessão a RLS barra a escrita na
   // tabela de cofres. De quebra, isso cobre quem já tinha conta antes.
   //
-  // Prepara a chave em silêncio: cria na primeira vez, abre nas seguintes.
-  // Nada de tela obrigatória — a chave de recuperação virou opcional, gerada em
-  // "Meus dados" por quem quiser. Se falhar (senha trocada por e-mail, por
-  // exemplo), quem resolve é o ChaveGate lá dentro, que sabe oferecer as saídas.
+  // Prepara a chave em silêncio, sem tela nenhuma: cria na primeira vez, abre
+  // nas seguintes. Se falhar (ex.: senha trocada por e-mail longe deste
+  // aparelho), o próximo salvamento vai dar erro — risco aceito para não
+  // complicar o login de todo mundo por causa de um caso raro.
   async function prepararChave(user) {
     if (!user?.id) return
     try {
@@ -94,11 +94,10 @@ export default function Auth() {
 
     try {
       if (mode === 'login') {
-        // A trava do redirecionamento continua necessária, mesmo sem a tela de
-        // chave: assim que a sessão nasce o PublicRoute manda para dentro do
-        // app, e preparar a chave leva ~1s (PBKDF2, 600 mil iterações). Sem
-        // segurar aqui, o app entrava antes da chave existir e o ChaveGate
-        // pedia a senha de novo, logo depois de o usuário tê-la digitado.
+        // A trava do redirecionamento é necessária: assim que a sessão nasce o
+        // PublicRoute manda para dentro do app, e preparar a chave leva ~1s
+        // (PBKDF2, 600 mil iterações). Sem segurar aqui, a primeira gravação
+        // poderia cair numa janela sem chave ainda pronta.
         setHoldRedirect(true)
         try {
           const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail(email), password })

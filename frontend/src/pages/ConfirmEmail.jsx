@@ -77,8 +77,9 @@ export default function ConfirmEmail() {
       // dá para refechar o cofre com a senha nova na hora, e ela não perde
       // nada nem precisa de chave de recuperação nenhuma.
       //
-      // Falhar aqui não pode derrubar a troca de senha: a senha já mudou, e o
-      // ChaveGate sabe lidar com o cofre desencontrado lá dentro.
+      // Falhar aqui não pode derrubar a troca de senha, que já aconteceu. Sem
+      // tela dedicada para o cofre desencontrado, o próximo salvamento cifrado
+      // é que vai avisar — risco aceito para não complicar este fluxo.
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user?.id) await refecharCofreComChaveLocal(user.id, password)

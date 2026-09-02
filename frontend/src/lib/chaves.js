@@ -8,10 +8,7 @@
 // exatamente o que a criação precisa. De quebra, isso cobre quem já tem conta.
 
 import { supabase } from './supabase'
-import {
-  generateDEK, wrapDEK, unwrapDEK,
-  generateRecoveryKey, normalizeRecoveryKey,
-} from './crypto'
+import { generateDEK, wrapDEK, unwrapDEK, generateRecoveryKey } from './crypto'
 
 const DB_NAME = 'dito-chaves'
 const STORE = 'chaves'
@@ -87,15 +84,15 @@ export async function temChave(userId) {
 }
 
 // ── Cria a chave: só o cofre da senha ───────────────────────
-// A chave de recuperação NÃO nasce aqui. Ela é opcional, gerada em "Meus
-// dados" por quem quiser o seguro — obrigá-la no primeiro acesso era pedir ao
-// usuário que guardasse um papel antes de ter usado o produto uma vez.
+// Não existe chave de recuperação nem tela para quando o cofre fica
+// desencontrado da senha (ex.: reset por e-mail longe deste aparelho): é um
+// risco aceito para manter o login simples para todo mundo. Quem cair nesse
+// caso perde o conteúdo cifrado; o app segue funcionando normalmente daí em
+// diante (nova chave, nova conta zerada de conteúdo cifrado).
 export async function criarChave(userId, senha) {
   const dek = await generateDEK()
   const porSenha = await wrapDEK(dek, senha)
 
-  // upsert, e não insert: recriar o cofre depois de um "recomeçar" cai aqui de
-  // novo, e um insert falharia contra a linha que já existe.
   const linha = {
     user_id: userId,
     senha_salt: porSenha.salt,
@@ -104,12 +101,10 @@ export async function criarChave(userId, senha) {
   }
   let { error } = await supabase.from('user_keys').upsert(linha, { onConflict: 'user_id' })
 
-  // Antes de chaves.sql ganhar o bloco que torna a recuperação opcional, as
-  // duas colunas eram NOT NULL e esta gravação falha (23502). Em vez de travar
-  // o app no intervalo entre publicar e rodar a migração, preenchemos os campos
-  // com um cofre fechado por um segredo aleatório que ninguém guarda — o que
-  // equivale a não ter recuperação, que é justamente o padrão agora. Gerar uma
-  // chave de verdade em "Meus dados" sobrescreve isto.
+  // Enquanto as colunas de recuperação no banco ainda forem NOT NULL (antes de
+  // chaves.sql rodar o bloco que as torna opcionais), esta gravação falha
+  // (23502). Preenchemos com um cofre fechado por um segredo aleatório que
+  // ninguém guarda — equivale a não ter recuperação, que é o padrão aqui.
   if (error?.code === NOT_NULL_VIOLATION) {
     const descartavel = await wrapDEK(dek, generateRecoveryKey())
     ;({ error } = await supabase.from('user_keys').upsert({
@@ -131,33 +126,6 @@ export async function abrirComSenha(userId, senha) {
   const dek = await unwrapDEK(cofres.senha_cofre, cofres.senha_salt, senha, { extractable: true })
   await guardarNoAparelho(dek)
   return dek
-}
-
-// ── Esqueci a senha: a chave de recuperação refaz o cofre ────
-// O reset por e-mail já deu uma senha nova; o que falta é reembrulhar a MESMA
-// DEK com ela. A DEK não muda — por isso nada precisa ser recriptografado, e
-// por isso o conteúdo antigo continua abrindo.
-export async function recuperarComChave(userId, chaveRecuperacao, senhaNova) {
-  const cofres = await buscarCofres(userId)
-  if (!cofres) throw new Error('Esta conta ainda não tem chave de criptografia.')
-
-  const dek = await unwrapDEK(
-    cofres.recuperacao_cofre,
-    cofres.recuperacao_salt,
-    normalizeRecoveryKey(chaveRecuperacao),
-    { extractable: true },
-  )
-
-  const porSenha = await wrapDEK(dek, senhaNova)
-  const { error } = await supabase.from('user_keys').update({
-    senha_salt: porSenha.salt,
-    senha_cofre: porSenha.cofre,
-    atualizado_em: new Date().toISOString(),
-  }).eq('user_id', userId)
-  if (error) throw error
-
-  await guardarNoAparelho(dek)
-  return true
 }
 
 // ── O caminho comum do "esqueci a senha" ─────────────────────
@@ -185,58 +153,3 @@ export async function refecharCofreComChaveLocal(userId, senhaNova) {
   return true
 }
 
-// ── Chave de recuperação: agora opcional, sob demanda ────────
-// Gera (ou troca) o cofre de recuperação e devolve a chave UMA vez. Ela não é
-// guardada em lugar nenhum de onde possa ser lida depois — só o cofre que ela
-// abre. Se desse para mostrá-la de novo, nós conseguiríamos abrir o cofre.
-export async function gerarChaveRecuperacao(userId) {
-  const dek = await lerDoAparelho()
-  if (!dek) throw new Error('Desbloqueie o app neste aparelho antes de gerar a chave.')
-
-  const chave = generateRecoveryKey()
-  const porRecuperacao = await wrapDEK(dek, normalizeRecoveryKey(chave))
-
-  const { error } = await supabase.from('user_keys').update({
-    recuperacao_salt: porRecuperacao.salt,
-    recuperacao_cofre: porRecuperacao.cofre,
-    atualizado_em: new Date().toISOString(),
-  }).eq('user_id', userId)
-  if (error) throw error
-  return chave
-}
-
-export async function temChaveRecuperacao(userId) {
-  const cofres = await buscarCofres(userId)
-  return !!cofres?.recuperacao_cofre
-}
-
-// ── Recomeçar: cofre novo, conteúdo velho perdido ────────────
-// Saída para quem resetou a senha longe do aparelho de sempre e não tem chave
-// de recuperação. O conteúdo cifrado com a chave antiga não volta — ninguém no
-// mundo consegue abri-lo — então ele é removido, e a conta segue funcionando
-// em vez de ficar travada.
-export async function recomecarCofre(userId, senha) {
-  await esquecerDoAparelho()
-  await criarChave(userId, senha)
-}
-
-// ── Trocar a senha sabendo a atual ───────────────────────────
-// Só o cofre 1 é refeito. O cofre da recuperação continua valendo, porque a
-// chave de recuperação não mudou — e a DEK, que é o que importa, é a mesma.
-export async function trocarSenha(userId, senhaAtual, senhaNova) {
-  const cofres = await buscarCofres(userId)
-  if (!cofres) throw new Error('Esta conta ainda não tem chave de criptografia.')
-
-  const dek = await unwrapDEK(cofres.senha_cofre, cofres.senha_salt, senhaAtual, { extractable: true })
-  const porSenha = await wrapDEK(dek, senhaNova)
-
-  const { error } = await supabase.from('user_keys').update({
-    senha_salt: porSenha.salt,
-    senha_cofre: porSenha.cofre,
-    atualizado_em: new Date().toISOString(),
-  }).eq('user_id', userId)
-  if (error) throw error
-
-  await guardarNoAparelho(dek)
-  return true
-}

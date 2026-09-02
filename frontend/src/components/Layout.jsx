@@ -1,20 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { esquecerDoAparelho } from '../lib/chaves'
 import { useAuth } from '../contexts/AuthContext'
 import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
-import MeusDadosModal from './MeusDadosModal'
 import Toast from './Toast'
-import ChaveGate from './ChaveGate'
-import { esquecerDoAparelho } from '../lib/chaves'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconShield, IconPlus,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -45,7 +43,6 @@ export default function Layout() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [listError, setListError] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [showDados, setShowDados] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -129,8 +126,9 @@ export default function Layout() {
   }
 
   async function handleLogout() {
-    // A chave sai junto com a sessão. Deixá-la num computador compartilhado
-    // seria deixar o cofre destrancado para o próximo que logar ali.
+    // Invisível para o usuário: só limpa a chave local, sem tela nenhuma.
+    // Deixá-la num computador compartilhado seria deixar o cofre destrancado
+    // para o próximo que logar ali.
     await esquecerDoAparelho()
     await supabase.auth.signOut()
     navigate('/auth')
@@ -259,9 +257,6 @@ export default function Layout() {
           <button className="nav-item" onClick={() => setShowPlan(true)}>
             <IconCard /> Meu plano
           </button>
-          <button className="nav-item" onClick={() => setShowDados(true)}>
-            <IconShield /> Meus dados
-          </button>
           <div className="foot-user">
             <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
             <span className="email">{user?.email}</span>
@@ -284,16 +279,13 @@ export default function Layout() {
         <div className="content">
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <ChaveGate>
-            <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
-          </ChaveGate>
+          <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
         </div>
       </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       {showPlan && <PlanModal onClose={() => setShowPlan(false)} />}
-      {showDados && <MeusDadosModal onClose={() => setShowDados(false)} />}
       <Toast />
     </div>
   )

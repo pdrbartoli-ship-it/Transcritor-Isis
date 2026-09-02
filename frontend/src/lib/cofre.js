@@ -26,11 +26,12 @@ const CAMPOS_JSON = ['segments', 'insights']
 
 // Sem chave no aparelho não dá para cifrar nem decifrar. Isso acontece de
 // verdade: sessão restaurada num computador novo, ou depois de limpar os dados
-// do navegador. Quem chama decide o que fazer — o que não pode é gravar em
-// texto puro achando que cifrou.
+// do navegador. Não há tela dedicada para este caso — sair e entrar de novo já
+// resolve, porque o login recria ou reabre a chave sozinho. Quem chama decide
+// o que fazer — o que não pode é gravar em texto puro achando que cifrou.
 export class SemChaveError extends Error {
   constructor() {
-    super('Conteúdo bloqueado: digite sua senha para desbloquear neste aparelho.')
+    super('Não foi possível abrir seu conteúdo cifrado neste aparelho. Saia da conta e entre novamente.')
     this.name = 'SemChaveError'
   }
 }

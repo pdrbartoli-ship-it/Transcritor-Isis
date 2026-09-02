@@ -8,20 +8,13 @@ const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 page.on('pageerror', e => console.log('  [erro]', e.message))
 
-// Login (cria/abre a chave). Guardamos a chave de recuperação que aparecer.
+// Login: a chave é criada/aberta em silêncio, sem tela nenhuma.
 await page.goto(creds.dev_url + '#/auth'); await page.waitForTimeout(900)
 const a = page.getByText('Acessar', { exact: true })
 if (await a.isVisible().catch(() => false)) await a.click()
 await page.fill('input[type="email"]', creds.email)
 await page.fill('input[type="password"]', creds.password)
 await page.click('button[type="submit"]'); await page.waitForTimeout(4000)
-
-if (await page.locator('.chave-modal').count()) {
-  const ultimo = (await page.locator('.chave-valor').textContent()).trim().split('-').pop()
-  await page.locator('.chave-confirma-input').fill(ultimo)
-  await page.getByRole('button', { name: 'Guardei minha chave, continuar' }).click()
-  await page.waitForTimeout(2000)
-}
 check('entrou no app com chave pronta', (await page.locator('.app-shell').count()) === 1)
 
 console.log('\n== gravar uma conversa nova: nasce cifrada ==')
@@ -110,17 +103,6 @@ const c = await page.evaluate(async ({ id }) => {
 check('a pergunta não aparece em claro no banco', !c.cruaTemPergunta)
 check('o app lê a pergunta certa', c.abertaCerta)
 
-console.log('\n== export sai LEGÍVEL mesmo com o banco cifrado ==')
-const e = await page.evaluate(async () => {
-  const { supabase } = await import('/src/lib/supabase.js')
-  const { fetchEverything, toMarkdown } = await import('/src/lib/meusDados.js')
-  const { data: { user } } = await supabase.auth.getUser()
-  const md = toMarkdown(await fetchEverything(user.id))
-  return { temSegredo: md.includes('ACORDO CONFIDENCIAL'), temAntiga: md.includes('incas'), tamanho: md.length }
-})
-check('o backup contém o texto decifrado', e.temSegredo)
-check('e também as conversas antigas', e.temAntiga)
-
 console.log('\n== sem chave no aparelho, o conteúdo NÃO vaza em claro ==')
 const s = await page.evaluate(async ({ id }) => {
   const { esquecerDoAparelho } = await import('/src/lib/chaves.js')
@@ -137,11 +119,16 @@ check('decifrar sem chave FALHA (não devolve lixo em claro)', s.bloqueou)
 check('na lista, a linha vira "(conteúdo bloqueado)"', s.tituloNaLista === '(conteúdo bloqueado)' && s.marcada)
 
 console.log('\n== limpeza ==')
-await page.evaluate(async ({ id }) => {
+await page.evaluate(async ({ id, senha }) => {
   const { supabase } = await import('/src/lib/supabase.js')
+  const { abrirComSenha } = await import('/src/lib/chaves.js')
+  const { data: { user } } = await supabase.auth.getUser()
+  // O teste anterior tirou a chave do aparelho de propósito; sem repor, a
+  // conta ficaria sem chave local ao final desta suíte.
+  await abrirComSenha(user.id, senha)
   await supabase.from('sessions').delete().eq('id', id)
-}, { id: r.id })
-check('conversa de teste removida', true)
+}, { id: r.id, senha: creds.password })
+check('conversa de teste removida e chave restaurada', true)
 
 console.log(`\n${falhas === 0 ? 'TUDO OK' : 'HOUVE FALHAS'} — ${ok} passaram, ${falhas} falharam`)
 await browser.close()
