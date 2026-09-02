@@ -229,7 +229,142 @@ input::placeholder { color: var(--text-muted); }
 .field-hint.warn { color: var(--danger); }
 
 /* ── Landing page ───────────────────────────────────────── */
-.landing-card { text-align: center; }
+/* Página pública, fora do app shell: ela rola no documento inteiro, então
+   nada aqui pode fixar altura. Usa só os tokens do app de propósito — quem
+   baixa depois reencontra exatamente a mesma cara. */
+.lp { min-height: 100%; background: var(--bg); }
+.lp h1, .lp h2, .lp h3, .lp h4 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; }
+
+.lp-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  max-width: 1080px; margin: 0 auto; padding: 20px 24px;
+}
+.lp-nav .brand { font-size: 22px; cursor: default; }
+.lp-nav-btn { padding: 7px 16px; border-radius: 999px; font-size: 13px; }
+
+/* ── Hero ── */
+.lp-hero {
+  max-width: 1080px; margin: 0 auto; padding: 48px 24px 64px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;
+}
+.lp-hero h1 { font-size: clamp(38px, 5.4vw, 60px); line-height: 1.08; }
+.lp-sub { font-size: 16.5px; color: var(--text-muted); margin-top: 20px; max-width: 45ch; }
+.lp-cta { margin-top: 30px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.lp-btn-lg, a.lp-btn-lg {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 24px; font-size: 15px; border-radius: 999px;
+}
+.lp-cta-note { font-size: 12.5px; color: var(--text-muted); }
+
+/* ── "Ponto de ativação": a interface do app desenhada em HTML ── */
+.lp-shot {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.lp-shot-bar {
+  display: flex; gap: 6px; padding: 11px 14px;
+  background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+}
+.lp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+.lp-shot-body { padding: 20px; }
+.lp-shot-head {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px;
+}
+.lp-wave { display: flex; align-items: center; gap: 3px; height: 40px; margin-bottom: 20px; }
+.lp-wave i {
+  flex: 1; background: var(--accent); border-radius: 999px; opacity: 0.55;
+  height: 22%; animation: lp-pulse 1.5s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 60ms);
+}
+@keyframes lp-pulse { 0%, 100% { height: 18%; } 50% { height: 88%; } }
+
+.lp-card {
+  background: var(--accent-soft); border-radius: var(--radius-sm);
+  padding: 14px 16px; margin-bottom: 18px;
+}
+.lp-card h4 { font-size: 13px; margin-bottom: 8px; }
+.lp-card ul { list-style: none; display: grid; gap: 6px; }
+.lp-card li { font-size: 12.5px; color: var(--text-muted); padding-left: 14px; position: relative; line-height: 1.5; }
+.lp-card li::before { content: '·'; position: absolute; left: 4px; color: var(--accent); font-weight: 700; }
+.lp-lines { display: grid; gap: 8px; }
+.lp-lines span { height: 7px; background: var(--surface-2); border-radius: 999px; }
+
+/* ── Faixa de fatos ── */
+.lp-strip {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 36px;
+  padding: 20px 24px; border-block: 1px solid var(--border); background: var(--sidebar-bg);
+}
+.lp-strip span { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-muted); }
+.lp-strip svg { color: var(--accent); }
+
+/* ── Seções ── */
+.lp-section { max-width: 1080px; margin: 0 auto; padding: 52px 24px; }
+.lp-section > h2 { font-size: clamp(26px, 3.2vw, 34px); text-align: center; margin-bottom: 44px; }
+
+.lp-steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.lp-num {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600; margin-bottom: 14px;
+}
+.lp-steps h3, .lp-who h3 { font-size: 17px; margin-bottom: 8px; }
+.lp-steps p, .lp-who p { color: var(--text-muted); font-size: 14px; }
+
+/* ── Privacidade ── */
+.lp-privacy-inner {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 56px 40px; text-align: center; box-shadow: var(--shadow);
+}
+.lp-privacy-inner svg { color: var(--accent); margin-bottom: 18px; }
+.lp-privacy-inner h2 { font-size: clamp(24px, 3vw, 32px); margin-bottom: 16px; }
+.lp-privacy-inner p { color: var(--text-muted); max-width: 58ch; margin: 0 auto; font-size: 15px; }
+.lp-privacy-foot { margin-top: 20px !important; font-size: 13px !important; }
+.lp-privacy-foot a { color: var(--accent); }
+
+/* ── Desktop ── */
+.lp-desktop > div {
+  background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 48px 40px; max-width: 640px; margin: 0 auto; text-align: center;
+}
+.lp-tag {
+  display: inline-block; padding: 4px 11px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+}
+.lp-desktop h2 { font-size: clamp(23px, 2.8vw, 30px); margin: 16px 0 14px; }
+.lp-desktop p { color: var(--text-muted); font-size: 15px; margin-bottom: 26px; }
+.lp-desktop strong { color: var(--text); font-weight: 600; }
+
+.lp-who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+
+/* ── CTA final ── */
+.lp-final {
+  text-align: center; padding: 88px 24px;
+  border-top: 1px solid var(--border); background: var(--sidebar-bg);
+}
+.lp-final h2 { font-size: clamp(26px, 3.4vw, 36px); margin-bottom: 26px; }
+.lp-final .lp-cta-note { display: block; margin-top: 12px; }
+
+.lp-foot {
+  max-width: 1080px; margin: 0 auto; padding: 26px 24px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+}
+.lp-foot .brand { font-size: 16px; cursor: default; }
+.lp-foot > span:last-child { display: flex; gap: 20px; }
+.lp-foot a { color: var(--text-muted); font-size: 13px; text-decoration: none; }
+.lp-foot a:hover { color: var(--text); }
+
+@media (max-width: 860px) {
+  .lp-hero { grid-template-columns: 1fr; gap: 40px; padding-top: 28px; text-align: center; }
+  .lp-sub { margin-inline: auto; }
+  .lp-cta { align-items: center; }
+  .lp-steps, .lp-who { grid-template-columns: 1fr; gap: 30px; }
+  .lp-num { margin-inline: auto; }
+  .lp-steps li, .lp-who div { text-align: center; }
+  .lp-section { padding-block: 36px; }
+  .lp-privacy-inner, .lp-desktop > div { padding: 38px 24px; }
+}
 
 /* ── App shell ──────────────────────────────────────────── */
 .app-shell { display: flex; height: 100%; overflow: hidden; }
