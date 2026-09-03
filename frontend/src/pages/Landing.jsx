@@ -1,5 +1,9 @@
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconDownload, IconShield, IconMic, IconFile, IconCheck, IconArrowRight } from '../components/Icons'
+import {
+  IconDownload, IconShield, IconMic, IconFile, IconLink, IconCheck,
+  IconArrowRight, IconStopCircle, IconPlay, IconMessage,
+} from '../components/Icons'
 
 // Instalador do app nativo Windows, publicado pelo CI numa GitHub Release a
 // cada push na main (ver .github/workflows/build-desktop.yml). Tag fixa
@@ -8,69 +12,248 @@ import { IconDownload, IconShield, IconMic, IconFile, IconCheck, IconArrowRight 
 // silêncio. Não dá para usar /releases/latest/ porque a release é prerelease.
 const INSTALLER_URL = 'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
 
-// A página tem UM caminho principal — entrar e usar pelo navegador — porque o
-// download é justamente a fricção que impede o visitante de ver valor. O app
-// de Windows não compete com esse botão: ele aparece mais abaixo, numa seção
-// própria, para quem atende online e precisa gravar as duas vozes da chamada.
-// Quem se reconhece ali se auto-seleciona; quem não, segue no fluxo curto.
+// PREÇOS PROVISÓRIOS — nada aqui está cobrado ainda. Os valores e os limites
+// existem para a página ter uma aba de preço de verdade e para medirmos quem
+// clica em quê antes de haver cobrança. Trocar aqui e no PlanModal (a mesma
+// tabela aparece dentro do app) quando o plano for definido.
+const PLANOS = [
+  {
+    id: 'gratuito',
+    nome: 'Gratuito',
+    preco: 'R$ 0',
+    periodo: 'para sempre',
+    resumo: 'Para experimentar sem compromisso.',
+    itens: [
+      '2 horas de transcrição por mês',
+      'Resumo automático de tudo que você grava',
+      'Perguntas sobre a própria conversa',
+      'Cifrado no seu aparelho',
+    ],
+    cta: 'Começar grátis',
+  },
+  {
+    id: 'plus',
+    nome: 'Plus',
+    preco: 'R$ 39',
+    periodo: 'por mês',
+    destaque: true,
+    resumo: 'Para quem grava toda semana.',
+    itens: [
+      '20 horas de transcrição por mês',
+      'Documento final pronto para baixar',
+      'App de Windows: grava as duas vozes',
+      'Arquivos e reuniões longas sem corte',
+    ],
+    cta: 'Assinar Plus',
+  },
+  {
+    id: 'ultra',
+    nome: 'Ultra',
+    preco: 'R$ 89',
+    periodo: 'por mês',
+    resumo: 'Para quem vive dentro de conversas.',
+    itens: [
+      'Transcrição sem limite de horas',
+      'Resumos mais profundos, com mais contexto',
+      'Prioridade no processamento',
+      'Suporte direto com quem faz o Dito',
+    ],
+    cta: 'Assinar Ultra',
+  },
+]
+
+// A demonstração roda sozinha em cinco tempos, na ordem em que a pessoa vive o
+// produto: já está gravando, finaliza, sobe, vira texto, vira resumo. O último
+// tempo passeia pelos pontos do resumo — é ali que o valor aparece, e é o único
+// que não dá para entender por um print parado.
+const PASSOS = [
+  { rotulo: 'Gravando a reunião', ms: 2600 },
+  { rotulo: 'Você aperta finalizar', ms: 1400 },
+  { rotulo: 'Transcrevendo', ms: 2400 },
+  { rotulo: 'Resumo pronto', ms: 2600 },
+  { rotulo: 'Você navega pelo que importa', ms: 3600 },
+]
+
+const PONTOS = [
+  'Prazo de entrega remarcado para a sexta seguinte.',
+  'Orçamento aprovado; falta o aceite formal por e-mail.',
+  'Ficou combinado: enviar a proposta revisada até quarta.',
+]
+
+// Alturas da onda depois que a gravação para. Precisam ser irregulares: com
+// todas as barras na mesma altura o bloco vira um tracejado, e some justamente
+// a leitura de "isto aqui é áudio". Fixas e determinísticas para o desenho não
+// dançar a cada render.
+const ALTURAS = Array.from({ length: 40 }, (_, i) =>
+  `${28 + Math.round(Math.abs(Math.sin(i * 1.7) * 0.6 + Math.sin(i * 0.53) * 0.4) * 60)}%`,
+)
+
+// Quem prefere menos movimento no sistema recebe a tela final direto, parada.
+const semMovimento = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+function Demo() {
+  const [passo, setPasso] = useState(semMovimento() ? 4 : 0)
+  const [ponto, setPonto] = useState(0)
+  const [rodando, setRodando] = useState(!semMovimento())
+  const alvo = useRef(null)
+
+  // Só começa quando a seção entra na tela: rodar escondido gasta o efeito e
+  // a pessoa chega no meio da animação sem entender o que perdeu.
+  useEffect(() => {
+    if (semMovimento() || !alvo.current) return
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setRodando(true); io.disconnect() } },
+      { threshold: 0.35 },
+    )
+    io.observe(alvo.current)
+    return () => io.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!rodando || semMovimento()) return
+    const t = setTimeout(() => setPasso(p => (p + 1) % PASSOS.length), PASSOS[passo].ms)
+    return () => clearTimeout(t)
+  }, [passo, rodando])
+
+  // O passeio pelos pontos do resumo acontece dentro do último tempo.
+  useEffect(() => {
+    if (passo !== 4) { setPonto(0); return }
+    const t = setInterval(() => setPonto(p => (p + 1) % PONTOS.length), 1100)
+    return () => clearInterval(t)
+  }, [passo])
+
+  const gravando = passo === 0
+  const finalizando = passo === 1
+  const processando = passo <= 2
+  const temResumo = passo >= 3
+
+  return (
+    <div className="lp-demo" ref={alvo}>
+      <div className="lp-shot lp-shot-wide">
+        <div className="lp-shot-bar">
+          <span className="lp-dot" /><span className="lp-dot" /><span className="lp-dot" />
+          <span className="lp-shot-url">dito.albiecloud.com</span>
+        </div>
+
+        <div className="lp-shot-body">
+          <div className="lp-shot-head">
+            <IconMic width={14} height={14} />
+            <span>Reunião de 12/09</span>
+            <span className={`lp-timer${gravando ? ' on' : ''}`}>
+              {gravando ? '48:12' : '48 min'}
+            </span>
+            <button
+              className={`lp-stop${finalizando ? ' press' : ''}`}
+              type="button" tabIndex={-1} aria-hidden="true"
+            >
+              <IconStopCircle width={13} height={13} />
+              Finalizar
+            </button>
+          </div>
+
+          <div className={`lp-wave${gravando ? ' live' : ''}`}>
+            {ALTURAS.map((h, i) => <i key={i} style={{ '--i': i, height: h }} />)}
+          </div>
+
+          {processando && (
+            <div className="lp-progress">
+              <span className={`lp-progress-bar${passo === 2 ? ' run' : ''}`} />
+            </div>
+          )}
+
+          <div className={`lp-card lp-card-anim${temResumo ? ' on' : ''}`}>
+            <h4>Resumo</h4>
+            <ul>
+              {PONTOS.map((p, i) => (
+                <li key={i} className={passo === 4 && ponto === i ? 'foco' : ''}>{p}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="lp-lines">
+            {[92, 78, 85, 54].map((w, i) => (
+              <span
+                key={i}
+                style={{ width: `${w}%` }}
+                className={passo >= 2 ? 'on' : ''}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="lp-demo-steps" role="presentation">
+        {PASSOS.map((p, i) => (
+          <span key={p.rotulo} className={i === passo ? 'on' : ''}>
+            <i /> {p.rotulo}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Os âncoras da barra não podem ser <a href="#produto">: o app roda em
+// HashRouter, e mexer no hash faz o roteador trocar de rota. Rolamos na mão.
+function irPara(id) {
+  document.getElementById(id)?.scrollIntoView({
+    behavior: semMovimento() ? 'auto' : 'smooth',
+    block: 'start',
+  })
+}
+
 export default function Landing() {
   const navigate = useNavigate()
   const entrar = () => navigate('/auth')
 
+  // O plano escolhido na landing viaja com a pessoa até depois do login, que é
+  // onde o checkout vai existir. Enquanto não há cobrança, o app lê isto no
+  // "Meu plano" e já mostra o plano certo em destaque.
+  const escolherPlano = id => {
+    try { localStorage.setItem('dito-plano-escolhido', id) } catch { /* modo anônimo */ }
+    entrar()
+  }
+
   return (
     <div className="lp">
+      {/* ── Barra: só Produto e Preços, como no Notion ─────── */}
       <header className="lp-nav">
         <span className="brand">Dito<span className="dot">.</span></span>
-        <button className="btn-ghost lp-nav-btn" onClick={entrar}>Entrar</button>
+        <nav className="lp-nav-links">
+          <button type="button" onClick={() => irPara('produto')}>Produto</button>
+          <button type="button" onClick={() => irPara('precos')}>Preços</button>
+        </nav>
+        <div className="lp-nav-acoes">
+          <button className="lp-nav-login" onClick={entrar}>Entrar</button>
+          <button className="btn-primary lp-nav-btn" onClick={entrar}>Instalar grátis</button>
+        </div>
       </header>
 
       <main>
-        {/* ── Hero ─────────────────────────────────────────── */}
+        {/* ── Hero: punchline + prova visual ───────────────── */}
         <section className="lp-hero">
-          <div className="lp-hero-text">
-            <h1>Você atende.<br />O Dito escreve.</h1>
-            <p className="lp-sub">
-              Grave a consulta ou envie um áudio que já tem. Em minutos você recebe a
-              transcrição e um resumo do que importa — tudo separado por paciente ou cliente.
-            </p>
-            <div className="lp-cta">
-              <button className="btn-primary lp-btn-lg" onClick={entrar}>
-                Começar agora
-                <IconArrowRight width={16} height={16} />
-              </button>
-              <span className="lp-cta-note">Grátis. Direto no navegador, sem instalar nada.</span>
-            </div>
+          <h1>
+            Não anote.
+            <em>Esteja presente.</em>
+          </h1>
+          <p className="lp-sub">
+            O Dito escuta a reunião, a consulta ou a aula por você — e devolve a transcrição
+            e um resumo do que ficou combinado. Você só participa da conversa.
+          </p>
+          <div className="lp-cta">
+            <button className="btn-primary lp-btn-lg" onClick={entrar}>
+              Instalar grátis
+              <IconArrowRight width={16} height={16} />
+            </button>
+            <span className="lp-cta-note">
+              Grátis. Abre no navegador, no celular e no Windows — sem cartão.
+            </span>
           </div>
 
-          {/* O "ponto de ativação": em vez de um print, a própria interface
-              desenhada em HTML com os tokens do app. Fica nítida em qualquer
-              tela, acompanha o tema claro/escuro e pesa quase nada. Quando
-              houver um vídeo real da gravação, ele substitui este bloco. */}
-          <div className="lp-shot" aria-hidden="true">
-            <div className="lp-shot-bar">
-              <span className="lp-dot" /><span className="lp-dot" /><span className="lp-dot" />
-            </div>
-            <div className="lp-shot-body">
-              <div className="lp-shot-head">
-                <IconMic width={14} height={14} />
-                <span>Sessão de 12/09 · 48 min</span>
-              </div>
-              <div className="lp-wave">
-                {Array.from({ length: 34 }, (_, i) => <i key={i} style={{ '--i': i }} />)}
-              </div>
-              <div className="lp-card">
-                <h4>Resumo</h4>
-                <ul>
-                  <li>Retorno após três semanas; relata melhora no sono.</li>
-                  <li>Ajuste de dose combinado para a próxima consulta.</li>
-                  <li>Encaminhamento solicitado — pendente.</li>
-                </ul>
-              </div>
-              <div className="lp-lines">
-                <span style={{ width: '92%' }} /><span style={{ width: '78%' }} />
-                <span style={{ width: '85%' }} /><span style={{ width: '54%' }} />
-              </div>
-            </div>
+          <div className="lp-hero-shot">
+            <Demo />
           </div>
         </section>
 
@@ -82,26 +265,58 @@ export default function Landing() {
           <span><IconCheck width={14} height={14} /> Documento pronto para baixar</span>
         </div>
 
-        {/* ── Como funciona ────────────────────────────────── */}
-        <section className="lp-section">
-          <h2>Três passos. Nenhum trabalho seu.</h2>
-          <ol className="lp-steps">
-            <li>
-              <span className="lp-num">1</span>
-              <h3>Envie o áudio</h3>
-              <p>Grave na hora, mande um arquivo que já tem ou cole um link. No celular, dá para compartilhar direto do WhatsApp.</p>
-            </li>
-            <li>
-              <span className="lp-num">2</span>
-              <h3>Receba pronto</h3>
-              <p>O Dito transcreve e resume sozinho. Você abre e já encontra o que precisa, sem reouvir uma hora de gravação.</p>
-            </li>
-            <li>
-              <span className="lp-num">3</span>
-              <h3>Pergunte o que quiser</h3>
-              <p>“O que ficou combinado?” — o Dito responde com base na própria conversa. E entrega o documento final quando você pedir.</p>
-            </li>
-          </ol>
+        {/* ── Produto: o que o Dito faz, em duas fotos ─────── */}
+        <section className="lp-section" id="produto">
+          <h2>Duas formas de usar. A mesma resposta.</h2>
+          <div className="lp-feats">
+            <article className="lp-feat">
+              <span className="lp-feat-tag">Gravar</span>
+              <h3>A reunião vira ata sozinha.</h3>
+              <p>
+                Aperte gravar antes de começar e esqueça. No fim, a conversa inteira já está
+                escrita, separada por assunto, com o que ficou combinado no topo.
+              </p>
+              <div className="lp-mini">
+                <div className="lp-mini-head"><IconMessage width={13} height={13} /> Minhas conversas</div>
+                <ul className="lp-mini-list">
+                  <li><span>Alinhamento de projeto</span><b>Resumido</b></li>
+                  <li><span>Consulta — retorno</span><b>Resumido</b></li>
+                  <li><span>Entrevista com candidato</span><b>Resumido</b></li>
+                </ul>
+                <div className="lp-mini-rec">
+                  <span className="lp-mini-wave">
+                    {Array.from({ length: 16 }, (_, i) => <i key={i} style={{ '--i': i }} />)}
+                  </span>
+                  <span className="lp-mini-dot" /> Gravando · 12:04
+                </div>
+              </div>
+              <button className="lp-feat-link" onClick={entrar}>
+                Gravar agora <IconArrowRight width={14} height={14} />
+              </button>
+            </article>
+
+            <article className="lp-feat">
+              <span className="lp-feat-tag">Enviar</span>
+              <h3>Áudio, vídeo ou link — tudo vira texto.</h3>
+              <p>
+                Mande o áudio que chegou no WhatsApp, um vídeo salvo no computador ou cole o
+                link de uma gravação. Volta transcrito e resumido do mesmo jeito.
+              </p>
+              <div className="lp-mini">
+                <div className="lp-mini-head"><IconLink width={13} height={13} /> Cole um link ou solte um arquivo</div>
+                <div className="lp-mini-input">https://…/gravacao-reuniao.mp4</div>
+                <div className="lp-mini-chips">
+                  <span><IconMic width={11} height={11} /> Áudio do WhatsApp</span>
+                  <span><IconFile width={11} height={11} /> MP4, MP3, M4A</span>
+                  <span><IconLink width={11} height={11} /> Link de vídeo</span>
+                </div>
+                <div className="lp-mini-ok"><IconCheck width={12} height={12} /> Resumo pronto em minutos</div>
+              </div>
+              <button className="lp-feat-link" onClick={entrar}>
+                Enviar um arquivo <IconArrowRight width={14} height={14} />
+              </button>
+            </article>
+          </div>
         </section>
 
         {/* ── Privacidade: o diferencial ───────────────────── */}
@@ -115,7 +330,7 @@ export default function Landing() {
               Na prática: nem nós conseguimos ler o que você guarda no Dito.
             </p>
             <p className="lp-privacy-foot">
-              Feito para quem tem sigilo profissional a cumprir.{' '}
+              Feito para quem tem sigilo a cumprir.{' '}
               <a href="/privacidade.html">Política de privacidade</a>
             </p>
           </div>
@@ -125,11 +340,11 @@ export default function Landing() {
         <section className="lp-section lp-desktop">
           <div>
             <span className="lp-tag">App para Windows</span>
-            <h2>Atende online? Grave a chamada inteira.</h2>
+            <h2>Reunião por chamada? Grave as duas vozes.</h2>
             <p>
-              O navegador só escuta o seu microfone. O app do Dito para Windows grava as
-              <strong> duas vozes</strong> — a sua e a de quem está do outro lado — em teleconsultas
-              e reuniões, com uma janelinha flutuante que fica por cima de tudo enquanto você atende.
+              O navegador só escuta o seu microfone. O app do Dito para Windows grava
+              <strong> os dois lados</strong> da chamada — você e quem está do outro lado — com uma
+              janelinha flutuante que fica por cima de tudo enquanto você conversa.
             </p>
             <a className="btn-ghost lp-btn-lg" href={INSTALLER_URL}>
               <IconDownload width={16} height={16} />
@@ -142,19 +357,58 @@ export default function Landing() {
         <section className="lp-section">
           <h2>Feito para quem vive de escutar.</h2>
           <div className="lp-who">
-            <div><h3>Psicólogos</h3><p>Sessões registradas sem quebrar o contato visual com o paciente.</p></div>
-            <div><h3>Médicos</h3><p>A consulta vira evolução escrita enquanto você atende o próximo.</p></div>
-            <div><h3>Advogados</h3><p>Depoimentos e reuniões com transcrição e resumo em minutos.</p></div>
+            <div><h3>Reuniões de trabalho</h3><p>Ninguém precisa ser o secretário da sala. O combinado sai escrito para todo mundo.</p></div>
+            <div><h3>Atendimentos e consultas</h3><p>O registro fica pronto sem quebrar o contato visual com quem está na sua frente.</p></div>
+            <div><h3>Aulas e entrevistas</h3><p>Horas de gravação viram minutos de leitura, com o trecho exato quando você precisar.</p></div>
           </div>
+        </section>
+
+        {/* ── Preços ───────────────────────────────────────── */}
+        <section className="lp-section lp-precos" id="precos">
+          <h2>Preço simples.</h2>
+          <div className="lp-planos">
+            {PLANOS.map(p => (
+              <article key={p.id} className={`lp-plano${p.destaque ? ' destaque' : ''}`}>
+                {p.destaque && <span className="lp-plano-selo">Mais escolhido</span>}
+                <h3>{p.nome}</h3>
+                <div className="lp-plano-preco">
+                  <strong>{p.preco}</strong>
+                  <span>{p.periodo}</span>
+                </div>
+                <p className="lp-plano-resumo">{p.resumo}</p>
+                <ul>
+                  {p.itens.map(i => (
+                    <li key={i}><IconCheck width={13} height={13} /> {i}</li>
+                  ))}
+                </ul>
+                <button
+                  className={p.destaque ? 'btn-primary lp-plano-btn' : 'btn-ghost lp-plano-btn'}
+                  onClick={() => escolherPlano(p.id)}
+                >
+                  {p.cta}
+                </button>
+              </article>
+            ))}
+          </div>
+          <p className="lp-precos-nota">
+            Enquanto o Dito está em construção, tudo funciona sem cobrança — e você continua
+            com o que já gravou quando os planos entrarem no ar.
+          </p>
         </section>
 
         {/* ── CTA final ────────────────────────────────────── */}
         <section className="lp-final">
-          <h2>Sua próxima conversa pode já ficar registrada.</h2>
-          <button className="btn-primary lp-btn-lg" onClick={entrar}>
-            Começar agora
-            <IconArrowRight width={16} height={16} />
-          </button>
+          <h2>Comece hoje.</h2>
+          <div className="lp-final-btns">
+            <button className="btn-primary lp-btn-lg" onClick={entrar}>
+              Instalar grátis
+              <IconArrowRight width={16} height={16} />
+            </button>
+            <button className="btn-ghost lp-btn-lg" onClick={() => irPara('produto')}>
+              <IconPlay width={15} height={15} />
+              Ver funcionando
+            </button>
+          </div>
           <span className="lp-cta-note">Grátis. Leva menos de um minuto.</span>
         </section>
       </main>
@@ -162,6 +416,8 @@ export default function Landing() {
       <footer className="lp-foot">
         <span className="brand">Dito<span className="dot">.</span></span>
         <span>
+          <button type="button" onClick={() => irPara('produto')}>Produto</button>
+          <button type="button" onClick={() => irPara('precos')}>Preços</button>
           <a href="/privacidade.html">Privacidade</a>
           <a href="mailto:pdrbartoli@gmail.com">Fale com a gente</a>
         </span>
