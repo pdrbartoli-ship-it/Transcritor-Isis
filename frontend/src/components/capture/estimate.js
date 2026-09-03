@@ -30,7 +30,11 @@ const ANALYSIS_BASE_S = 25        // 1 chamada ao Claude, esforço baixo, passe 
 const PER_MB_S = 1.5              // fallback quando não dá para ler a duração
 const LINK_ESTIMATE_S = 60        // links não expõem a duração antes do download
 const MIN_ESTIMATE_S = 15
-const MAX_ESTIMATE_S = 420        // o paralelismo tira o sentido de um teto alto
+// O paralelismo é grande, mas não é infinito: o backend manda no máximo
+// MAX_PARALLEL_CHUNKS blocos por vez (main.py), então uma reunião de 8 horas
+// são 32 blocos em ~6 ondas — o teto antigo de 7 minutos mentiria para ela.
+const MAX_PARALLEL_CHUNKS = 6
+const MAX_ESTIMATE_S = 900
 
 // O ffmpeg do backend converte qualquer coisa com faixa de áudio, então o
 // filtro do seletor é deliberadamente amplo. As extensões vão junto dos tipos
@@ -73,8 +77,12 @@ export function estimateSeconds({ kind, durationSec = null, bytes = 0 }) {
   if (durationSec) {
     const ffmpegRatio = kind === 'video' ? FFMPEG_RATIO_VIDEO : FFMPEG_RATIO_AUDIO
     seconds += durationSec * ffmpegRatio
-    const extraChunks = Math.max(0, Math.ceil(durationSec / CHUNK_SECONDS) - 1)
-    seconds += extraChunks * PER_EXTRA_CHUNK_S
+    const chunks = Math.max(1, Math.ceil(durationSec / CHUNK_SECONDS))
+    seconds += (chunks - 1) * PER_EXTRA_CHUNK_S
+    // Ondas além da primeira são sequenciais: cada uma custa uma passada
+    // inteira no Whisper, não os poucos segundos de disputa de fila.
+    const extraWaves = Math.ceil(chunks / MAX_PARALLEL_CHUNKS) - 1
+    seconds += extraWaves * TRANSCRIBE_BASE_S
   } else {
     seconds += (bytes / 1_000_000) * PER_MB_S
   }

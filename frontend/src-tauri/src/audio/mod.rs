@@ -20,7 +20,12 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
 
-const SAMPLE_RATE: u32 = 48_000;
+// 16 kHz é a taxa nativa do Whisper — ele reamostra tudo para cá de qualquer
+// jeito, então gravar em 48 kHz só produzia arquivo três vezes maior sem uma
+// única palavra a mais de qualidade. Em WAV 16 bits mono isso é a diferença
+// entre 345 MB e 115 MB por hora de reunião. O `autoconvert: true` do WASAPI
+// (ver capture_stream) faz a reamostragem, então nada mais muda aqui.
+const SAMPLE_RATE: u32 = 16_000;
 const CHANNELS: u16 = 1;
 /// Quanto tempo esperamos pelo primeiro dado de cada stream antes de decidir
 /// se um dispositivo está mesmo disponível (usado só pra decidir se

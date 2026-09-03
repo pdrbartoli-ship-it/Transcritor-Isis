@@ -171,10 +171,20 @@ MAX_CHUNK_BYTES = 23 * 1024 * 1024
 # sem somar, o segundo bloco de uma reunião de 40min voltaria a marcar 00:00.
 CHUNK_SECONDS = 900
 
-# O arquivo inteiro passa pela memória do processo antes de ir para o disco
-# temporário; acima disso o Render derruba o worker e o usuário vê um 502 sem
-# explicação. Melhor recusar cedo, com um texto que diz o que fazer.
-MAX_UPLOAD_BYTES = 150 * 1024 * 1024
+# Teto de sanidade do upload, não mais um teto de memória: desde que o arquivo
+# é escrito no disco em blocos (ver `save_upload`), o tamanho dele não ocupa o
+# worker. 1 GB é ~8h de gravação do app (16 kHz mono) e muito mais que isso em
+# qualquer formato comprimido — o que sobra é defesa contra envio absurdo.
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+
+# Tamanho do bloco lido do upload por vez.
+UPLOAD_BLOCK = 1024 * 1024
+
+# Quantos blocos de áudio vão ao Groq ao mesmo tempo. Sem teto, uma reunião de
+# 8 horas viravam 32 requisições simultâneas — o Groq responde 429 e a
+# transcrição inteira falha. O teto também prende a memória ao número de blocos
+# em voo (~7 MB cada) em vez de ao tamanho do arquivo.
+MAX_PARALLEL_CHUNKS = 6
 
 VIDEO_HOSTS = [
     "youtube.com", "youtu.be", "instagram.com", "tiktok.com",
@@ -606,7 +616,28 @@ def split_audio(input_path: str, tmpdir: str, seconds_per_chunk: int = CHUNK_SEC
     )
 
 
+def read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
 async def transcribe_chunk(
+    client: httpx.AsyncClient, source: bytes | str, chunk_index: int,
+    name: str = "audio.m4a", mime: str = "audio/m4a",
+    sem: asyncio.Semaphore | None = None,
+) -> tuple[str, list[dict]]:
+    """`source` é o caminho do bloco no disco (ou os bytes, quando o áudio segue
+    direto como veio). Ler o bloco DENTRO do semáforo é o que mantém a memória
+    presa ao número de envios em voo, e não à duração da reunião."""
+    async with (sem or asyncio.Semaphore(1)):
+        audio_bytes = (
+            source if isinstance(source, bytes)
+            else await asyncio.to_thread(read_file, source)
+        )
+        return await send_chunk(client, audio_bytes, chunk_index, name, mime)
+
+
+async def send_chunk(
     client: httpx.AsyncClient, audio_bytes: bytes, chunk_index: int,
     name: str = "audio.m4a", mime: str = "audio/m4a",
 ) -> tuple[str, list[dict]]:
@@ -962,8 +993,12 @@ def join_chunks(results: list[tuple[str, list[dict]]]) -> tuple[str, list[dict]]
     return " ".join(texts), segments
 
 
-async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, list[dict], int, str, float]:
+async def process_audio_path(input_path: str, filename: str) -> tuple[str, list[dict], int, str, float]:
     """Returns (full_transcript, segments, num_chunks, duration_str, total_seconds).
+
+    Trabalha por CAMINHO, não por bytes. É o que permite uma reunião de várias
+    horas: o arquivo nunca é carregado inteiro na memória do processo — nem no
+    upload, nem aqui, nem na hora de mandar os blocos ao Groq.
 
     Dois caminhos. Se o arquivo já está num container que o Groq aceita, não é
     vídeo e cabe no limite, ele vai como veio — o caso do áudio do WhatsApp.
@@ -972,25 +1007,30 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, l
 
     total_seconds sai daqui porque a sonda de cabeçalho já o calcula — é a
     medida de consumo da transcrição, de graça."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
-        with open(input_path, "wb") as f:
-            f.write(audio_bytes)
-
+    workdir = tempfile.mkdtemp(dir=os.path.dirname(input_path) or None)
+    try:
         total_seconds, has_video = probe_media(input_path)
-        container = sniff_container(audio_bytes)
+        size = os.path.getsize(input_path)
+
+        # 16 bytes bastam: o `sniff_container` só olha o cabeçalho.
+        with open(input_path, "rb") as f:
+            header = f.read(16)
+        container = sniff_container(header)
         direct = (
             container in DIRECT_CONTAINERS
             and not has_video
-            and len(audio_bytes) <= MAX_DIRECT_BYTES
+            and size <= MAX_DIRECT_BYTES
         )
 
         if direct:
             name, mime = DIRECT_CONTAINERS[container]
-            chunks = [(audio_bytes, name, mime)]
+            chunks = [(input_path, name, mime)]
         else:
-            audio_path = os.path.join(tmpdir, "audio.m4a")
-            extract_audio(input_path, audio_path)
+            audio_path = os.path.join(workdir, "audio.m4a")
+            # to_thread: o ffmpeg de uma reunião longa roda por minutos, e
+            # chamado direto ele congelava o event loop inteiro — todo mundo
+            # que usasse o app nesse intervalo ficava pendurado.
+            await asyncio.to_thread(extract_audio, input_path, audio_path)
             # A duração real é a do áudio extraído; para um vídeo, a sonda de
             # cima já a leu, mas um container quebrado pode só revelá-la aqui.
             if total_seconds <= 0:
@@ -999,62 +1039,58 @@ async def process_audio_bytes(audio_bytes: bytes, filename: str) -> tuple[str, l
             if os.path.getsize(audio_path) <= MAX_CHUNK_BYTES:
                 chunk_paths = [audio_path]
             else:
-                chunk_paths = split_audio(audio_path, tmpdir)
+                chunk_paths = await asyncio.to_thread(split_audio, audio_path, workdir)
+            chunks = [(path, "audio.m4a", "audio/m4a") for path in chunk_paths]
 
-            chunks = []
-            for path in chunk_paths:
-                with open(path, "rb") as f:
-                    chunks.append((f.read(), "audio.m4a", "audio/m4a"))
+        duration_str = format_duration(total_seconds)
 
-    duration_str = format_duration(total_seconds)
+        sem = asyncio.Semaphore(MAX_PARALLEL_CHUNKS)
+        async with httpx.AsyncClient() as client:
+            tasks = [
+                transcribe_chunk(client, path, i, name, mime, sem)
+                for i, (path, name, mime) in enumerate(chunks)
+            ]
+            try:
+                results = await asyncio.gather(*tasks)
+            except HTTPException:
+                # O envio direto depende do Groq aceitar o container que chegou.
+                # Se ele recusar, refazemos pelo caminho antigo em vez de devolver
+                # erro ao usuário por uma otimização nossa.
+                if not direct:
+                    raise
+                return await process_converted_audio(input_path, filename)
 
-    async with httpx.AsyncClient() as client:
-        tasks = [
-            transcribe_chunk(client, data, i, name, mime)
-            for i, (data, name, mime) in enumerate(chunks)
-        ]
-        try:
-            results = await asyncio.gather(*tasks)
-        except HTTPException:
-            # O envio direto depende do Groq aceitar o container que chegou.
-            # Se ele recusar, refazemos pelo caminho antigo em vez de devolver
-            # erro ao usuário por uma otimização nossa.
-            if not direct:
-                raise
-            return await process_converted_audio(audio_bytes, filename)
-
-    transcript, segments = join_chunks(results)
-    return transcript, segments, len(chunks), duration_str, total_seconds
+        transcript, segments = join_chunks(results)
+        return transcript, segments, len(chunks), duration_str, total_seconds
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
-async def process_converted_audio(audio_bytes: bytes, filename: str) -> tuple[str, list[dict], int, str, float]:
+async def process_converted_audio(input_path: str, filename: str) -> tuple[str, list[dict], int, str, float]:
     """Caminho antigo, sempre passando pelo ffmpeg. Serve de rede de segurança
     para quando o envio direto é recusado pelo Groq."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
-        with open(input_path, "wb") as f:
-            f.write(audio_bytes)
-
-        audio_path = os.path.join(tmpdir, "audio.m4a")
-        extract_audio(input_path, audio_path)
+    workdir = tempfile.mkdtemp(dir=os.path.dirname(input_path) or None)
+    try:
+        audio_path = os.path.join(workdir, "audio.m4a")
+        await asyncio.to_thread(extract_audio, input_path, audio_path)
         total_seconds, _ = probe_media(audio_path)
 
         if os.path.getsize(audio_path) <= MAX_CHUNK_BYTES:
             chunk_paths = [audio_path]
         else:
-            chunk_paths = split_audio(audio_path, tmpdir)
+            chunk_paths = await asyncio.to_thread(split_audio, audio_path, workdir)
 
-        chunks_bytes = []
-        for path in chunk_paths:
-            with open(path, "rb") as f:
-                chunks_bytes.append(f.read())
+        sem = asyncio.Semaphore(MAX_PARALLEL_CHUNKS)
+        async with httpx.AsyncClient() as client:
+            results = await asyncio.gather(*[
+                transcribe_chunk(client, path, i, sem=sem)
+                for i, path in enumerate(chunk_paths)
+            ])
 
-    async with httpx.AsyncClient() as client:
-        tasks = [transcribe_chunk(client, data, i) for i, data in enumerate(chunks_bytes)]
-        results = await asyncio.gather(*tasks)
-
-    transcript, segments = join_chunks(results)
-    return transcript, segments, len(chunks_bytes), format_duration(total_seconds), total_seconds
+        transcript, segments = join_chunks(results)
+        return transcript, segments, len(chunk_paths), format_duration(total_seconds), total_seconds
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 # Um pedido idêntico que chega enquanto o primeiro ainda está em andamento
@@ -1098,44 +1134,89 @@ async def health():
     return {"status": "ok", "service": "Dito"}
 
 
+async def save_upload(file: UploadFile, dest_path: str) -> str:
+    """Escreve o upload no disco em blocos e devolve o sha256 do conteúdo.
+
+    O `await file.read()` de antes trazia o arquivo inteiro para a memória do
+    worker — era isso, e não nenhum limite do Groq, que obrigava o teto de
+    150 MB e recusava uma reunião de uma hora gravada pelo app."""
+    digest = hashlib.sha256()
+    size = 0
+    with open(dest_path, "wb") as out:
+        while True:
+            block = await file.read(UPLOAD_BLOCK)
+            if not block:
+                break
+            size += len(block)
+            if size > MAX_UPLOAD_BYTES:
+                gb = MAX_UPLOAD_BYTES / (1024 ** 3)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Arquivo muito grande. O limite é {gb:.0f} GB — "
+                           "cerca de 8 horas de gravação.",
+                )
+            digest.update(block)
+            out.write(block)
+    if size == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="O arquivo chegou vazio. Tente enviá-lo de novo.",
+        )
+    return digest.hexdigest()
+
+
 @app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
 async def transcribe(file: UploadFile = File(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
-    audio_bytes = await file.read()
     filename = file.filename or "audio.m4a"
+    tmpdir = tempfile.mkdtemp()
+    try:
+        input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
+        file_hash = await save_upload(file, input_path)
+    except BaseException:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
 
-    if len(audio_bytes) > MAX_UPLOAD_BYTES:
-        mb = len(audio_bytes) / (1024 * 1024)
-        raise HTTPException(
-            status_code=413,
-            detail=f"Arquivo muito grande ({mb:.0f} MB). O limite é {MAX_UPLOAD_BYTES // (1024 * 1024)} MB — "
-                   "envie um trecho menor ou um arquivo só de áudio.",
-        )
+    usou_este_arquivo = False
 
     async def build() -> TranscriptionResult:
-        full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, filename)
+        nonlocal usou_este_arquivo
+        usou_este_arquivo = True
+        try:
+            full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(input_path, filename)
 
-        insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
+            insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
 
-        return TranscriptionResult(
-            transcript=full_transcript,
-            summary=summary_markdown(insights),
-            chunks_used=num_chunks,
-            duration_estimate=duration_str,
-            title=insights.get("title"),
-            segments=segments,
-            insights=insights,
-            duration_s=insights.get("duration_s") or round(audio_seconds),
-            usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
-        )
+            return TranscriptionResult(
+                transcript=full_transcript,
+                summary=summary_markdown(insights),
+                chunks_used=num_chunks,
+                duration_estimate=duration_str,
+                title=insights.get("title"),
+                segments=segments,
+                insights=insights,
+                duration_s=insights.get("duration_s") or round(audio_seconds),
+                usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+            )
+        finally:
+            # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
+            # quando quem pediu desiste, e apagar o arquivo de fora puxaria o
+            # tapete de uma transcrição ainda em curso.
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     # O conteúdo do arquivo é a identidade: o mesmo áudio reenviado tem o mesmo
     # hash, mesmo que o nome mude (o compartilhamento do Android põe um prefixo
     # de tempo no nome a cada envio).
-    key = capture_key("file", hashlib.sha256(audio_bytes).hexdigest())
-    return await run_once(key, build)
+    key = capture_key("file", file_hash)
+    try:
+        return await run_once(key, build)
+    finally:
+        # Reenvio idêntico ainda em voo: quem espera o trabalho do outro nunca
+        # roda o próprio `build`, então é aqui que a cópia dele é descartada.
+        if not usou_este_arquivo:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
@@ -1244,9 +1325,7 @@ async def build_url_result(url: str) -> TranscriptionResult:
                     if not audio_files:
                         raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
                     audio_path = os.path.join(tmpdir, audio_files[0])
-                    with open(audio_path, "rb") as f:
-                        audio_bytes = f.read()
-                full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
+                    full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(audio_path, "video.m4a")
 
             # Step 3: nothing configured — clear error with instructions
             if full_transcript is None:
@@ -1282,10 +1361,7 @@ async def build_url_result(url: str) -> TranscriptionResult:
                     raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
 
                 audio_path = os.path.join(tmpdir, audio_files[0])
-                with open(audio_path, "rb") as f:
-                    audio_bytes = f.read()
-
-            full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_bytes(audio_bytes, "video.m4a")
+                full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(audio_path, "video.m4a")
 
     else:
         # Extract text from article/news page

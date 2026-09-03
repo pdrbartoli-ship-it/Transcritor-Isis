@@ -26,6 +26,11 @@ export function useCapture({ onResult }) {
 
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
+  // Entre "parei de gravar" e "a gravação está pronta" há um trabalho real:
+  // fechar o arquivo, lê-lo do disco, montar o blob. Numa reunião de uma hora
+  // isso leva alguns segundos, e sem este estado a tela voltava ao repouso
+  // nesse intervalo — parecia que a gravação tinha se perdido.
+  const [isFinalizing, setIsFinalizing] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
 
@@ -143,6 +148,7 @@ export function useCapture({ onResult }) {
     setRecordingTime(0)
     setIsRecording(false)
     setIsPaused(false)
+    setIsFinalizing(false)
     startedAtRef.current = null
     pausedMsRef.current = 0
     pausedAtRef.current = null
@@ -220,18 +226,25 @@ export function useCapture({ onResult }) {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: RECORDING_CONSTRAINTS })
+      const recorder = new MediaRecorder(stream, recorderOptions())
       mediaRecorderRef.current = recorder
       chunksRef.current = []
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
-        setRecordedBlob(new Blob(chunksRef.current, { type: 'audio/webm' }))
+        // O tipo sai do próprio gravador: fixar 'audio/webm' aqui rotulava
+        // errado o arquivo no Safari/Firefox, onde o container é ogg.
+        setRecordedBlob(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }))
         clearInterval(timerRef.current)
         stopLevelMeter()
+        setIsFinalizing(false)
       }
-      recorder.start()
+      // Com fatia de tempo o áudio chega em pedaços ao longo da gravação, em
+      // vez de um único blob gigante materializado só no stop. Numa reunião
+      // longa é a diferença entre um encerramento instantâneo e vários
+      // segundos de tela parada.
+      recorder.start(RECORDER_TIMESLICE_MS)
       setIsRecording(true)
       beginTiming()
       startLevelMeter(stream)
@@ -249,6 +262,7 @@ export function useCapture({ onResult }) {
     if (isTauriApp()) {
       setIsRecording(false)
       setIsPaused(false)
+      setIsFinalizing(true)
       setRecordingTime(finalSeconds)
       clearInterval(timerRef.current)
       stopLevelMeter()
@@ -260,11 +274,16 @@ export function useCapture({ onResult }) {
         setRecordedBlob(new Blob([bytes], { type: 'audio/wav' }))
       } catch (err) {
         setError(typeof err === 'string' ? err : 'Não foi possível finalizar a gravação.')
+      } finally {
+        setIsFinalizing(false)
       }
       return
     }
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      // `onstop` desliga o "finalizando"; sem gravador ativo não há o que
+      // finalizar, e ligá-lo aqui deixaria a tela presa nesse estado.
+      setIsFinalizing(true)
       mediaRecorderRef.current.stop()
     }
     setIsRecording(false)
@@ -306,9 +325,9 @@ export function useCapture({ onResult }) {
 
   async function submitRecording() {
     if (!recordedBlob) return
-    // Dentro do app nativo o blob já vem como .wav (lido do arquivo que o
-    // Rust gravou); no navegador é o .webm de sempre do MediaRecorder.
-    const filename = recordedBlob.type === 'audio/wav' ? 'gravacao.wav' : 'gravacao.webm'
+    // O nome tem de combinar com o container: o Groq decide pela extensão se
+    // aceita o arquivo, e um ogg chamado .webm era recusado.
+    const filename = `gravacao.${extensionFor(recordedBlob.type)}`
     // resetRecording() zera recordingTime mais adiante — ler a duração antes.
     const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
     const result = await runCapture(() => {
@@ -365,7 +384,7 @@ export function useCapture({ onResult }) {
   return {
     loading, waking, error, setError,
     elapsed, estimate,
-    isRecording, isPaused, recordedBlob, recordingTime, getLevel,
+    isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
     // relógio dela a partir deles, em vez de receber um contador que atrasa
     // junto com os timers da janela minimizada.
@@ -376,6 +395,52 @@ export function useCapture({ onResult }) {
     pauseRecording, resumeRecording,
     submitRecording, submitFile, submitUrl,
   }
+}
+
+// Uma reunião é fala, não música: 32 kbps em Opus mono já entrega tudo que o
+// Whisper precisa ouvir. O padrão do MediaRecorder (~128 kbps estéreo) fazia
+// uma hora de reunião pesar ~57 MB sem transcrever nada melhor — e 8 horas
+// estourariam qualquer teto de upload.
+const RECORDING_BITS_PER_SECOND = 32_000
+
+// Um canal, na taxa que o Whisper usa. Pedir estéreo em 48 kHz era gravar o
+// dobro de dados para depois jogar metade fora no servidor.
+const RECORDING_CONSTRAINTS = { channelCount: 1, sampleRate: 16_000 }
+
+// De quanto em quanto tempo o MediaRecorder entrega um pedaço.
+const RECORDER_TIMESLICE_MS = 5000
+
+// Em ordem de preferência. Chrome/Edge/Android ficam no primeiro; Safari e
+// Firefox caem no ogg. Se nenhum for suportado, `undefined` deixa o navegador
+// escolher — melhor gravar num formato qualquer do que não gravar.
+const RECORDING_MIME_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+]
+
+function recorderOptions() {
+  const options = { audioBitsPerSecond: RECORDING_BITS_PER_SECOND }
+  try {
+    const supported = RECORDING_MIME_TYPES.find(t => MediaRecorder.isTypeSupported(t))
+    if (supported) options.mimeType = supported
+  } catch {
+    // Navegador sem isTypeSupported: segue com a escolha dele.
+  }
+  return options
+}
+
+// Extensão a partir do MIME do blob, ignorando o `;codecs=...`.
+const EXTENSION_BY_MIME = {
+  'audio/wav': 'wav',
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a',
+  'video/webm': 'webm',
+}
+
+function extensionFor(mime) {
+  return EXTENSION_BY_MIME[(mime || '').split(';')[0].trim()] || 'webm'
 }
 
 // O `catch` genérico de antes dizia sempre "verifique as permissões do

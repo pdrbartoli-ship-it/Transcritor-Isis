@@ -105,8 +105,19 @@ async function postJson(path, payload, { retries = 1 } = {}) {
   }
 }
 
+// Mesmo teto do backend (main.py: MAX_UPLOAD_BYTES). Conferir aqui é o que
+// evita subir 1 GB por vários minutos só para receber um 413 no fim.
+const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+
 export async function transcribeFile(file) {
   await assertReadable(file)
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const gb = (file.size / (1024 ** 3)).toFixed(1)
+    throw new Error(
+      `Este arquivo tem ${gb} GB e o limite é 1 GB (cerca de 8 horas de gravação). ` +
+      'Se for vídeo, envie só o áudio.'
+    )
+  }
   const formData = new FormData()
   formData.append('file', file)
   return handleResponse(await postWithRetry('/transcribe', formData))

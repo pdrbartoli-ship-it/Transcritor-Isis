@@ -12,7 +12,7 @@ import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE 
 export default function CaptureNative({ capture, variant, mode = 'record', mini }) {
   const {
     loading, waking, error, elapsed, estimate,
-    isRecording, isPaused, recordedBlob, recordingTime,
+    isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
     submitRecording, submitFile, submitUrl,
@@ -37,7 +37,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini 
               <button
                 className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording ? 'recording' : ''}`}
                 onClick={isRecording ? stopRecording : startRecording}
-                disabled={loading}
+                disabled={loading || isFinalizing}
                 aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
               >
                 <IconMic width={26} height={26} />
@@ -45,9 +45,11 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini 
               <p className="record-label">
                 {isRecording
                   ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} — {formatTime(recordingTime)}</>
-                  : 'Toque para gravar'}
+                  : isFinalizing
+                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação — {formatTime(recordingTime)}</>
+                    : 'Toque para gravar'}
               </p>
-              {isRecording && (
+              {isRecording && !isFinalizing && (
                 <RecordingControls
                   paused={isPaused}
                   onPause={pauseRecording}
