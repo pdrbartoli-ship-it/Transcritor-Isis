@@ -44,12 +44,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ── Limite de chamadas por IP ─────────────────────────────────────────────
+# ── Limite de chamadas ────────────────────────────────────────────────────
 # Em memória, de propósito: este serviço roda numa única instância do Render,
 # então não precisa de um Redis só para isto — e reiniciar o processo zerar a
 # contagem é um efeito colateral aceitável para o que é, no fundo, um freio de
 # mão. Não impede um ataque distribuído de muitos IPs, mas impede o caso comum
-# de um script em loop, sem login, esvaziando os créditos de IA sozinho.
+# de um script em loop esvaziando os créditos de IA sozinho.
 _rate_hits: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT = 100
 RATE_WINDOW_S = 3600
@@ -60,14 +60,98 @@ def _client_ip(request: Request) -> str:
     return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "desconhecido")
 
 
-def enforce_rate_limit(request: Request):
-    ip = _client_ip(request)
-    now = time()
-    hits = _rate_hits[ip]
-    hits[:] = [t for t in hits if now - t < RATE_WINDOW_S]
+def aplicar_limite(chave: str):
+    agora = time()
+    hits = _rate_hits[chave]
+    hits[:] = [t for t in hits if agora - t < RATE_WINDOW_S]
     if len(hits) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="Muitas requisições vindas deste endereço. Tente de novo mais tarde.")
-    hits.append(now)
+        raise HTTPException(status_code=429, detail="Muitas requisições. Tente de novo mais tarde.")
+    hits.append(agora)
+
+
+# ── Quem está chamando ────────────────────────────────────────────────────
+# Sem isto, as quatro rotas que gastam crédito de IA aceitam qualquer um da
+# internet: o endereço do backend está no código do app, que é público.
+#
+# A checagem é feita perguntando ao próprio Supabase se o token vale. Custa uma
+# ida de rede, mas não exige guardar segredo nenhum aqui — a chave anon é
+# pública por desenho (quem protege o banco é a RLS), e por isso ela pode ter
+# valor padrão no código, do mesmo jeito que o frontend já faz em
+# src/lib/supabase.js. Assim ligar a exigência não depende de lembrar de
+# configurar variável nenhuma no Render.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://hgmwngasnltlrqlwimdj.supabase.co").rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbXduZ2Fzbmx0bHJxbHdpbWRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MTU0NTcsImV4cCI6MjA5NTk5MTQ1N30."
+    "d936pnaq2YLJ54NvNNKddUP62TPJhtbUMz2PdbSi6Sc",
+)
+
+# A chave de liga/desliga da exigência de login. Ela existe porque o app de
+# Windows leva o frontend embutido (tauri.conf.json → frontendDist) e o Android
+# só troca o bundle na próxima abertura: exigir login no mesmo instante em que
+# o backend sobe deixaria de fora todo mundo que ainda não atualizou. Com ela
+# desligada o backend já entende o login e registra quem chegou sem ele — e a
+# exigência vira uma chave a girar no Render quando o parque estiver atualizado.
+REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "").strip().lower() in ("1", "true", "sim", "on")
+
+# Uma conversa de chat manda pergunta atrás de pergunta. Sem cache, cada uma
+# pagaria uma ida ao Supabase antes de chegar no Claude.
+_token_cache: dict[str, tuple[float, str]] = {}
+TOKEN_CACHE_S = 300
+
+
+async def validar_token(token: str) -> str | None:
+    """Devolve o id do usuário dono do token, ou None se ele não valer."""
+    chave = hashlib.sha256(token.encode()).hexdigest()
+    agora = time()
+
+    em_cache = _token_cache.get(chave)
+    if em_cache and em_cache[0] > agora:
+        return em_cache[1]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
+                timeout=10.0,
+            )
+    except Exception:
+        # Recusar quando o Supabase não responde é a escolha certa: deixar
+        # passar transformaria uma instabilidade dele num portão aberto aqui.
+        # O cache de 5 minutos absorve as quedas curtas.
+        logger.warning("Supabase não respondeu na checagem do token")
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    user_id = (resp.json() or {}).get("id")
+    if user_id:
+        _token_cache[chave] = (agora + TOKEN_CACHE_S, user_id)
+    return user_id
+
+
+async def guarda_de_uso(request: Request) -> str | None:
+    """Porta única das rotas que custam dinheiro: identifica quem chama e
+    aplica o limite de uso. O limite conta por usuário quando há login, e só
+    cai para o IP sem ele — assim duas pessoas no mesmo Wi-Fi não disputam a
+    mesma cota."""
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    user_id = await validar_token(token) if token else None
+
+    if not user_id:
+        if REQUIRE_AUTH:
+            raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para usar este recurso.")
+        # O log é o que diz quando é seguro girar a chave: enquanto aparecerem
+        # estas linhas, ainda há gente na versão antiga do app.
+        logger.info("Chamada sem login em %s (exigência ainda desligada)", request.url.path)
+
+    aplicar_limite(f"user:{user_id}" if user_id else f"ip:{_client_ip(request)}")
+    return user_id
+
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -1014,7 +1098,7 @@ async def health():
     return {"status": "ok", "service": "Dito"}
 
 
-@app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(enforce_rate_limit)])
+@app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
 async def transcribe(file: UploadFile = File(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
@@ -1054,7 +1138,7 @@ async def transcribe(file: UploadFile = File(...)):
     return await run_once(key, build)
 
 
-@app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(enforce_rate_limit)])
+@app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
 async def process_url(url: str = Form(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
@@ -1240,7 +1324,7 @@ async def build_url_result(url: str) -> TranscriptionResult:
     )
 
 
-@app.post("/insights", response_model=InsightsResponse, dependencies=[Depends(enforce_rate_limit)])
+@app.post("/insights", response_model=InsightsResponse, dependencies=[Depends(guarda_de_uso)])
 async def insights(request: InsightsRequest):
     """Gera os campos da tela de conversa a partir de uma transcrição que já
     existe. É o caminho das conversas capturadas antes desta versão: reanalisar
@@ -1259,7 +1343,7 @@ async def insights(request: InsightsRequest):
     )
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(enforce_rate_limit)])
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(guarda_de_uso)])
 async def chat(request: ChatRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chave de API não configurada.")

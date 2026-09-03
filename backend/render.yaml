@@ -8,6 +8,13 @@ services:
     buildCommand: apt-get install -y ffmpeg && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/opt/render/project/.deno sh -s -- -y --no-modify-path && pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # Exigir login nas rotas que gastam crédito de IA. Fica DESLIGADA até o
+      # parque de apps estar atualizado: o app de Windows leva o frontend
+      # embutido e o Android só troca o bundle na próxima abertura, então ligar
+      # junto com o deploy deixaria de fora quem ainda não atualizou.
+      # Para ligar: mude para "true" no painel do Render (Environment).
+      - key: REQUIRE_AUTH
+        value: "false"
       - key: GROQ_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY

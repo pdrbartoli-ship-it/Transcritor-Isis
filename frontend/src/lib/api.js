@@ -1,4 +1,22 @@
+import { supabase } from './supabase'
+
 const API_URL = 'https://transcritor-backend.onrender.com'
+
+// O backend precisa saber quem está chamando: as rotas que gastam crédito de
+// IA são fechadas para quem não tem conta. O token é o mesmo que o Supabase já
+// mantém para a sessão — não há nada novo a guardar.
+//
+// Falhar em silêncio (devolver {}) é de propósito: sem sessão a chamada segue
+// sem o cabeçalho e o backend responde 401, que a tela já sabe mostrar. Travar
+// aqui só trocaria uma mensagem clara por uma tela quebrada.
+async function authHeaders() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+  } catch {
+    return {}
+  }
+}
 
 // `fetch` rejeita com TypeError quando a conexão falha antes de haver resposta
 // — no celular isso aparecia como "Failed to fetch", sem dizer nada ao usuário.
@@ -54,9 +72,10 @@ async function assertReadable(file) {
 // Uma falha de rede num upload longo costuma ser transitória (troca de Wi-Fi
 // para dados, servidor acordando). Uma segunda tentativa resolve a maioria.
 async function postWithRetry(path, body, { retries = 1 } = {}) {
+  const headers = await authHeaders()
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fetch(`${API_URL}${path}`, { method: 'POST', body })
+      return await fetch(`${API_URL}${path}`, { method: 'POST', body, headers })
     } catch (err) {
       if (!isNetworkError(err) || attempt >= retries) {
         throw isNetworkError(err) ? new Error(NETWORK_ERROR) : err
@@ -68,11 +87,12 @@ async function postWithRetry(path, body, { retries = 1 } = {}) {
 
 // Mesma proteção de rede das capturas, para as rotas que mandam JSON.
 async function postJson(path, payload, { retries = 1 } = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await fetch(`${API_URL}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       })
       return await handleResponse(res)
