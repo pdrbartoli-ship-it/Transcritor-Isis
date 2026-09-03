@@ -45,6 +45,11 @@ select
 from public.feedback
 order by created_at desc;
 
+-- A view roda com a permissão de quem a criou (você) e views NÃO herdam a RLS
+-- da tabela — sem isto, qualquer visitante sem login lê o e-mail e a mensagem
+-- de todo mundo. Mesmo cuidado já tomado em analytics.sql.
+revoke all on public.feedback_recentes from anon, authenticated;
+
 -- ─────────────────────────────────────────────────────────────
 -- COMO VER OS FEEDBACKS (sem dar trabalho)
 -- ─────────────────────────────────────────────────────────────

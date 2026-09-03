@@ -144,7 +144,7 @@ export async function unwrapDEK(cofre, salt, segredo, { extractable = false } = 
 const ALFABETO = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 export function generateRecoveryKey() {
-  const bytes = randomBytes(20)   // 160 bits
+  const bytes = randomBytes(20)   // 100 bits de entropia real (32 símbolos = 5 bits cada)
   let s = ''
   for (const b of bytes) s += ALFABETO[b % ALFABETO.length]
   return s.match(/.{1,4}/g).join('-')   // XXXX-XXXX-… (5 grupos)

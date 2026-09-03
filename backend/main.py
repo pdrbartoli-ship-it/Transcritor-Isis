@@ -1,6 +1,9 @@
 import os
 import io
 import re
+import ipaddress
+import socket
+import logging
 import hashlib
 import asyncio
 import httpx
@@ -10,13 +13,16 @@ import tempfile
 import subprocess
 import json
 import imageio_ffmpeg
+from collections import defaultdict
+from time import time
 from urllib.parse import urlparse, parse_qs
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="Dito")
+logger = logging.getLogger("dito")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,11 +33,41 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # O detalhe completo vai só para o log do Render — devolver ao chamador o
+    # tipo e a mensagem da exceção entrega de graça o mapa interno do servidor
+    # para quem estiver testando as portas.
+    logger.exception("Erro não tratado em %s", request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Erro interno: {type(exc).__name__}: {str(exc)}"},
+        content={"detail": "Erro interno. Tente novamente em instantes."},
         headers={"Access-Control-Allow-Origin": "*"},
     )
+
+
+# ── Limite de chamadas por IP ─────────────────────────────────────────────
+# Em memória, de propósito: este serviço roda numa única instância do Render,
+# então não precisa de um Redis só para isto — e reiniciar o processo zerar a
+# contagem é um efeito colateral aceitável para o que é, no fundo, um freio de
+# mão. Não impede um ataque distribuído de muitos IPs, mas impede o caso comum
+# de um script em loop, sem login, esvaziando os créditos de IA sozinho.
+_rate_hits: dict[str, list[float]] = defaultdict(list)
+RATE_LIMIT = 100
+RATE_WINDOW_S = 3600
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "desconhecido")
+
+
+def enforce_rate_limit(request: Request):
+    ip = _client_ip(request)
+    now = time()
+    hits = _rate_hits[ip]
+    hits[:] = [t for t in hits if now - t < RATE_WINDOW_S]
+    if len(hits) >= RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Muitas requisições vindas deste endereço. Tente de novo mais tarde.")
+    hits.append(now)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -78,6 +114,32 @@ def js_runtime_args() -> list[str]:
         if path and os.path.exists(path):
             return ["--js-runtimes", f"deno:{path}"]
     return []
+
+
+def is_safe_public_url(url: str) -> bool:
+    """Recusa qualquer link que não seja http/https, ou cujo endereço resolva
+    para dentro da rede do servidor. Sem isto, `/process-url` vira um jeito de
+    usar o Render para sondar sua própria rede interna a partir de fora — o
+    chamador manda o link, o servidor busca por ele.
+
+    Isto barra o ataque direto (link já aponta para 127.0.0.1, 10.x etc.); não
+    barra um link público que redirecione para dentro depois — trafilatura não
+    dá controle fácil sobre cada salto de redirecionamento."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
 
 
 def is_video_url(url: str) -> bool:
@@ -176,7 +238,10 @@ class InsightsRequest(BaseModel):
     """Reanálise de uma conversa já transcrita. Os segmentos são opcionais
     porque as conversas antigas foram gravadas antes de existirem — sem eles a
     análise ainda sai, só sem tempos confiáveis."""
-    transcript: str
+    # Teto generoso (~80 mil palavras, um dia inteiro de reunião) só para dar
+    # um fim numa requisição absurda — sem endpoint autenticado, o corpo do
+    # pedido é a única coisa que limita o tamanho de uma chamada.
+    transcript: str = Field(..., max_length=400_000)
     segments: list[dict] = []
 
 
@@ -195,10 +260,10 @@ class ChatRequest(BaseModel):
     """O chat agora fala sobre UMA conversa, não sobre uma pasta inteira. Além
     de ser o que o usuário espera ao perguntar dentro de uma conversa, isso
     derruba o contexto de "todas as transcrições da pasta" para uma só."""
-    question: str
+    question: str = Field(..., max_length=4_000)
     title: str
     date: str
-    transcript: str
+    transcript: str = Field(..., max_length=400_000)
     summary: str | None = None
     history: list[ChatTurn] = []
     make_title: bool = False
@@ -949,7 +1014,7 @@ async def health():
     return {"status": "ok", "service": "Dito"}
 
 
-@app.post("/transcribe", response_model=TranscriptionResult)
+@app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(enforce_rate_limit)])
 async def transcribe(file: UploadFile = File(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
@@ -989,10 +1054,12 @@ async def transcribe(file: UploadFile = File(...)):
     return await run_once(key, build)
 
 
-@app.post("/process-url", response_model=TranscriptionResult)
+@app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(enforce_rate_limit)])
 async def process_url(url: str = Form(...)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
+    if not is_safe_public_url(url):
+        raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
@@ -1173,7 +1240,7 @@ async def build_url_result(url: str) -> TranscriptionResult:
     )
 
 
-@app.post("/insights", response_model=InsightsResponse)
+@app.post("/insights", response_model=InsightsResponse, dependencies=[Depends(enforce_rate_limit)])
 async def insights(request: InsightsRequest):
     """Gera os campos da tela de conversa a partir de uma transcrição que já
     existe. É o caminho das conversas capturadas antes desta versão: reanalisar
@@ -1192,7 +1259,7 @@ async def insights(request: InsightsRequest):
     )
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(enforce_rate_limit)])
 async def chat(request: ChatRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chave de API não configurada.")
