@@ -29,7 +29,7 @@ export async function ensureInbox(userId) {
 // cards da home mostram duas linhas de prévia — sem elas o card tem duas
 // linhas de conteúdo dentro de uma caixa alta, que é o que fazia a seção
 // parecer vazia mesmo cheia.
-const LIST_FIELDS = 'id, title, created_at, source_type, duration_s, summary, enc_version'
+const LIST_FIELDS = 'id, title, created_at, source_type, duration_s, summary, pinned, enc_version'
 const LIST_FIELDS_BASE = 'id, title, created_at, source_type, summary'
 const FULL_FIELDS = 'id, title, created_at, source_type, transcript, summary, segments, insights, duration_s, enc_version'
 const FULL_FIELDS_BASE = 'id, title, created_at, source_type, transcript, summary'
@@ -151,10 +151,25 @@ export async function renameConversation(id, title, encVersion) {
   const patch = encVersion === ENC_ATUAL ? await cifrarLinha({ title }) : { title }
   const { error } = await supabase.from('sessions').update(patch).eq('id', id)
   if (error) throw error
+  invalidarBuscaLocal()
 }
 
 export async function deleteConversation(id) {
   const { error } = await supabase.from('sessions').delete().eq('id', id)
+  if (error) throw error
+  invalidarBuscaLocal()
+}
+
+// Erro de "coluna não existe" na hora de fixar. A migração fixar_conversa.sql
+// pode ainda não ter rodado, e nesse caso o certo é dizer isso em português na
+// tela — não deixar o clique falhar em silêncio.
+export class SemColunaPinError extends Error {
+  constructor() { super('Fixar ainda não está disponível nesta conta.') }
+}
+
+export async function setPinned(id, pinned) {
+  const { error } = await supabase.from('sessions').update({ pinned }).eq('id', id)
+  if (error?.code === MISSING_COLUMN) throw new SemColunaPinError()
   if (error) throw error
 }
 
@@ -248,7 +263,14 @@ export function groupConversations(list) {
   const grupos = []
   let atual = null
 
-  for (const c of list) {
+  // As fixadas saem da linha do tempo e sobem para um grupo próprio: fixar só
+  // vale a pena se a conversa deixa de descer conforme o acervo cresce. A
+  // ordenação por data continua valendo dentro de cada grupo, porque a lista
+  // já chega ordenada do banco.
+  const fixadas = list.filter(c => c.pinned)
+  if (fixadas.length) grupos.push({ label: 'Fixadas', items: fixadas })
+
+  for (const c of list.filter(c => !c.pinned)) {
     const rotulo = labelForAge(new Date(c.created_at).getTime(), inicioDoDia)
     if (!atual || atual.label !== rotulo) {
       atual = { label: rotulo, items: [] }

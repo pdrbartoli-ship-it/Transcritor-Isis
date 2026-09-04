@@ -7,12 +7,13 @@ import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
+import ConversaMenu, { useConversaMenu } from './ConversaMenu'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -52,6 +53,9 @@ export default function Layout() {
   const [searching, setSearching] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef(null)
+
+  // Menu do botão direito das conversas (fixar / renomear / apagar).
+  const { menu, gestos, fecharMenu } = useConversaMenu()
 
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('dito-sidebar-collapsed') === '1' } catch { return false }
@@ -234,10 +238,14 @@ export default function Layout() {
                         key={c.id}
                         className={`sidebar-item ${location.pathname.startsWith(`/conversa/${c.id}`) ? 'active' : ''}`}
                         onClick={() => openConversation(c.id)}
+                        {...gestos(c)}
                         title={displayTitle(c)}
                       >
                         <KindIcon sourceType={c.source_type} />
                         <span className="sidebar-item-text">{displayTitle(c)}</span>
+                        {/* O alfinete é o que distingue uma conversa fixada de
+                            uma recente quando o grupo sai do campo de visão. */}
+                        {c.pinned && <IconPin width={13} height={13} className="pin-mark" />}
                       </button>
                     ))}
                   </div>
@@ -282,6 +290,18 @@ export default function Layout() {
           <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
         </div>
       </div>
+
+      <ConversaMenu
+        menu={menu}
+        onClose={fecharMenu}
+        onChanged={refreshConversations}
+        onDeleted={id => {
+          refreshConversations()
+          // Apagar a conversa aberta deixaria a tela mostrando algo que não
+          // existe mais; a home é o único destino que sempre existe.
+          if (location.pathname.startsWith(`/conversa/${id}`)) navigate('/')
+        }}
+      />
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
