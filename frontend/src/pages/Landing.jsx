@@ -4,13 +4,8 @@ import {
   IconDownload, IconShield, IconMic, IconFile, IconLink, IconCheck,
   IconArrowRight, IconStopCircle, IconPlay, IconMessage,
 } from '../components/Icons'
-
-// Instalador do app nativo Windows, publicado pelo CI numa GitHub Release a
-// cada push na main (ver .github/workflows/build-desktop.yml). Tag fixa
-// "desktop-latest" e nome de arquivo fixo "Dito-setup.exe": antes o nome
-// carregava a versão do app, então subir a versão quebrava este botão em
-// silêncio. Não dá para usar /releases/latest/ porque a release é prerelease.
-const INSTALLER_URL = 'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
+import InstalarModal from '../components/InstalarModal'
+import { INSTALLER_URL } from '../lib/instalar'
 
 // PREÇOS PROVISÓRIOS — nada aqui está cobrado ainda. Os valores e os limites
 // existem para a página ter uma aba de preço de verdade e para medirmos quem
@@ -208,6 +203,12 @@ export default function Landing() {
   const navigate = useNavigate()
   const entrar = () => navigate('/auth')
 
+  // "Entrar" e "Instalar grátis" são duas promessas diferentes, e por muito
+  // tempo os dois botões faziam a mesma coisa: abrir o login no navegador.
+  // Instalar abre o fluxo de download; entrar continua indo direto para o app.
+  const [instalando, setInstalando] = useState(false)
+  const instalar = () => setInstalando(true)
+
   // O plano escolhido na landing viaja com a pessoa até depois do login, que é
   // onde o checkout vai existir. Enquanto não há cobrança, o app lê isto no
   // "Meu plano" e já mostra o plano certo em destaque.
@@ -227,7 +228,7 @@ export default function Landing() {
         </nav>
         <div className="lp-nav-acoes">
           <button className="lp-nav-login" onClick={entrar}>Entrar</button>
-          <button className="btn-primary lp-nav-btn" onClick={entrar}>Instalar grátis</button>
+          <button className="btn-primary lp-nav-btn" onClick={instalar}>Instalar grátis</button>
         </div>
       </header>
 
@@ -243,7 +244,7 @@ export default function Landing() {
             e um resumo do que ficou combinado. Você só participa da conversa.
           </p>
           <div className="lp-cta">
-            <button className="btn-primary lp-btn-lg" onClick={entrar}>
+            <button className="btn-primary lp-btn-lg" onClick={instalar}>
               Instalar grátis
               <IconArrowRight width={16} height={16} />
             </button>
@@ -400,7 +401,7 @@ export default function Landing() {
         <section className="lp-final">
           <h2>Comece hoje.</h2>
           <div className="lp-final-btns">
-            <button className="btn-primary lp-btn-lg" onClick={entrar}>
+            <button className="btn-primary lp-btn-lg" onClick={instalar}>
               Instalar grátis
               <IconArrowRight width={16} height={16} />
             </button>
@@ -422,6 +423,13 @@ export default function Landing() {
           <a href="mailto:pdrbartoli@gmail.com">Fale com a gente</a>
         </span>
       </footer>
+
+      {instalando && (
+        <InstalarModal
+          onClose={() => setInstalando(false)}
+          onUsarNavegador={entrar}
+        />
+      )}
     </div>
   )
 }

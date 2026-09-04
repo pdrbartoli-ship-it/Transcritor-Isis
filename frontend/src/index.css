@@ -1394,3 +1394,29 @@ input::placeholder { color: var(--text-muted); }
 
 .sidebar-item .pin-mark { flex-shrink: 0; color: var(--text-muted); opacity: .8; }
 .sidebar-item.active .pin-mark { color: var(--accent); opacity: 1; }
+
+/* ---------- Caixa de instalar (landing) ---------- */
+
+.instalar-modal { max-width: 420px; }
+.instalar-ok {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--accent); margin-bottom: 12px;
+}
+.instalar-lead { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin-bottom: 14px; }
+.instalar-lead strong { color: var(--text); }
+.instalar-passos {
+  margin: 0 0 18px; padding-left: 20px;
+  display: flex; flex-direction: column; gap: 7px;
+  font-size: 13.5px; line-height: 1.55; color: var(--text-muted);
+}
+.instalar-passos strong { color: var(--text); font-weight: 600; }
+.instalar-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+/* A saída secundária: quem só quer experimentar agora não precisa instalar
+   nada. Fica com peso de link, não de botão, para não competir com o de cima. */
+.instalar-web {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 14px; padding: 8px;
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--text-muted);
+}
+.instalar-web:hover { color: var(--text); }
