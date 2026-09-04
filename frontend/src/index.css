@@ -428,12 +428,12 @@ input::placeholder { color: var(--text-muted); }
 
 /* Print real do app, não mais o desenho em HTML: a moldura é só borda + sombra
    por cima da própria cor de fundo do app, para a foto não parecer "colada"
-   num cartão branco. object-fit: contain porque as duas telas têm proporções
-   bem diferentes (uma é larga, com barra lateral; a outra é alta, com vários
-   blocos) — cortar uma delas arriscava sumir com a barra de perguntar, que é
-   a prova mais forte do card. */
+   num cartão branco. margin-top FIXO, não `auto`: um `auto` empurrava a
+   imagem para o fundo do card e deixava um vão vazio entre o texto e a foto
+   sempre que o card vizinho era mais alto — feio nos dois temas, pior no
+   escuro, onde o vão virava um retângulo escuro sem nada dentro. */
 .lp-feat-shot {
-  margin-top: auto; border-radius: var(--radius-sm); overflow: hidden;
+  margin-top: 22px; border-radius: var(--radius-sm); overflow: hidden;
   border: 1px solid var(--border); box-shadow: var(--shadow);
 }
 .lp-feat-shot img { display: block; width: 100%; height: auto; }

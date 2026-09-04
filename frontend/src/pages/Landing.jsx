@@ -299,7 +299,7 @@ export default function Landing() {
               <div className="lp-feat-shot">
                 <img
                   src="/landing/resultado.png"
-                  alt="Página de uma conversa processada pelo Dito, com os tópicos principais, a lista de tarefas, o resumo minuto a minuto e a barra para perguntar sobre a conversa"
+                  alt="Página de uma conversa processada pelo Dito, com os tópicos principais, um trecho da transcrição e a barra para perguntar sobre a conversa"
                   loading="lazy"
                 />
               </div>
