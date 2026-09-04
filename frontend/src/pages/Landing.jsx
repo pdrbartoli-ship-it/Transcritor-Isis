@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  IconDownload, IconShield, IconMic, IconFile, IconLink, IconCheck,
-  IconArrowRight, IconStopCircle, IconPlay, IconMessage,
+  IconDownload, IconShield, IconMic, IconFile, IconCheck,
+  IconArrowRight, IconStopCircle, IconPlay,
 } from '../components/Icons'
 import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
@@ -266,55 +266,45 @@ export default function Landing() {
           <span><IconCheck width={14} height={14} /> Documento pronto para baixar</span>
         </div>
 
-        {/* ── Produto: o que o Dito faz, em duas fotos ─────── */}
+        {/* ── Produto: capturar e perguntar, em prints reais do app ── */}
         <section className="lp-section" id="produto">
-          <h2>Duas formas de usar. A mesma resposta.</h2>
+          <h2>Grave qualquer coisa. Pergunte qualquer coisa.</h2>
           <div className="lp-feats">
             <article className="lp-feat">
-              <span className="lp-feat-tag">Gravar</span>
-              <h3>A reunião vira ata sozinha.</h3>
+              <span className="lp-feat-tag">Registrar</span>
+              <h3>Três jeitos de começar. Uma lista só.</h3>
               <p>
-                Aperte gravar antes de começar e esqueça. No fim, a conversa inteira já está
-                escrita, separada por assunto, com o que ficou combinado no topo.
+                Grave, envie um arquivo ou cole um link — na mesma tela. As conversas mais
+                importantes ficam fixadas no topo; as outras se organizam sozinhas por data.
               </p>
-              <div className="lp-mini">
-                <div className="lp-mini-head"><IconMessage width={13} height={13} /> Minhas conversas</div>
-                <ul className="lp-mini-list">
-                  <li><span>Alinhamento de projeto</span><b>Resumido</b></li>
-                  <li><span>Consulta — retorno</span><b>Resumido</b></li>
-                  <li><span>Entrevista com candidato</span><b>Resumido</b></li>
-                </ul>
-                <div className="lp-mini-rec">
-                  <span className="lp-mini-wave">
-                    {Array.from({ length: 16 }, (_, i) => <i key={i} style={{ '--i': i }} />)}
-                  </span>
-                  <span className="lp-mini-dot" /> Gravando · 12:04
-                </div>
+              <div className="lp-feat-shot">
+                <img
+                  src="/landing/captura.png"
+                  alt="Tela inicial do Dito com uma gravação em andamento e a lista de conversas anteriores na barra lateral"
+                  loading="lazy"
+                />
               </div>
               <button className="lp-feat-link" onClick={entrar}>
-                Gravar agora <IconArrowRight width={14} height={14} />
+                Testar agora <IconArrowRight width={14} height={14} />
               </button>
             </article>
 
             <article className="lp-feat">
-              <span className="lp-feat-tag">Enviar</span>
-              <h3>Áudio, vídeo ou link — tudo vira texto.</h3>
+              <span className="lp-feat-tag">Perguntar</span>
+              <h3>Não é só um resumo — é uma conversa que dá para interrogar.</h3>
               <p>
-                Mande o áudio que chegou no WhatsApp, um vídeo salvo no computador ou cole o
-                link de uma gravação. Volta transcrito e resumido do mesmo jeito.
+                O Dito separa os tópicos, lista o que ficou combinado e monta um resumo
+                minuto a minuto que você navega clicando. Faltou um detalhe? É só perguntar.
               </p>
-              <div className="lp-mini">
-                <div className="lp-mini-head"><IconLink width={13} height={13} /> Cole um link ou solte um arquivo</div>
-                <div className="lp-mini-input">https://…/gravacao-reuniao.mp4</div>
-                <div className="lp-mini-chips">
-                  <span><IconMic width={11} height={11} /> Áudio do WhatsApp</span>
-                  <span><IconFile width={11} height={11} /> MP4, MP3, M4A</span>
-                  <span><IconLink width={11} height={11} /> Link de vídeo</span>
-                </div>
-                <div className="lp-mini-ok"><IconCheck width={12} height={12} /> Resumo pronto em minutos</div>
+              <div className="lp-feat-shot">
+                <img
+                  src="/landing/resultado.png"
+                  alt="Página de uma conversa processada pelo Dito, com os tópicos principais, a lista de tarefas, o resumo minuto a minuto e a barra para perguntar sobre a conversa"
+                  loading="lazy"
+                />
               </div>
               <button className="lp-feat-link" onClick={entrar}>
-                Enviar um arquivo <IconArrowRight width={14} height={14} />
+                Testar agora <IconArrowRight width={14} height={14} />
               </button>
             </article>
           </div>
