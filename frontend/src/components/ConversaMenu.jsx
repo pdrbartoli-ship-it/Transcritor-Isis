@@ -86,6 +86,7 @@ export function useConversaMenu() {
 
 export default function ConversaMenu({ menu, onClose, onChanged, onDeleted }) {
   const [renomeando, setRenomeando] = useState(null)  // conversa em edição
+  const [apagando, setApagando] = useState(null)      // conversa a confirmar
   const ref = useRef(null)
   const [pos, setPos] = useState({ x: menu?.x ?? 0, y: menu?.y ?? 0 })
 
@@ -133,12 +134,13 @@ export default function ConversaMenu({ menu, onClose, onChanged, onDeleted }) {
     }
   }
 
-  async function apagar() {
-    const c = menu.conversation
-    onClose()
-    // Apagar é definitivo — a transcrição não volta. Uma confirmação do próprio
-    // navegador basta aqui: é a única ação do menu sem desfazer.
-    if (!window.confirm(`Apagar "${displayTitle(c)}"? Isso não pode ser desfeito.`)) return
+  // Apagar é definitivo — a transcrição não volta. O `window.confirm` do
+  // navegador servia para isso, mas no app empacotado ele mostra o nome do
+  // host interno ("tauri.localhost diz") em vez do Dito, o que parecia um
+  // aviso de sistema quebrado. Um modal próprio, no estilo do resto do app.
+  async function confirmarApagar() {
+    const c = apagando
+    setApagando(null)
     try {
       await deleteConversation(c.id)
       showToast('Conversa apagada.')
@@ -169,7 +171,11 @@ export default function ConversaMenu({ menu, onClose, onChanged, onDeleted }) {
           >
             <IconEdit width={15} height={15} /> Mudar o nome
           </button>
-          <button className="ctx-item danger" role="menuitem" onClick={apagar}>
+          <button
+            className="ctx-item danger"
+            role="menuitem"
+            onClick={() => { setApagando(menu.conversation); onClose() }}
+          >
             <IconTrash width={15} height={15} /> Apagar
           </button>
         </div>
@@ -180,6 +186,14 @@ export default function ConversaMenu({ menu, onClose, onChanged, onDeleted }) {
           conversation={renomeando}
           onClose={() => setRenomeando(null)}
           onSaved={() => { setRenomeando(null); onChanged() }}
+        />
+      )}
+
+      {apagando && (
+        <DeleteModal
+          conversation={apagando}
+          onClose={() => setApagando(null)}
+          onConfirm={confirmarApagar}
         />
       )}
     </>
@@ -235,6 +249,43 @@ function RenameModal({ conversation, onClose, onSaved }) {
           </button>
         </div>
       </form>
+    </div>
+  )
+}
+
+function DeleteModal({ conversation, onClose, onConfirm }) {
+  const [apagando, setApagando] = useState(false)
+  const confirmRef = useRef(null)
+
+  useEffect(() => { confirmRef.current?.focus() }, [])
+
+  async function confirmar() {
+    if (apagando) return
+    setApagando(true)
+    await onConfirm()
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-confirm" onClick={e => e.stopPropagation()} role="alertdialog" aria-label="Apagar conversa">
+        <h3>Apagar conversa?</h3>
+        <p>
+          Tem certeza que deseja apagar <strong>"{displayTitle(conversation)}"</strong>?
+          Essa ação não pode ser desfeita.
+        </p>
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onClose} disabled={apagando}>Cancelar</button>
+          <button
+            ref={confirmRef}
+            type="button"
+            className="btn-danger"
+            onClick={confirmar}
+            disabled={apagando}
+          >
+            {apagando ? 'Apagando…' : 'Apagar'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
