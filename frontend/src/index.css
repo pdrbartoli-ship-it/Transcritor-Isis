@@ -406,17 +406,22 @@ input::placeholder { color: var(--text-muted); }
 .lp-section > h2 { font-size: clamp(26px, 3.2vw, 36px); text-align: center; margin-bottom: 44px; }
 
 /* ── Produto: as duas capacidades, uma foto cada ── */
-.lp-feats { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+/* Os prints são a janela inteira do app (bem mais largos que altos), então os
+   cards vêm empilhados — um por linha, ocupando a largura toda da seção — em
+   vez de lado a lado. Lado a lado, cada card ficava com metade da largura e a
+   pilha texto-em-cima/foto-embaixo virava um retângulo mais alto que largo;
+   a própria foto minguava a ponto de o texto dela virar ilegível. */
+.lp-feats { display: grid; grid-template-columns: 1fr; gap: 28px; }
 .lp-feat {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 28px; display: flex; flex-direction: column;
+  border-radius: var(--radius); padding: 32px; display: flex; flex-direction: column;
 }
 .lp-feat-tag {
   font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--accent);
 }
-.lp-feat h3 { font-size: 21px; margin: 10px 0 10px; }
-.lp-feat > p { color: var(--text-muted); font-size: 14.5px; margin-bottom: 22px; }
+.lp-feat h3 { font-size: 22px; margin: 10px 0 10px; max-width: 640px; }
+.lp-feat > p { color: var(--text-muted); font-size: 14.5px; margin-bottom: 22px; max-width: 640px; }
 .lp-feat-link {
   margin-top: 20px; align-self: flex-start;
   display: inline-flex; align-items: center; gap: 7px;
@@ -520,7 +525,7 @@ input::placeholder { color: var(--text-muted); }
 .lp-foot a:hover, .lp-foot button:hover { color: var(--text); }
 
 @media (max-width: 900px) {
-  .lp-feats, .lp-planos { grid-template-columns: 1fr; }
+  .lp-planos { grid-template-columns: 1fr; }
   /* Empilhado, o destaque no meio empurraria o mais barato para cima do
      dobrado — a ordem vira a natural: grátis, Plus, Ultra, sem borda extra. */
   .lp-plano.destaque { padding-block: 38px 30px; }
@@ -541,6 +546,19 @@ input::placeholder { color: var(--text-muted); }
   .lp-shot-body { padding: 16px; }
   .lp-shot-url { display: none; }
   .lp-demo-steps span { font-size: 11px; padding: 4px 9px; }
+  .lp-feat { padding: 22px; }
+  /* Os prints são a janela inteira do app, larga — espremida na tela do
+     celular, a foto inteira encolhe tanto que o texto dela vira ilegível.
+     Recorta a barra lateral (contexto decorativo, dá para perder) e amplia o
+     miolo com conteúdo, que é a parte que precisa ser lida de perto.
+     object-position varia por card: o conteúdo de cada print começa numa
+     coluna diferente (a foto de "Perguntar" tem o título colado bem mais perto
+     da barra lateral que a de "Registrar") — um recorte só serviria para uma
+     das duas e cortaria letra da outra. */
+  .lp-feat-shot { aspect-ratio: 4 / 3; }
+  .lp-feat-shot img { width: 100%; height: 100%; object-fit: cover; }
+  .lp-feats .lp-feat:nth-child(1) .lp-feat-shot img { object-position: 100% center; }
+  .lp-feats .lp-feat:nth-child(2) .lp-feat-shot img { object-position: 78% center; }
 }
 
 /* ── App shell ──────────────────────────────────────────── */
