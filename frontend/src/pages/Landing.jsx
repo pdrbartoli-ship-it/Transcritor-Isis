@@ -279,7 +279,7 @@ export default function Landing() {
               </p>
               <div className="lp-feat-shot">
                 <img
-                  src="/landing/registrar.jpg"
+                  src="/landing/registrar.png"
                   alt="Janela do Dito com a lista de conversas na barra lateral e a tela de gravação pronta para começar"
                   loading="lazy"
                 />
@@ -298,7 +298,7 @@ export default function Landing() {
               </p>
               <div className="lp-feat-shot">
                 <img
-                  src="/landing/perguntar.jpg"
+                  src="/landing/perguntar.png"
                   alt="Janela do Dito com uma conversa processada: os tópicos principais, a lista de tarefas e a barra para perguntar sobre a conversa"
                   loading="lazy"
                 />
