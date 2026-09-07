@@ -862,9 +862,9 @@ SIMPLE_SUMMARY_INSTRUCTIONS = f"""Você recebeu a transcrição de uma conversa 
 Registro: NEUTRO. Frases curtas, sem floreio, sem emoji, sem adjetivo de entusiasmo.
 
 - **title**: 3 a 7 palavras nomeando o assunto. Sem aspas, sem ponto final.
-- **summary**: o essencial em 3 a 5 linhas corridas, ou em até 5 bullets de markdown (cada linha começando com "- ") se o conteúdo pedir. Nada de cabeçalho, nada de "Resumo:" no começo. Só o que foi dito que importa — quem lê quer entender o assunto em quinze segundos.
+- **summary**: SEMPRE em tópicos markdown, nunca em parágrafo corrido — cada linha começando com "- ". Entre 3 e 6 bullets, um fato ou decisão por linha, o mais importante primeiro. Nada de cabeçalho, nada de "Resumo:" no começo, nada de texto introdutório antes do primeiro bullet. Quem lê quer entender o essencial em quinze segundos, varrendo os tópicos — não lendo um parágrafo.
 
-Não invente nada que não esteja na transcrição. Se a gravação é curta ou não diz quase nada, o resumo também é curto: não encha linguiça.
+Não invente nada que não esteja na transcrição. Se a gravação é curta ou não diz quase nada, use menos bullets (ou só 1): não encha linguiça para chegar em 3.
 
 {LANGUAGE_RULE}"""
 

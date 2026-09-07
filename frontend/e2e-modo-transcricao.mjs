@@ -60,9 +60,9 @@ console.log('  lista:', JSON.stringify(itens))
 await page.locator('.split-menu button', { hasText: 'Transcrição completa' }).click()
 console.log('  após escolher:', await page.locator('.split-main').innerText())
 await page.locator('.split-main').click()
-await page.waitForSelector('.processing-box', { timeout: 10000 })
+await page.waitForSelector('.processing-orb', { timeout: 10000 })
 await shot(page, '03-carregando')
-console.log('  carregando:', JSON.stringify(await page.locator('.processing-box').innerText()))
+console.log('  carregando:', JSON.stringify(await page.locator('.hero-record').innerText()))
 await page.waitForSelector('.alert-error', { timeout: 20000 })
 
 // ── 2. Arquivo → escolhe, revisa, recomenda
@@ -108,6 +108,29 @@ await cel.waitForSelector('.file-review')
 await shot(cel, '09-celular-arquivo')
 
 console.log(erros.length ? `\n❌ erros de console:\n${erros.join('\n')}` : '\n✅ sem erros de console')
+// Checagem extra: o mesmo carregamento em tema escuro, e mais um frame do
+// anel respirando (para conferir que a animação não estoura o círculo).
+console.log('▶ tema escuro')
+const dark = await ctx.newPage()
+await dark.route('**/transcribe', async route => {
+  await new Promise(r => setTimeout(r, 3000))
+  await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'teste' }) })
+})
+await dark.goto(`${BASE}/#/`)
+await dark.waitForSelector('.home-capture', { timeout: 10000 }).catch(() => {})
+await dark.evaluate(() => localStorage.setItem('dito-theme', 'dark'))
+await dark.reload()
+await dark.waitForSelector('.record-btn', { timeout: 10000 })
+await dark.locator('.record-btn').click()
+await dark.waitForTimeout(1500)
+await dark.locator('.record-btn').click()
+await dark.waitForSelector('.split-btn', { timeout: 10000 })
+await dark.locator('.split-main').click()
+await dark.waitForSelector('.processing-orb', { timeout: 10000 })
+await shot(dark, '10-escuro-t0')
+await dark.waitForTimeout(1000)
+await shot(dark, '11-escuro-t1')
+
 await browser.close()
 
 // WAV mono 16 kHz de silêncio, só para o navegador conseguir ler a duração.
@@ -121,3 +144,4 @@ function wavDeSilencio(segundos) {
   buf.write('data', 36); buf.writeUInt32LE(dados, 40)
   return buf
 }
+

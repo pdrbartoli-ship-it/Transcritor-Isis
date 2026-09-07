@@ -1000,17 +1000,30 @@ input::placeholder { color: var(--text-muted); }
 .file-review .record-actions { margin-top: 10px; }
 
 /* ── Capture processing (buffering reassurance) ─────────── */
-.processing-box {
-  width: 100%; max-width: 460px; margin: 0 auto;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px 18px;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  text-align: center;
+/* Mesmo diâmetro do .record-btn.hero — é o que faz a troca "gravando" →
+   "processando" acontecer no mesmo alvo redondo, sem a tela pular de um
+   círculo grande para uma caixa retangular pequena. */
+.processing-orb {
+  position: relative;
+  width: 132px; height: 132px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; justify-content: center;
 }
-.processing-box .spinner { margin-bottom: 4px; }
-.processing-title { font-weight: 600; font-size: 14px; }
+.processing-orb .spinner { width: 34px; height: 34px; border-width: 3px; margin: 0; }
+/* Um anel respirando para fora do círculo — a mesma ideia do pulso vermelho da
+   gravação (pulse-ring), só mais lento e na cor do app: aqui não é urgência,
+   é trabalho em andamento. */
+.processing-orb .processing-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  animation: processing-breathe 2s ease-out infinite;
+}
+.processing-title { font-weight: 600; font-size: 14.5px; color: var(--text); }
+@keyframes processing-breathe {
+  0% { transform: scale(0.94); opacity: 0.5; }
+  70%, 100% { transform: scale(1.18); opacity: 0; }
+}
 
 /* ── Toast ──────────────────────────────────────────────── */
 .toast {

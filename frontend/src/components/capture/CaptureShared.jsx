@@ -7,18 +7,26 @@ import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile } from '../Ico
 // arquivo, textos do microfone, tamanho dos alvos de toque) fica em
 // CaptureWeb/CaptureNative; o que não diverge fica aqui.
 
-// Uma linha, um símbolo de carregando, e nada mais.
+// Um círculo pulsando e uma linha, e nada mais.
 //
 // Aqui já houve um contador regressivo, um "acordando o servidor…", um aviso de
 // hibernação e um pedido para não fechar a tela. Cada um deles era verdade, e
 // juntos diziam a mesma coisa quatro vezes com cara de problema: quem só queria
 // a transcrição lia uma tela de erro em andamento. O que a pessoa precisa saber
 // enquanto espera é que o Dito está trabalhando — o resto é ruído.
+//
+// O círculo tem o mesmo diâmetro do botão de gravar (var(--record-btn) no
+// CSS): é o que faz a troca de "gravando" para "processando" continuar no
+// mesmo lugar, em vez de a tela pular de um alvo redondo grande para uma
+// caixa retangular pequena flutuando no meio do vazio — que era o "estranho".
 export function ProcessingBox() {
   return (
-    <div className="processing-box">
-      <div className="spinner" />
-      <div className="processing-title">Transcrevendo e resumindo…</div>
+    <div className="hero-record">
+      <div className="processing-orb">
+        <span className="processing-ring" />
+        <span className="spinner" />
+      </div>
+      <p className="processing-title">Transcrevendo e resumindo…</p>
     </div>
   )
 }
