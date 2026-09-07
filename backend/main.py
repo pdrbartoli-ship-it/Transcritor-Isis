@@ -1771,15 +1771,18 @@ async def billing_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Assinatura inválida.")
 
     tipo = event["type"]
-    dados = event["data"]["object"]
+    # stripe-python >= 8 não deixa mais chamar .get()/.items() nos objetos que
+    # devolve (StripeObject) — só o subscrito puro. Convertendo para dict logo
+    # de cara, o resto do código usa dict de verdade, sem essa pegadinha.
+    dados = event["data"]["object"].to_dict()
 
     if tipo == "checkout.session.completed":
         user_id = dados.get("client_reference_id")
         subscription_id = dados.get("subscription")
         customer_id = dados.get("customer")
         if user_id and subscription_id:
-            sub = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
-            await _gravar_assinatura(user_id, customer_id, sub)
+            sub_obj = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
+            await _gravar_assinatura(user_id, customer_id, sub_obj.to_dict())
 
     elif tipo in ("customer.subscription.updated", "customer.subscription.deleted"):
         user_id = await _user_id_da_subscription(dados)
@@ -1810,7 +1813,7 @@ async def _user_id_da_subscription(sub: dict) -> str | None:
     return linhas[0]["user_id"] if linhas else None
 
 
-async def _gravar_assinatura(user_id: str, customer_id: str | None, sub) -> None:
+async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -> None:
     price_id = sub["items"]["data"][0]["price"]["id"] if sub.get("items") else None
     plano, ciclo = PLANOS_STRIPE.get(price_id, (None, None))
     status = sub.get("status")
