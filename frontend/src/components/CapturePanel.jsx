@@ -27,7 +27,7 @@ import CaptureNative from './capture/CaptureNative'
 // próprio hook pediria — usado pelo Home para cobrir o intervalo entre a
 // transcrição terminar e a sugestão de pasta chegar, sem esse hiato mostrar a
 // tela normal por trás.
-export default function CapturePanel({ onResult, variant = 'hero', mode = 'record', autoCapture = null, onAutoCaptureDone, extraLoading = false }) {
+export default function CapturePanel({ onResult, variant = 'hero', mode = 'record', autoCapture = null, onAutoCaptureDone, extraLoading = false, onVerPlanos }) {
   const { isNative, isMobile } = usePlatform()
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
@@ -93,7 +93,7 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
   // conversas" no mesmo lugar quando se troca de origem.
   return (
     <div className="capture-panel">
-      <View capture={viewCapture} variant={variant} mode={mode} mini={mini} />
+      <View capture={viewCapture} variant={variant} mode={mode} mini={mini} onVerPlanos={onVerPlanos} />
       {/* No navegador a janelinha é um documento separado, mas no MESMO
           contexto de JS: um portal desenha o React direto lá dentro, e o
           estado chega sem passar por evento nenhum. */}

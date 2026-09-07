@@ -10,6 +10,7 @@ import PlanModal from './PlanModal'
 import ConversaMenu, { useConversaMenu } from './ConversaMenu'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
+import { lerSaldo } from '../lib/api'
 import { trackAppOpen } from '../lib/analytics'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
@@ -31,6 +32,18 @@ function KindIcon({ sourceType }) {
 // depois das novas.
 const SEARCH_DEBOUNCE_MS = 250
 
+// Os mesmos tetos do backend (main.py: LIMITES_PLANO). Aqui eles só desenham o
+// aviso; quem barra de verdade é o servidor.
+const MINUTOS_DO_PLANO = { gratuito: 120, iniciante: 600, avancado: 2000 }
+
+// Abaixo disto não vale interromper ninguém; acima, quem avisa é o próprio
+// erro da captura.
+const AVISO_A_PARTIR_DE = 0.8
+
+// O aviso só faz sentido onde se captura — nas telas de leitura de conversa
+// ele seria barulho.
+const ROTAS_DE_CAPTURA = ['/', '/audio', '/video']
+
 export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -46,6 +59,7 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
+  const [saldo, setSaldo] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const [term, setTerm] = useState('')
@@ -83,6 +97,25 @@ export default function Layout() {
     // — sem ele não há a quem atribuir.
     trackAppOpen()
   }, [user?.id])
+
+  // O saldo do mês, relido a cada captura nova (a lista muda quando uma
+  // termina), para o aviso não continuar dizendo "faltam 20 min" depois de a
+  // pessoa ter gasto os últimos.
+  useEffect(() => {
+    if (!user?.id) return
+    let ativo = true
+    Promise.all([
+      lerSaldo(user.id),
+      supabase.from('subscriptions').select('plano').eq('user_id', user.id).maybeSingle(),
+    ])
+      .then(([uso, { data }]) => {
+        if (!ativo) return
+        const limite = MINUTOS_DO_PLANO[data?.plano] || MINUTOS_DO_PLANO.gratuito
+        setSaldo({ usados: uso.minutosUsados, limite })
+      })
+      .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
+    return () => { ativo = false }
+  }, [user?.id, conversations.length])
 
   // Quem escolheu um plano pago na landing antes de logar chega aqui direto
   // no "Meu plano", já pronto para clicar em Assinar — sem isso a escolha
@@ -298,9 +331,18 @@ export default function Layout() {
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
         </div>
         <div className="content">
+          {saldo && ROTAS_DE_CAPTURA.includes(location.pathname) &&
+            saldo.usados >= saldo.limite * AVISO_A_PARTIR_DE && saldo.usados < saldo.limite && (
+            <div className="aviso-saldo">
+              <span>
+                Faltam {Math.max(0, Math.round(saldo.limite - saldo.usados))} minutos do seu mês.
+              </span>
+              <button type="button" onClick={() => setShowPlan(true)}>Ver planos</button>
+            </div>
+          )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, abrirPlano: () => setShowPlan(true) }} />
         </div>
       </div>
 

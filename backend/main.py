@@ -201,9 +201,9 @@ PLANOS_STRIPE: dict[str, tuple[str, str]] = {
 
 
 async def supabase_service_upsert(table: str, dados: dict) -> None:
-    """Escreve no Supabase ignorando RLS, com a service role key. Usado só
-    pelo webhook do Stripe — é o único caminho de escrita do backend no
-    banco; tudo o mais é feito pelo frontend via supabase-js sob RLS."""
+    """Escreve no Supabase ignorando RLS, com a service role key. É o caminho
+    de escrita do backend para o que o usuário não pode editar (assinatura e
+    saldo); todo o resto é escrito pelo frontend via supabase-js sob RLS."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{SUPABASE_URL}/rest/v1/{table}",
@@ -218,6 +218,138 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
         )
     if resp.status_code >= 300:
         logger.error("Falha ao gravar assinatura no Supabase: %s %s", resp.status_code, resp.text)
+
+
+# ── Saldo de minutos e capturas ───────────────────────────────────────────
+# Os tetos vêm do precificacao.md e são o que a landing promete. O teto de
+# capturas existe por causa de um caso real: 1.000 minutos entregues em áudios
+# curtos de WhatsApp custam 11x o mesmo tempo entregue em vídeos longos, porque
+# cada captura paga ~2.500 tokens fixos de prompt. Sem ele, o Iniciante dá
+# prejuízo no pior caso.
+LIMITES_PLANO = {
+    "gratuito":  {"minutos": 120,  "capturas": 30},
+    "iniciante": {"minutos": 600,  "capturas": 120},
+    "avancado":  {"minutos": 2000, "capturas": 200},
+}
+
+
+async def supabase_service_get(table: str, params: dict) -> list[dict]:
+    """Lê do Supabase ignorando RLS, com a service role key."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            params=params,
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            },
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        logger.error("Falha ao ler %s no Supabase: %s %s", table, resp.status_code, resp.text)
+        return []
+    return resp.json() or []
+
+
+async def ler_saldo(user_id: str) -> dict:
+    """Plano do usuário e quanto ele já gastou no ciclo corrente.
+
+    Um período já vencido conta como zero: a virada de verdade acontece na
+    próxima escrita (registrar_uso), e sem esta regra o consumo do mês passado
+    apareceria no começo de cada ciclo novo."""
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "plano,status,current_period_end", "limit": 1},
+    )
+    assinatura = assinaturas[0] if assinaturas else {}
+    plano = assinatura.get("plano") or "gratuito"
+    if assinatura.get("status") in ("canceled", "incomplete_expired", "unpaid"):
+        plano = "gratuito"
+    limites = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
+
+    usos = await supabase_service_get(
+        "uso_mensal",
+        {"user_id": f"eq.{user_id}", "select": "minutos_usados,capturas_usadas,periodo_fim", "limit": 1},
+    )
+    uso = usos[0] if usos else {}
+    vencido = True
+    if uso.get("periodo_fim"):
+        try:
+            fim = datetime.datetime.fromisoformat(uso["periodo_fim"])
+            vencido = fim <= datetime.datetime.now(tz=datetime.timezone.utc)
+        except ValueError:
+            # Data ilegível: contar como ciclo em curso mantém o teto valendo.
+            # O contrário (tratar como vencido) zeraria o consumo a cada
+            # captura e o limite deixaria de existir.
+            logger.warning("periodo_fim ilegível para %s: %r", user_id, uso["periodo_fim"])
+            vencido = False
+
+    return {
+        "plano": plano,
+        "minutos_usados": 0.0 if vencido else float(uso.get("minutos_usados") or 0),
+        "capturas_usadas": 0 if vencido else int(uso.get("capturas_usadas") or 0),
+        "minutos_limite": limites["minutos"],
+        "capturas_limite": limites["capturas"],
+        # O ciclo do assinante segue o do Stripe; o do gratuito, o mês contado
+        # a partir da primeira captura dele (a função no banco resolve isso).
+        "periodo_fim_stripe": assinatura.get("current_period_end"),
+    }
+
+
+async def registrar_uso(user_id: str, minutos: float, periodo_fim: str | None) -> None:
+    """Soma o consumo desta captura, virando o ciclo se ele já tiver vencido.
+    A conta é feita dentro do banco, numa transação só: duas capturas em
+    paralelo somando aqui em Python se sobrescreveriam."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/registrar_uso",
+            json={"p_user_id": user_id, "p_minutos": minutos, "p_periodo_fim": periodo_fim},
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=10.0,
+        )
+    if resp.status_code >= 300:
+        # Não derruba a captura: a pessoa já esperou o processamento inteiro, e
+        # perder a conversa por causa do contador seria pior que perder a conta.
+        logger.error("Falha ao registrar uso de %s: %s %s", user_id, resp.status_code, resp.text)
+
+
+async def guarda_de_captura(request: Request) -> str | None:
+    """Porta das duas rotas que consomem saldo. Faz o que `guarda_de_uso` faz
+    (identifica quem chama e aplica o freio de chamadas por hora) e recusa na
+    entrada quem já esgotou o mês — antes de baixar, converter ou transcrever
+    qualquer coisa.
+
+    O tamanho desta captura ainda não se sabe aqui: link nenhum revela a
+    duração antes de ser baixado. Quem confere se ela CABE no que resta é o
+    `analisar_transcricao`, com a duração já na mão e antes da análise de IA,
+    que é o grosso do custo."""
+    user_id = await guarda_de_uso(request)
+    if not user_id:
+        return None
+
+    saldo = await ler_saldo(user_id)
+    if saldo["capturas_usadas"] >= saldo["capturas_limite"]:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Você já fez as {saldo['capturas_limite']} capturas do seu plano neste mês. "
+                "Abra \"Meu plano\" para assinar um plano maior."
+            ),
+        )
+    if saldo["minutos_usados"] >= saldo["minutos_limite"]:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Você usou os {saldo['minutos_limite']} minutos do seu plano neste mês. "
+                "Abra \"Meu plano\" para assinar um plano maior."
+            ),
+        )
+    return user_id
+
 
 # Manifesto do live update do app Android, publicado pelo GitHub Actions.
 OTA_MANIFEST_URL = os.environ.get(
@@ -1273,6 +1405,20 @@ def normalizar_modo(modo: str | None) -> str:
     return MODO_SIMPLES if (modo or "").strip().lower() == MODO_SIMPLES else MODO_COMPLETA
 
 
+async def _cobrar_do_saldo(user_id: str | None, minutos: float, saldo: dict | None) -> None:
+    """Desconta depois da análise dar certo: quem esperou o processamento e
+    recebeu um erro não deve pagar minutos por isso."""
+    if user_id and saldo:
+        await registrar_uso(user_id, round(minutos, 2), saldo["periodo_fim_stripe"])
+
+
+def duracao_efetiva(segments: list[dict], audio_seconds: float) -> float:
+    """Quanto esta captura durou, de fato. O áudio sondado é a medida direta;
+    quando ele não existe — link do YouTube resolvido pelas legendas, que não
+    baixa áudio nenhum — o fim do último segmento é o que sobra."""
+    return segments[-1]["end"] if segments else audio_seconds
+
+
 async def analisar_transcricao(
     modo: str,
     full_transcript: str,
@@ -1281,15 +1427,33 @@ async def analisar_transcricao(
     duration_str: str,
     audio_seconds: float,
     title_override: str | None = None,
+    user_id: str | None = None,
 ) -> TranscriptionResult:
     """O trecho que as duas rotas de captura têm em comum: com a transcrição na
     mão, decidir qual análise rodar e montar o resultado. Sem isto, cada rota
-    repetia o mesmo `if` e o mesmo TranscriptionResult de dez campos."""
+    repetia o mesmo `if` e o mesmo TranscriptionResult de dez campos.
+
+    É também o único ponto em que a duração já é final e o gasto grande (a
+    análise da IA, 70-79% do custo por captura) ainda não aconteceu — por isso
+    a checagem de saldo e o registro do consumo moram aqui, e não nas rotas."""
+    minutos = duracao_efetiva(segments, audio_seconds) / 60
+    saldo = await ler_saldo(user_id) if user_id else None
+    if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
+        restam = saldo["minutos_limite"] - saldo["minutos_usados"]
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Esta captura tem {minutos:.0f} min e restam {restam:.0f} min no seu plano "
+                "neste mês. Abra \"Meu plano\" para assinar um plano maior."
+            ),
+        )
+
     if modo == MODO_SIMPLES:
         resumo, in_tokens, out_tokens = await simple_summary(full_transcript)
+        await _cobrar_do_saldo(user_id, minutos, saldo)
         # Sem insights, a duração vem do último segmento (ou do próprio áudio):
         # é ela que a lista de conversas mostra ao lado do título.
-        duracao = segments[-1]["end"] if segments else audio_seconds
+        duracao = duracao_efetiva(segments, audio_seconds)
         return TranscriptionResult(
             transcript=full_transcript,
             summary=(resumo.get("summary") or "").strip(),
@@ -1304,6 +1468,7 @@ async def analisar_transcricao(
         )
 
     insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
+    await _cobrar_do_saldo(user_id, minutos, saldo)
     return TranscriptionResult(
         transcript=full_transcript,
         summary=summary_markdown(insights),
@@ -1354,8 +1519,12 @@ async def save_upload(file: UploadFile, dest_path: str) -> str:
     return digest.hexdigest()
 
 
-@app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
-async def transcribe(file: UploadFile = File(...), mode: str = Form(MODO_COMPLETA)):
+@app.post("/transcribe", response_model=TranscriptionResult)
+async def transcribe(
+    file: UploadFile = File(...),
+    mode: str = Form(MODO_COMPLETA),
+    user_id: str | None = Depends(guarda_de_captura),
+):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
@@ -1379,6 +1548,7 @@ async def transcribe(file: UploadFile = File(...), mode: str = Form(MODO_COMPLET
 
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
+                user_id=user_id,
             )
         finally:
             # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
@@ -1401,8 +1571,12 @@ async def transcribe(file: UploadFile = File(...), mode: str = Form(MODO_COMPLET
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-@app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
-async def process_url(url: str = Form(...), mode: str = Form(MODO_COMPLETA)):
+@app.post("/process-url", response_model=TranscriptionResult)
+async def process_url(
+    url: str = Form(...),
+    mode: str = Form(MODO_COMPLETA),
+    user_id: str | None = Depends(guarda_de_captura),
+):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
     if not is_safe_public_url(url):
@@ -1412,7 +1586,7 @@ async def process_url(url: str = Form(...), mode: str = Form(MODO_COMPLETA)):
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
     key = capture_key("url", url.strip(), modo)
-    return await run_once(key, lambda: build_url_result(url, modo))
+    return await run_once(key, lambda: build_url_result(url, modo, user_id))
 
 
 def supadata_segments(content) -> list[dict]:
@@ -1433,7 +1607,7 @@ def supadata_segments(content) -> list[dict]:
     return segments
 
 
-async def build_url_result(url: str, modo: str = MODO_COMPLETA) -> TranscriptionResult:
+async def build_url_result(url: str, modo: str = MODO_COMPLETA, user_id: str | None = None) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
@@ -1571,6 +1745,7 @@ async def build_url_result(url: str, modo: str = MODO_COMPLETA) -> Transcription
     return await analisar_transcricao(
         modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
         title_override=title,
+        user_id=user_id,
     )
 
 

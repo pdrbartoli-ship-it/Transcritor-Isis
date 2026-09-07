@@ -30,7 +30,12 @@ const isNetworkError = err => err instanceof TypeError
 async function handleResponse(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || 'Erro desconhecido')
+    const erro = new Error(err.detail || 'Erro desconhecido')
+    // O 402 (saldo do mês esgotado) merece um convite para assinar, e não a
+    // mesma cara de "deu erro" de uma queda de rede — quem mostra precisa
+    // conseguir distinguir os dois.
+    erro.status = res.status
+    throw erro
   }
   return res.json()
 }
@@ -141,6 +146,25 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
 // uma chamada de texto e não depende da mídia original, que nunca guardamos.
 export async function generateInsights(transcript, segments = []) {
   return postJson('/insights', { transcript, segments })
+}
+
+// Saldo do ciclo corrente, para o "Meu plano" e o aviso de saldo baixo. Um
+// período já vencido conta como zero: a virada acontece na próxima captura
+// (backend: registrar_uso), e sem isto o consumo do mês passado apareceria no
+// começo do mês novo.
+export async function lerSaldo(userId) {
+  const { data } = await supabase
+    .from('uso_mensal')
+    .select('minutos_usados, capturas_usadas, periodo_fim')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const vencido = !data?.periodo_fim || new Date(data.periodo_fim) <= new Date()
+  return {
+    minutosUsados: vencido ? 0 : Number(data.minutos_usados || 0),
+    capturasUsadas: vencido ? 0 : Number(data.capturas_usadas || 0),
+    periodoFim: vencido ? null : data.periodo_fim,
+  }
 }
 
 // Só a versão web assina por aqui — o app Android é distribuído pela Play

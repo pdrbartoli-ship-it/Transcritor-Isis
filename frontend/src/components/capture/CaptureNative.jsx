@@ -9,9 +9,9 @@ import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm,
 // - o vocabulário é "toque", não "clique";
 // - o aviso do microfone fala de permissão do aparelho, não do navegador —
 //   é lá que o usuário precisa ir resolver.
-export default function CaptureNative({ capture, variant, mode = 'record', mini }) {
+export default function CaptureNative({ capture, variant, mode = 'record', mini, onVerPlanos }) {
   const {
-    loading, error, pendingFile,
+    loading, error, errorStatus, pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
@@ -116,7 +116,18 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini 
         </div>
       )}
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && (
+        <div className="alert alert-error">
+          {error}
+          {/* Saldo esgotado não é um erro para "tentar de novo": o caminho de
+              saída é assinar, e ele fica a um clique da mensagem. */}
+          {errorStatus === 402 && onVerPlanos && (
+            <button type="button" className="btn-primary alert-cta" onClick={onVerPlanos}>
+              Ver planos
+            </button>
+          )}
+        </div>
+      )}
     </>
   )
 }

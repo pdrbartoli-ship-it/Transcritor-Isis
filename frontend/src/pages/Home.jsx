@@ -18,7 +18,7 @@ const CAPTURE_MODES = [
 export default function Home({ mode = 'record' }) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { refreshConversations } = useOutletContext()
+  const { refreshConversations, abrirPlano } = useOutletContext()
   const location = useLocation()
 
   const [saving, setSaving] = useState(false)
@@ -73,6 +73,7 @@ export default function Home({ mode = 'record' }) {
         </nav>
 
         <CapturePanel
+          onVerPlanos={abrirPlano}
           onResult={handleResult}
           variant="hero"
           mode={mode}

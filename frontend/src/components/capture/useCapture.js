@@ -25,6 +25,7 @@ import { MODO_COMPLETA } from './modos'
 export function useCapture({ onResult }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [errorStatus, setErrorStatus] = useState(null)
 
   // O arquivo escolhido, esperando o usuário dizer QUAL transcrição quer. Antes
   // escolher o arquivo já disparava o envio; agora há uma decisão no meio, e
@@ -318,6 +319,9 @@ export function useCapture({ onResult }) {
       return await fn()
     } catch (err) {
       setError(err.message)
+      // 402 é o saldo do mês esgotado: a tela oferece o "Ver planos" em vez de
+      // só mostrar o texto do erro.
+      setErrorStatus(err.status || null)
       return null
     } finally {
       setLoading(false)
@@ -408,7 +412,7 @@ export function useCapture({ onResult }) {
   }
 
   return {
-    loading, error, setError,
+    loading, error, setError, errorStatus,
     pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o

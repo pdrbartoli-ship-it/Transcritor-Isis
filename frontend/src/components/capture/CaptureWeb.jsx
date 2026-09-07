@@ -7,9 +7,9 @@ import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm,
 // sentido e o vocabulário é "clique". Cada origem tem a sua rota, e este
 // componente mostra só a que está aberta — antes as três disputavam a mesma
 // tela e a gaveta empurrava o resto da página para baixo ao abrir.
-export default function CaptureWeb({ capture, variant, mode = 'record', mini }) {
+export default function CaptureWeb({ capture, variant, mode = 'record', mini, onVerPlanos }) {
   const {
-    loading, error, pendingFile,
+    loading, error, errorStatus, pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
@@ -112,7 +112,18 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini }) 
         </div>
       )}
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && (
+        <div className="alert alert-error">
+          {error}
+          {/* Saldo esgotado não é um erro para "tentar de novo": o caminho de
+              saída é assinar, e ele fica a um clique da mensagem. */}
+          {errorStatus === 402 && onVerPlanos && (
+            <button type="button" className="btn-primary alert-cta" onClick={onVerPlanos}>
+              Ver planos
+            </button>
+          )}
+        </div>
+      )}
     </>
   )
 }

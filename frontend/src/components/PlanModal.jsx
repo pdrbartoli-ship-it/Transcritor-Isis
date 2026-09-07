@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { IconClose, IconCheck } from './Icons'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { criarCheckout } from '../lib/api'
+import { criarCheckout, lerSaldo } from '../lib/api'
 
 // A mesma tabela da landing, dentro do app. Ela existe em dois lugares porque
 // as duas decisões de compra acontecem em momentos diferentes: quem nunca usou
@@ -13,6 +13,7 @@ const PLANOS = [
     id: 'gratuito',
     nome: 'Gratuito',
     precoMensal: 'R$ 0',
+    minutos: 120,
     itens: ['2 horas por mês', 'Resumo automático', 'Cifrado no seu aparelho'],
   },
   {
@@ -20,6 +21,7 @@ const PLANOS = [
     nome: 'Iniciante',
     precoMensal: 'R$ 14,99',
     precoAnual: 'R$ 135',
+    minutos: 600,
     destaque: true,
     itens: ['10 horas por mês', 'Documento pronto para baixar', 'App de Windows'],
   },
@@ -28,6 +30,7 @@ const PLANOS = [
     nome: 'Avançado',
     precoMensal: 'R$ 19,99',
     precoAnual: 'R$ 180',
+    minutos: 2000,
     itens: ['33 horas por mês', 'Resumos mais profundos', 'Prioridade na fila'],
   },
 ]
@@ -38,6 +41,7 @@ export default function PlanModal({ onClose }) {
   const [planoAtual, setPlanoAtual] = useState('gratuito')
   const [assinando, setAssinando] = useState(null) // id do plano em checkout
   const [erro, setErro] = useState('')
+  const [saldo, setSaldo] = useState(null)
 
   // O plano ativo vem direto do Supabase — quem escreve ali é só o webhook do
   // Stripe, então esta leitura reflete a cobrança real, não uma intenção.
@@ -49,6 +53,7 @@ export default function PlanModal({ onClose }) {
       .eq('user_id', user.id)
       .maybeSingle()
       .then(({ data }) => setPlanoAtual(data?.plano || 'gratuito'))
+    lerSaldo(user.id).then(setSaldo).catch(() => setSaldo(null))
   }, [user])
 
   async function assinar(id) {
@@ -88,6 +93,12 @@ export default function PlanModal({ onClose }) {
               <div key={p.id} className={`plano${ativo ? ' on' : ''}${p.destaque ? ' destaque' : ''}`}>
                 <span className="plano-nome">{p.nome}</span>
                 <span className="plano-preco">{preco} <i>{periodo}</i></span>
+                {ativo && saldo && (
+                  <span className="plano-saldo">
+                    {Math.round(saldo.minutosUsados)} de {p.minutos} minutos usados
+                    {saldo.periodoFim && ` · renova em ${new Date(saldo.periodoFim).toLocaleDateString('pt-BR')}`}
+                  </span>
+                )}
                 <ul>
                   {p.itens.map(i => <li key={i}><IconCheck width={12} height={12} /> {i}</li>)}
                 </ul>
