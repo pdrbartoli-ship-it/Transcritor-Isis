@@ -201,7 +201,14 @@ export default function Chat() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <form className="chat-input" onSubmit={send}>
+      {/* Mesma casca visual do AskBar (classe .ask-bar): a barra de perguntar não
+          pode ter uma cara dentro do chat e outra fora dele — .chat-input aqui
+          só ajusta a POSIÇÃO (fixa no rodapé desta tela), a aparência vem toda
+          de .ask-bar. O botão fica sempre no laranja cheio, igual ao do
+          AskBar; `disabled` some por enviar (`send` já ignora texto vazio),
+          não por a pergunta estar em branco — só assim o estado de repouso
+          desta tela e o do AskBar são visualmente idênticos. */}
+      <form className="ask-bar chat-input" onSubmit={send}>
         <ChatTextarea
           value={question}
           onChange={setQuestion}
@@ -209,7 +216,7 @@ export default function Chat() {
           placeholder="Pergunte qualquer coisa sobre esta conversa"
           disabled={sending}
         />
-        <button type="submit" className="btn-icon" disabled={sending || !question.trim()} aria-label="Enviar">
+        <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">
           <IconSend width={18} height={18} />
         </button>
       </form>
