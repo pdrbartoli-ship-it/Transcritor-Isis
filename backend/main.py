@@ -1838,6 +1838,10 @@ async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -
             None if not current_period_end
             else datetime.datetime.fromtimestamp(current_period_end, tz=datetime.timezone.utc).isoformat()
         ),
+        # O upsert é um INSERT ... ON CONFLICT DO UPDATE: o default now() da
+        # coluna só se aplica na primeira inserção, então sem mandar isto
+        # explícito toda atualização seguinte manteria a data da primeira.
+        "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
     })
 
 
