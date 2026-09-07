@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
 import { IconChevron, IconDownload } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import MarkdownText from '../../components/chat/MarkdownText'
 import { track } from '../../lib/analytics'
 import { showToast } from '../../lib/toast'
 import {
@@ -28,8 +29,10 @@ export default function Conversa() {
   const todos = insights?.todos || []
   const chapters = insights?.chapters || []
 
-  // Conversas anteriores a esta versão não têm insights. A mídia nunca foi
-  // guardada, mas a transcrição sim — reanalisar custa uma chamada de texto.
+  // Roda a análise completa sobre uma conversa que só tem a transcrição: as
+  // capturadas em modo simples e as anteriores a esta tela existir. A mídia
+  // nunca foi guardada, mas a transcrição sim — e reanalisá-la custa uma
+  // chamada de texto, não uma nova transcrição.
   async function regenerate() {
     setRegenerating(true)
     setError(null)
@@ -68,24 +71,31 @@ export default function Conversa() {
     navigate(destino, state)
   }
 
+  // Sem insights por um de dois motivos: ou a conversa saiu de uma transcrição
+  // simples, ou foi capturada antes de a análise completa existir. Nos dois
+  // casos o que há é o resumo, e o que falta é a mesma coisa — então a tela é a
+  // mesma, e o botão oferece exatamente o que está faltando. `regenerate` já
+  // fazia isso; o que muda é o texto parar de acusar a conversa de ser antiga.
   if (!insights) {
     return (
       <div className="conversa">
-        <ConversaHeader conversation={conversation} />
+        <ConversaHeader
+          conversation={conversation}
+          action={<DownloadButton onClick={download} />}
+        />
         {error && <div className="alert alert-error">{error}</div>}
-        <div className="empty-insights">
-          <p>Esta conversa foi capturada antes da nova análise, então ainda não tem tópicos, tarefas nem linha do tempo.</p>
-          <button className="btn-primary" onClick={regenerate} disabled={regenerating}>
-            {regenerating ? <><span className="spinner spinner-sm" /> Analisando…</> : 'Gerar novos insights'}
-          </button>
-        </div>
         {conversation.summary && (
           <section className="conversa-block">
-            <h2>Resumo antigo</h2>
-            <p className="legacy-summary">{conversation.summary.replace(/\*\*/g, '').replace(/^#+ */gm, '')}</p>
+            <h2>Resumo</h2>
+            <MarkdownText text={conversation.summary} />
           </section>
         )}
-        <DownloadButton onClick={download} />
+        <div className="empty-insights">
+          <p>Esta conversa ainda não tem os 4 tópicos, a lista de próximos passos nem o resumo minuto a minuto.</p>
+          <button className="btn-primary" onClick={regenerate} disabled={regenerating}>
+            {regenerating ? <><span className="spinner spinner-sm" /> Analisando…</> : 'Fazer a transcrição completa'}
+          </button>
+        </div>
       </div>
     )
   }

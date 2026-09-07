@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { cifrarLinha, decifrarLinha, decifrarLista, ENC_ATUAL } from './cofre'
+import { cifrarLinha, cifrarMensagem, decifrarLinha, decifrarLista, ENC_ATUAL } from './cofre'
 
 // Uma "conversa" é qualquer captura: gravação, arquivo de áudio/vídeo ou link.
 // No banco continua sendo a tabela `sessions` — o que mudou foi o produto, que
@@ -142,6 +142,27 @@ export async function createConversation(userId, result, sourceType, fallbackNam
   if (error) throw error
   invalidarBuscaLocal()
   return decifrarLinha(data)
+}
+
+// A transcrição simples termina no chat, com o resumo já lá em cima como
+// primeira mensagem. Gravá-lo de verdade (em vez de passá-lo pela rota) é o que
+// faz ele continuar existindo quando a pessoa voltar à conversa amanhã.
+//
+// Best-effort de propósito: a conversa já está salva, e falhar aqui não pode
+// engolir a transcrição que acabou de custar tempo e API — no pior caso o chat
+// abre vazio e o resumo continua na tela de visão geral.
+export async function seedChatWithSummary(userId, sessionId, texto) {
+  const conteudo = (texto || '').trim()
+  if (!conteudo) return
+  try {
+    const { data: chat, error } = await supabase.from('chats')
+      .insert({ session_id: sessionId, user_id: userId })
+      .select('id').single()
+    if (error) throw error
+    const mensagem = await cifrarMensagem(conteudo)
+    await supabase.from('chat_messages')
+      .insert({ chat_id: chat.id, user_id: userId, role: 'assistant', ...mensagem })
+  } catch {}
 }
 
 // Renomear tem de respeitar o formato da linha: cifrar o título de uma conversa

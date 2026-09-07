@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { usePlatform } from '../lib/platform'
 import { sharedFileToFile } from '../lib/sharedContent'
 import { useCapture } from './capture/useCapture'
+import { modoRecomendado } from './capture/modos'
+import { readMediaDuration } from './capture/estimate'
 import { useMiniRecorder } from './recorder/useMiniRecorder'
 import MiniRecorder from './recorder/MiniRecorder'
 import CaptureWeb from './capture/CaptureWeb'
@@ -13,8 +15,9 @@ import CaptureNative from './capture/CaptureNative'
 // alvos de toque. Escolher aqui, num ponto só, é o que permite as duas
 // plataformas divergirem sem duplicar lógica de negócio.
 //
-// Chama onResult(result, sourceType, sourceName) quando uma transcrição
-// termina. `variant="hero"` aumenta o botão de gravar na tela inicial;
+// Chama onResult(result, sourceType, sourceName, mode) quando uma transcrição
+// termina — `mode` é a profundidade que o usuário escolheu no botão de
+// transcrever ('simples' ou 'completa'), e decide em que tela ele cai. `variant="hero"` aumenta o botão de gravar na tela inicial;
 // "compact" é usado dentro de uma pasta.
 //
 // `autoCapture` vem do "Compartilhar" de outro app: { kind: 'url', url } ou
@@ -55,10 +58,17 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
     ;(async () => {
       try {
         if (autoCapture.kind === 'url') {
-          await capture.submitUrl(autoCapture.url)
+          await capture.submitUrl(autoCapture.url, modoRecomendado({ origem: 'url' }))
         } else {
           const file = await sharedFileToFile(autoCapture)
-          if (!cancelled) await capture.submitFile(file)
+          if (cancelled) return
+          // O compartilhamento processa sozinho, sem tela onde escolher — então
+          // a recomendação vira a escolha. É o mesmo critério do botão: a
+          // duração manda, e sem ela um arquivo compartilhado vale como áudio
+          // curto.
+          const durationSec = await readMediaDuration(file)
+          if (cancelled) return
+          await capture.sendFile(file, modoRecomendado({ origem: 'file', durationSec }), durationSec)
         }
       } catch (err) {
         if (!cancelled) capture.setError(err.message)

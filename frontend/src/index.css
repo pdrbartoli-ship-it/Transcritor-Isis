@@ -838,11 +838,14 @@ input::placeholder { color: var(--text-muted); }
 }
 .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--surface); }
 .drop-zone.is-loading { cursor: default; opacity: 0.8; }
-.url-form { display: flex; gap: 8px; }
-.url-form input { flex: 1; }
+.url-form { display: flex; gap: 8px; align-items: flex-start; }
+.url-form input { flex: 1; min-width: 0; }
 
 /* ── Markdown das respostas ─────────────────────────────── */
 .md p { margin-bottom: 6px; }
+.md ul { margin: 0 0 8px; padding-left: 18px; }
+.md li { margin-bottom: 4px; line-height: 1.55; }
+.md li::marker { color: var(--text-muted); }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 .md strong { font-weight: 600; }
 
@@ -935,6 +938,67 @@ input::placeholder { color: var(--text-muted); }
 .pick-file svg { color: var(--text-muted); }
 .pick-file-hint { margin-top: 10px; text-align: center; }
 
+/* ── Botão de transcrever (botão + lista) ───────────────── */
+/* Duas metades de um botão só: a grande executa a opção selecionada, a
+   estreita abre a lista. Elas se encostam (a borda some entre as duas) para
+   ler como uma peça, e não como dois botões que por acaso estão juntos. */
+.split-btn { position: relative; display: inline-flex; }
+.split-main, .split-toggle {
+  background: var(--accent); color: var(--accent-text);
+  padding: 9px 18px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.split-main { border-radius: 999px 0 0 999px; }
+.split-toggle {
+  padding: 9px 12px; border-radius: 0 999px 999px 0;
+  /* O fio entre as metades é o que diz que são dois alvos, não um. */
+  box-shadow: inset 1px 0 0 var(--accent-text);
+}
+.split-main:hover:not(:disabled), .split-toggle:hover:not(:disabled) { background: var(--accent-hover); }
+
+/* Abre para BAIXO. Para cima ela cobria justamente o que a pessoa acabou de
+   fazer — o nome do arquivo escolhido, o link colado, a aba de origem — e
+   abaixo do botão há espaço sobrando nas três telas. */
+.split-menu {
+  position: absolute; top: calc(100% + 8px); left: 0;
+  min-width: 290px; max-width: min(340px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 6px; z-index: 30; list-style: none; text-align: left;
+}
+.split-menu button {
+  width: 100%; background: transparent; color: var(--text);
+  border-radius: var(--radius-sm); padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+}
+.split-menu button:hover { background: var(--hover); }
+.split-menu button.on { background: var(--accent-soft); }
+.split-menu-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.split-menu-label { font-size: 13.5px; font-weight: 500; }
+.split-badge {
+  font-size: 10.5px; font-weight: 600;
+  color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 2px 7px;
+}
+.split-menu-hint { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+
+/* ── Arquivo escolhido, esperando a escolha do modo ─────── */
+.file-review {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 16px; box-shadow: var(--shadow);
+}
+.file-review-name {
+  display: flex; align-items: center; gap: 8px; max-width: 100%;
+  font-size: 14px; font-weight: 500;
+}
+.file-review-name svg { color: var(--text-muted); flex-shrink: 0; }
+/* Nome de arquivo é a coisa mais longa que cai aqui, e o do WhatsApp vem com
+   data e hora — sem o corte, ele empurra o painel inteiro para os lados. */
+.file-review-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-review .record-actions { margin-top: 10px; }
+
 /* ── Capture processing (buffering reassurance) ─────────── */
 .processing-box {
   width: 100%; max-width: 460px; margin: 0 auto;
@@ -947,8 +1011,6 @@ input::placeholder { color: var(--text-muted); }
 }
 .processing-box .spinner { margin-bottom: 4px; }
 .processing-title { font-weight: 600; font-size: 14px; }
-.processing-hint { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
-.processing-warn { font-size: 12px; color: var(--accent); margin-top: 2px; }
 
 /* ── Toast ──────────────────────────────────────────────── */
 .toast {
@@ -1037,6 +1099,10 @@ input::placeholder { color: var(--text-muted); }
   .home-greeting h1 { font-size: 25px; }
   .message .bubble { max-width: 92%; }
   .url-form { flex-direction: column; }
+  /* Empilhado, o botão de transcrever ocupa a linha inteira — meio botão
+     centralizado embaixo de um campo de largura total fica órfão. */
+  .url-form .split-btn { width: 100%; }
+  .url-form .split-main { flex: 1; }
 }
 
 
@@ -1250,6 +1316,8 @@ input::placeholder { color: var(--text-muted); }
 .message.assistant .bubble { width: 100%; padding: 0; }
 .message .md p { margin: 0 0 12px; }
 .message .md p:last-child { margin-bottom: 0; }
+.message .md ul { margin: 0 0 12px; }
+.message .md ul:last-child { margin-bottom: 0; }
 .message .md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 .chat-starter { text-align: center; padding: 48px 20px; color: var(--text-muted); }

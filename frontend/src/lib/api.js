@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { MODO_COMPLETA } from '../components/capture/modos'
 
 const API_URL = 'https://transcritor-backend.onrender.com'
 
@@ -109,7 +110,11 @@ async function postJson(path, payload, { retries = 1 } = {}) {
 // evita subir 1 GB por vários minutos só para receber um 413 no fim.
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
-export async function transcribeFile(file) {
+// `mode` é a profundidade da análise: 'completa' (4 tópicos, tarefas, resumo
+// minuto a minuto) ou 'simples' (um resumo curto e o chat). O backend trata
+// qualquer valor desconhecido como 'completa', que é o que ele fazia antes
+// deste campo existir.
+export async function transcribeFile(file, mode = MODO_COMPLETA) {
   await assertReadable(file)
   if (file.size > MAX_UPLOAD_BYTES) {
     const gb = (file.size / (1024 ** 3)).toFixed(1)
@@ -120,12 +125,14 @@ export async function transcribeFile(file) {
   }
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('mode', mode)
   return handleResponse(await postWithRetry('/transcribe', formData))
 }
 
-export async function processUrl(url) {
+export async function processUrl(url, mode = MODO_COMPLETA) {
   const formData = new FormData()
   formData.append('url', url)
+  formData.append('mode', mode)
   return handleResponse(await postWithRetry('/process-url', formData))
 }
 

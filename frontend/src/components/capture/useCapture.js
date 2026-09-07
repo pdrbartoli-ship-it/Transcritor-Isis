@@ -5,24 +5,33 @@ import { readFile } from '@tauri-apps/plugin-fs'
 import { transcribeFile, processUrl, wakeBackend } from '../../lib/api'
 import { track } from '../../lib/analytics'
 import { isTauriApp } from '../../lib/platform'
-import { estimateSeconds, readMediaDuration } from './estimate'
+import { readMediaDuration } from './estimate'
+import { MODO_COMPLETA } from './modos'
 
-// Toda a regra de captura — gravar, enviar arquivo, processar link, estimar
-// tempo e tratar erro. As telas (CaptureWeb, CaptureNative) só desenham; nada
-// de lógica de negócio duplicada entre plataformas.
+// Toda a regra de captura — gravar, escolher e enviar arquivo, processar link e
+// tratar erro. As telas (CaptureWeb, CaptureNative) só desenham; nada de lógica
+// de negócio duplicada entre plataformas.
+//
+// Todo envio leva um `mode`: 'simples' (resumo curto no Haiku, e o chat) ou
+// 'completa' (tópicos, tarefas e capítulos). Quem escolhe é o usuário, no botão
+// de transcrever; a recomendação que já vem marcada mora em ./modos.
 //
 // startRecording/stopRecording tratam duas gravações por trás do mesmo botão:
 // dentro do app nativo (Windows/Tauri), invoke('start_recording'/'stop_recording')
 // aciona a captura WASAPI (sistema + microfone, ver src-tauri/src/audio); no
 // navegador comum é getUserMedia + MediaRecorder, só microfone, como sempre.
-// O resto do fluxo (upload, estimativa, erro de transcrição vazia) é o mesmo
-// pros dois casos — só o jeito de gravar muda.
+// O resto do fluxo (upload, modo, erro de transcrição vazia) é o mesmo pros
+// dois casos — só o jeito de gravar muda.
 export function useCapture({ onResult }) {
   const [loading, setLoading] = useState(false)
-  const [waking, setWaking] = useState(false)
   const [error, setError] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
-  const [estimate, setEstimate] = useState(null) // segundos previstos, null = desconhecido
+
+  // O arquivo escolhido, esperando o usuário dizer QUAL transcrição quer. Antes
+  // escolher o arquivo já disparava o envio; agora há uma decisão no meio, e
+  // ela precisa de um lugar onde o arquivo espere. `durationSec` vem junto
+  // porque é lido uma vez, na escolha, e é ele que decide qual modo aparece
+  // recomendado.
+  const [pendingFile, setPendingFile] = useState(null) // { file, durationSec }
 
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -134,13 +143,14 @@ export function useCapture({ onResult }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Conta os segundos enquanto processa + avisa antes de sair da página.
+  // Avisa antes de sair da página no meio de um processamento. O contador de
+  // segundos que vivia aqui saiu junto com a estimativa: a tela de carregamento
+  // agora diz o que está acontecendo, e não quanto falta.
   useEffect(() => {
-    if (!loading) { setElapsed(0); return }
-    const t = setInterval(() => setElapsed(e => e + 1), 1000)
+    if (!loading) return
     const warn = e => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', warn)
-    return () => { clearInterval(t); window.removeEventListener('beforeunload', warn) }
+    return () => window.removeEventListener('beforeunload', warn)
   }, [loading])
 
   function resetRecording() {
@@ -292,20 +302,18 @@ export function useCapture({ onResult }) {
     clearInterval(timerRef.current)
   }
 
-  async function runCapture(fn, estimateSec = null) {
-    setEstimate(estimateSec)
+  async function runCapture(fn) {
     setLoading(true)
     setError(null)
     // O plano gratuito do Render hiberna: mandar o arquivo para uma instância
     // dormindo derrubava a conexão no meio do upload ("Failed to fetch").
-    // Acordamos antes e só então enviamos.
-    setWaking(true)
+    // Acordamos antes e só então enviamos. Isso não aparece mais na tela — para
+    // quem espera, acordar o servidor e transcrever são a mesma espera.
     try {
       await wakeBackend()
     } catch {
       // Não conseguir acordar não impede a tentativa de envio.
     }
-    setWaking(false)
     try {
       return await fn()
     } catch (err) {
@@ -313,7 +321,6 @@ export function useCapture({ onResult }) {
       return null
     } finally {
       setLoading(false)
-      setEstimate(null)
     }
   }
 
@@ -323,67 +330,86 @@ export function useCapture({ onResult }) {
     return !result?.transcript || result.transcript.trim().length < 5
   }
 
-  async function submitRecording() {
+  async function submitRecording(mode = MODO_COMPLETA) {
     if (!recordedBlob) return
     // O nome tem de combinar com o container: o Groq decide pela extensão se
     // aceita o arquivo, e um ogg chamado .webm era recusado.
     const filename = `gravacao.${extensionFor(recordedBlob.type)}`
     // resetRecording() zera recordingTime mais adiante — ler a duração antes.
-    const seconds = estimateSeconds({ kind: 'audio', durationSec: recordingTime, bytes: recordedBlob.size })
+    const duracao = recordingTime
     const result = await runCapture(() => {
       const file = new File([recordedBlob], filename, { type: recordedBlob.type })
-      return transcribeFile(file)
-    }, seconds)
+      return transcribeFile(file, mode)
+    })
     if (!result) return
     if (isEmpty(result)) {
       setError('Não captamos áudio suficiente. Tente gravar novamente, mais perto do microfone.')
       resetRecording()
       return
     }
-    track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: recordingTime, usage: result.usage })
-    onResult(result, 'record', 'Gravação de áudio')
+    track('captura', { origem: 'gravacao', midia: 'audio', duracao_s: duracao, modo: mode, usage: result.usage })
+    onResult(result, 'record', 'Gravação de áudio', mode)
     resetRecording()
   }
 
-  async function submitFile(file) {
+  // Escolher o arquivo e enviá-lo deixaram de ser o mesmo gesto: entre os dois
+  // está a escolha do tipo de transcrição. `pickFile` só guarda o arquivo (e lê
+  // a duração, que decide qual modo aparece recomendado); quem envia é
+  // `submitFile`, já com a decisão tomada.
+  async function pickFile(file) {
     if (!file) return
+    setError(null)
+    setPendingFile({ file, durationSec: null })
     const durationSec = await readMediaDuration(file)
-    const seconds = estimateSeconds({
-      kind: file.type.startsWith('video/') ? 'video' : 'audio',
-      durationSec,
-      bytes: file.size,
-    })
-    const result = await runCapture(() => transcribeFile(file), seconds)
+    // O usuário pode ter desistido enquanto a duração era lida.
+    setPendingFile(atual => (atual?.file === file ? { file, durationSec } : atual))
+  }
+
+  function clearFile() {
+    setPendingFile(null)
+  }
+
+  // Envia um arquivo qualquer. Fica separado de `submitFile` porque o
+  // compartilhamento de outro app entra por aqui: lá o arquivo nunca passa pelo
+  // seletor, e não há tela onde ele possa esperar por uma escolha.
+  async function sendFile(file, mode = MODO_COMPLETA, durationSec = null) {
+    if (!file) return
+    const result = await runCapture(() => transcribeFile(file, mode))
     if (!result) return
     if (isEmpty(result)) { setError('Não conseguimos extrair áudio/texto deste arquivo.'); return }
     track('captura', {
       origem: 'arquivo',
       midia: file.type.startsWith('video/') ? 'video' : 'audio',
       duracao_s: durationSec || null,
+      modo: mode,
       usage: result.usage,
     })
-    onResult(result, 'file', file.name)
+    onResult(result, 'file', file.name, mode)
   }
 
-  async function submitUrl(url) {
+  async function submitFile(mode = MODO_COMPLETA) {
+    if (!pendingFile) return
+    const { file, durationSec } = pendingFile
+    await sendFile(file, mode, durationSec)
+    setPendingFile(null)
+  }
+
+  async function submitUrl(url, mode = MODO_COMPLETA) {
     const clean = url.trim()
     if (!clean) return false
-    const result = await runCapture(
-      () => processUrl(clean),
-      estimateSeconds({ kind: 'link' }),
-    )
+    const result = await runCapture(() => processUrl(clean, mode))
     if (!result) return false
     if (isEmpty(result)) { setError('Não conseguimos extrair conteúdo deste link.'); return false }
     // A URL em si não é guardada: só o fato de ter vindo por link e o consumo.
-    track('captura', { origem: 'link', midia: result.usage?.audio_seconds ? 'video' : 'texto', usage: result.usage })
+    track('captura', { origem: 'link', midia: result.usage?.audio_seconds ? 'video' : 'texto', modo: mode, usage: result.usage })
     // Nomeia a sessão pelo título do vídeo/página, não pela URL crua.
-    onResult(result, 'url', result.title?.trim() || clean)
+    onResult(result, 'url', result.title?.trim() || clean, mode)
     return true
   }
 
   return {
-    loading, waking, error, setError,
-    elapsed, estimate,
+    loading, error, setError,
+    pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
     // relógio dela a partir deles, em vez de receber um contador que atrasa
@@ -393,6 +419,7 @@ export function useCapture({ onResult }) {
     pausedAt: pausedAtRef.current,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
+    pickFile, clearFile, sendFile,
     submitRecording, submitFile, submitUrl,
   }
 }

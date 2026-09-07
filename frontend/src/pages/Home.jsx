@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useOutletContext, useLocation, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { createConversation } from '../lib/conversas'
+import { createConversation, seedChatWithSummary } from '../lib/conversas'
+import { MODO_SIMPLES } from '../components/capture/modos'
 import CapturePanel from '../components/CapturePanel'
 import { IconMic, IconLink, IconFile } from '../components/Icons'
 
@@ -35,13 +36,20 @@ export default function Home({ mode = 'record' }) {
   // A captura terminou: a conversa já existe e o usuário vai direto para ela.
   // Antes havia um passo no meio pedindo que ele escolhesse uma pasta antes de
   // ver qualquer resultado — era a maior fricção do fluxo.
-  async function handleResult(result, sourceType, sourceName) {
+  //
+  // Onde ele cai depende do que pediu. A transcrição completa abre na visão
+  // geral, que é onde moram os tópicos, as tarefas e a linha do tempo. A
+  // simples abre direto no chat, com o resumo já como primeira mensagem: ali o
+  // resumo É o resultado, e o que vem depois dele é uma pergunta.
+  async function handleResult(result, sourceType, sourceName, mode) {
     setSaving(true)
     setError(null)
     try {
       const conversation = await createConversation(user.id, result, sourceType, sourceName)
+      const simples = mode === MODO_SIMPLES
+      if (simples) await seedChatWithSummary(user.id, conversation.id, result.summary)
       await refreshConversations()
-      navigate(`/conversa/${conversation.id}`)
+      navigate(`/conversa/${conversation.id}${simples ? '/chat' : ''}`)
     } catch (err) {
       setError(`Não foi possível salvar a conversa: ${err.message}`)
       setSaving(false)

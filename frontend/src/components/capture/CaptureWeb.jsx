@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { IconMic } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE } from './CaptureShared'
+import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm, MODE_TITLE } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
 // sentido e o vocabulário é "clique". Cada origem tem a sua rota, e este
@@ -9,10 +9,11 @@ import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE 
 // tela e a gaveta empurrava o resto da página para baixo ao abrir.
 export default function CaptureWeb({ capture, variant, mode = 'record', mini }) {
   const {
-    loading, waking, error, elapsed, estimate,
+    loading, error, pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
+    pickFile, clearFile,
     submitRecording, submitFile, submitUrl,
   } = capture
 
@@ -20,12 +21,13 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini }) 
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef()
 
-  async function handleUrl(e) {
-    e.preventDefault()
-    if (await submitUrl(url)) setUrl('')
+  // `modo` aqui é a profundidade da transcrição, não o `mode` do painel (que
+  // diz qual origem está aberta) — nomes diferentes para não confundir os dois.
+  async function handleUrl(modo) {
+    if (await submitUrl(url, modo)) setUrl('')
   }
 
-  if (loading) return <ProcessingBox waking={waking} estimate={estimate} elapsed={elapsed} />
+  if (loading) return <ProcessingBox />
 
   return (
     <>
@@ -71,23 +73,35 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini }) 
       {mode === 'file' && (
         <div className="capture-mode">
           <p className="capture-mode-title">{MODE_TITLE.file}</p>
-          <div
-            className={`drop-zone ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`}
-            onClick={() => !loading && fileRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); submitFile(e.dataTransfer.files[0]) }}
-          >
-            <input
-              ref={fileRef}
-              type="file"
-              accept={ACCEPTED_FILES}
-              style={{ display: 'none' }}
-              onChange={e => submitFile(e.target.files[0])}
+          {/* O input fica fora do ramo condicional: montá-lo só junto da área
+              de soltar faria o React descartá-lo ao escolher um arquivo, e o
+              seletor do navegador cancelaria a escolha em curso. */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPTED_FILES}
+            style={{ display: 'none' }}
+            onChange={e => pickFile(e.target.files[0])}
+          />
+          {pendingFile ? (
+            <FileReview
+              pendingFile={pendingFile}
+              onSubmit={submitFile}
+              onReset={() => { clearFile(); fileRef.current.value = '' }}
+              loading={loading}
             />
-            <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
-            <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
-          </div>
+          ) : (
+            <div
+              className={`drop-zone ${dragOver ? 'drag-over' : ''} ${loading ? 'is-loading' : ''}`}
+              onClick={() => !loading && fileRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]) }}
+            >
+              <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
+              <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
+            </div>
+          )}
         </div>
       )}
 

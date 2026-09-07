@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { IconMic, IconFile } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE } from './CaptureShared'
+import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm, MODE_TITLE } from './CaptureShared'
 
 // Captura no celular. Diferenças reais em relação ao desktop:
 // - não existe arrastar arquivo: o alvo vira um botão de toque, sem a área
@@ -11,22 +11,24 @@ import { ProcessingBox, RecordingReview, RecordingControls, UrlForm, MODE_TITLE 
 //   é lá que o usuário precisa ir resolver.
 export default function CaptureNative({ capture, variant, mode = 'record', mini }) {
   const {
-    loading, waking, error, elapsed, estimate,
+    loading, error, pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
+    pickFile, clearFile,
     submitRecording, submitFile, submitUrl,
   } = capture
 
   const [url, setUrl] = useState('')
   const fileRef = useRef()
 
-  async function handleUrl(e) {
-    e.preventDefault()
-    if (await submitUrl(url)) setUrl('')
+  // `modo` aqui é a profundidade da transcrição, não o `mode` do painel (que
+  // diz qual origem está aberta) — nomes diferentes para não confundir os dois.
+  async function handleUrl(modo) {
+    if (await submitUrl(url, modo)) setUrl('')
   }
 
-  if (loading) return <ProcessingBox waking={waking} estimate={estimate} elapsed={elapsed} />
+  if (loading) return <ProcessingBox />
 
   return (
     <>
@@ -80,19 +82,30 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini 
             type="file"
             accept={ACCEPTED_FILES}
             style={{ display: 'none' }}
-            onChange={e => submitFile(e.target.files[0])}
+            onChange={e => pickFile(e.target.files[0])}
           />
-          <button
-            className="pick-file"
-            onClick={() => !loading && fileRef.current?.click()}
-            disabled={loading}
-          >
-            <IconFile width={18} height={18} />
-            Escolher áudio ou vídeo
-          </button>
-          <p className="text-muted text-sm pick-file-hint">
-            Serve áudio do WhatsApp, gravação de reunião, vídeo salvo — MP3, M4A, OGG, OPUS, MP4 e outros.
-          </p>
+          {pendingFile ? (
+            <FileReview
+              pendingFile={pendingFile}
+              onSubmit={submitFile}
+              onReset={() => { clearFile(); fileRef.current.value = '' }}
+              loading={loading}
+            />
+          ) : (
+            <>
+              <button
+                className="pick-file"
+                onClick={() => !loading && fileRef.current?.click()}
+                disabled={loading}
+              >
+                <IconFile width={18} height={18} />
+                Escolher áudio ou vídeo
+              </button>
+              <p className="text-muted text-sm pick-file-hint">
+                Serve áudio do WhatsApp, gravação de reunião, vídeo salvo — MP3, M4A, OGG, OPUS, MP4 e outros.
+              </p>
+            </>
+          )}
         </div>
       )}
 

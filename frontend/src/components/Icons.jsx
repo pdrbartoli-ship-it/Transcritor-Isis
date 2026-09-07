@@ -103,3 +103,9 @@ export const IconStopCircle = (p) => (
 export const IconPopOut = (p) => (
   <svg {...base} {...p}><path d="M14 3h7v7" /><path d="M21 3l-9 9" /><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" /></svg>
 )
+// Seta para baixo: a metade "abre a lista" do botão de transcrever. O
+// IconChevron aponta para a direita e serve a outra ideia — "leva a outro
+// lugar"; girá-lo por CSS deixaria a mesma forma dizendo duas coisas.
+export const IconCaretDown = (p) => (
+  <svg {...base} {...p}><polyline points="6 9 12 15 18 9" /></svg>
+)

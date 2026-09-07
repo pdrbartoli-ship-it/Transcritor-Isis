@@ -323,8 +323,13 @@ class TranscriptionResult(BaseModel):
     # conversa só teria texto corrido.
     segments: list[dict] = []
     # Título, resumo, 4 tópicos, tarefas e capítulos, de uma chamada só.
+    # Fica nulo na transcrição simples: lá o resumo é o produto inteiro.
     insights: dict | None = None
     duration_s: int = 0
+    # Qual das duas análises produziu este resultado. O app já sabe o que
+    # pediu; devolver isto é o que deixa o servidor decidir sozinho no dia em
+    # que um pedido tiver de cair para a outra.
+    mode: str = "completa"
     usage: Usage = Usage()
 
 
@@ -757,6 +762,11 @@ INSIGHTS_MODEL = "claude-sonnet-5"
 # que faz a extração.
 CHAT_MODEL = "claude-haiku-4-5"
 
+# A transcrição simples pede um parágrafo, não uma leitura estruturada da
+# reunião inteira: resumir um texto que já chega pronto é exatamente o tipo de
+# tarefa em que o Haiku empata com os modelos grandes e custa uma fração.
+SUMMARY_MODEL = "claude-haiku-4-5"
+
 
 # Folga proposital. A saída da extração é grande (4 tópicos com detalhe,
 # capítulos, tarefas e as trocas de locutor) e estourar o teto não devolve um
@@ -780,18 +790,22 @@ INSIGHTS_EFFORT = "low"
 
 async def call_insights(
     prompt: str, schema: dict,
-    max_tokens: int = INSIGHTS_MAX_TOKENS, effort: str | None = None,
+    max_tokens: int = INSIGHTS_MAX_TOKENS, effort: str | None = INSIGHTS_EFFORT,
+    model: str = INSIGHTS_MODEL,
 ) -> tuple[dict, int, int]:
     client = anthropic_client()
+    # `effort` só existe nos modelos de raciocínio adaptativo. Mandá-lo para o
+    # Haiku 4.5 (o modelo do resumo simples) é erro de requisição, não um campo
+    # ignorado — daí ele ser opcional em vez de ter sempre um padrão.
+    output_config = {"format": {"type": "json_schema", "schema": schema}}
+    if effort:
+        output_config["effort"] = effort
     try:
         response = await client.messages.create(
-            model=INSIGHTS_MODEL,
+            model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
-            output_config={
-                "format": {"type": "json_schema", "schema": schema},
-                "effort": effort or INSIGHTS_EFFORT,
-            },
+            output_config=output_config,
         )
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=f"Erro ao analisar a conversa: {e}")
@@ -825,11 +839,55 @@ async def extract_insights(transcript: str, segments: list[dict], effort: str | 
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
         insights, tin, tout = await call_insights(
-            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA, effort=effort
+            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA,
+            effort=effort or INSIGHTS_EFFORT,
         )
         return normalize_insights(insights, segments), tin, tout
 
     return await extract_insights_long(body, segments)
+
+
+SIMPLE_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "summary": {"type": "string"},
+    },
+    "required": ["title", "summary"],
+    "additionalProperties": False,
+}
+
+SIMPLE_SUMMARY_INSTRUCTIONS = f"""Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula). Resuma-a de forma CURTA e direta.
+
+Registro: NEUTRO. Frases curtas, sem floreio, sem emoji, sem adjetivo de entusiasmo.
+
+- **title**: 3 a 7 palavras nomeando o assunto. Sem aspas, sem ponto final.
+- **summary**: o essencial em 3 a 5 linhas corridas, ou em até 5 bullets de markdown (cada linha começando com "- ") se o conteúdo pedir. Nada de cabeçalho, nada de "Resumo:" no começo. Só o que foi dito que importa — quem lê quer entender o assunto em quinze segundos.
+
+Não invente nada que não esteja na transcrição. Se a gravação é curta ou não diz quase nada, o resumo também é curto: não encha linguiça.
+
+{LANGUAGE_RULE}"""
+
+# Um parágrafo cabe folgado nisto; o teto existe só para o corte não acontecer
+# em silêncio.
+SIMPLE_SUMMARY_MAX_TOKENS = 2000
+
+
+async def simple_summary(transcript: str) -> tuple[dict, int, int]:
+    """Título + resumo curto, numa chamada só ao Haiku.
+
+    Sem map-reduce de propósito: mesmo o teto de upload (1 GB, ~8h de fala)
+    rende uma transcrição bem dentro da janela de 200 mil tokens do Haiku, e
+    fatiar aqui pagaria duas chamadas para produzir o mesmo parágrafo."""
+    data, in_tokens, out_tokens = await call_insights(
+        f"{SIMPLE_SUMMARY_INSTRUCTIONS}\n\nTranscrição:\n{transcript}",
+        SIMPLE_SUMMARY_SCHEMA,
+        max_tokens=SIMPLE_SUMMARY_MAX_TOKENS,
+        # O Haiku 4.5 não aceita `effort` — ver call_insights.
+        effort=None,
+        model=SUMMARY_MODEL,
+    )
+    return data, in_tokens, out_tokens
 
 
 # Só o que o passo de consolidação precisa ver — mandar as transcrições
@@ -1129,6 +1187,67 @@ def capture_key(*parts: str) -> str:
     return hashlib.sha256("\x00".join(parts).encode()).hexdigest()
 
 
+# As duas profundidades de análise que o app oferece. "completa" é a de sempre
+# — 4 tópicos, tarefas, capítulos e locutores, no modelo grande. "simples" é um
+# resumo curto no Haiku, para quem só quer saber do que se tratou e perguntar o
+# resto no chat.
+MODO_SIMPLES = "simples"
+MODO_COMPLETA = "completa"
+
+
+def normalizar_modo(modo: str | None) -> str:
+    """Qualquer coisa que não seja exatamente "simples" é a análise completa.
+
+    É o que o app fazia antes deste parâmetro existir — e é o que uma versão
+    antiga, que não manda campo nenhum, precisa continuar recebendo."""
+    return MODO_SIMPLES if (modo or "").strip().lower() == MODO_SIMPLES else MODO_COMPLETA
+
+
+async def analisar_transcricao(
+    modo: str,
+    full_transcript: str,
+    segments: list[dict],
+    num_chunks: int,
+    duration_str: str,
+    audio_seconds: float,
+    title_override: str | None = None,
+) -> TranscriptionResult:
+    """O trecho que as duas rotas de captura têm em comum: com a transcrição na
+    mão, decidir qual análise rodar e montar o resultado. Sem isto, cada rota
+    repetia o mesmo `if` e o mesmo TranscriptionResult de dez campos."""
+    if modo == MODO_SIMPLES:
+        resumo, in_tokens, out_tokens = await simple_summary(full_transcript)
+        # Sem insights, a duração vem do último segmento (ou do próprio áudio):
+        # é ela que a lista de conversas mostra ao lado do título.
+        duracao = segments[-1]["end"] if segments else audio_seconds
+        return TranscriptionResult(
+            transcript=full_transcript,
+            summary=(resumo.get("summary") or "").strip(),
+            chunks_used=num_chunks,
+            duration_estimate=duration_str,
+            title=title_override or resumo.get("title"),
+            segments=segments,
+            insights=None,
+            duration_s=round(duracao),
+            mode=MODO_SIMPLES,
+            usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+        )
+
+    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
+    return TranscriptionResult(
+        transcript=full_transcript,
+        summary=summary_markdown(insights),
+        chunks_used=num_chunks,
+        duration_estimate=duration_str,
+        title=title_override or insights.get("title"),
+        segments=segments,
+        insights=insights,
+        duration_s=insights.get("duration_s") or round(audio_seconds),
+        mode=MODO_COMPLETA,
+        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+    )
+
+
 @app.get("/")
 async def health():
     return {"status": "ok", "service": "Dito"}
@@ -1166,10 +1285,11 @@ async def save_upload(file: UploadFile, dest_path: str) -> str:
 
 
 @app.post("/transcribe", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(file: UploadFile = File(...), mode: str = Form(MODO_COMPLETA)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
+    modo = normalizar_modo(mode)
     filename = file.filename or "audio.m4a"
     tmpdir = tempfile.mkdtemp()
     try:
@@ -1187,18 +1307,8 @@ async def transcribe(file: UploadFile = File(...)):
         try:
             full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(input_path, filename)
 
-            insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
-
-            return TranscriptionResult(
-                transcript=full_transcript,
-                summary=summary_markdown(insights),
-                chunks_used=num_chunks,
-                duration_estimate=duration_str,
-                title=insights.get("title"),
-                segments=segments,
-                insights=insights,
-                duration_s=insights.get("duration_s") or round(audio_seconds),
-                usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+            return await analisar_transcricao(
+                modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
             )
         finally:
             # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
@@ -1208,8 +1318,10 @@ async def transcribe(file: UploadFile = File(...)):
 
     # O conteúdo do arquivo é a identidade: o mesmo áudio reenviado tem o mesmo
     # hash, mesmo que o nome mude (o compartilhamento do Android põe um prefixo
-    # de tempo no nome a cada envio).
-    key = capture_key("file", file_hash)
+    # de tempo no nome a cada envio). O modo entra na chave porque o mesmo
+    # áudio pedido nas duas profundidades são dois trabalhos diferentes — sem
+    # ele, quem pedisse a completa receberia o resumo simples já em voo.
+    key = capture_key("file", file_hash, modo)
     try:
         return await run_once(key, build)
     finally:
@@ -1220,16 +1332,17 @@ async def transcribe(file: UploadFile = File(...)):
 
 
 @app.post("/process-url", response_model=TranscriptionResult, dependencies=[Depends(guarda_de_uso)])
-async def process_url(url: str = Form(...)):
+async def process_url(url: str = Form(...), mode: str = Form(MODO_COMPLETA)):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
     if not is_safe_public_url(url):
         raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
+    modo = normalizar_modo(mode)
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
-    key = capture_key("url", url.strip())
-    return await run_once(key, lambda: build_url_result(url))
+    key = capture_key("url", url.strip(), modo)
+    return await run_once(key, lambda: build_url_result(url, modo))
 
 
 def supadata_segments(content) -> list[dict]:
@@ -1250,7 +1363,7 @@ def supadata_segments(content) -> list[dict]:
     return segments
 
 
-async def build_url_result(url: str) -> TranscriptionResult:
+async def build_url_result(url: str, modo: str = MODO_COMPLETA) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
@@ -1380,23 +1493,14 @@ async def build_url_result(url: str) -> TranscriptionResult:
         duration_str = f"~{len(full_transcript.split()) // 200} min de leitura"
         audio_seconds = 0.0
 
-    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
-
     # O título real do vídeo/página ganha do que o modelo inferiu: a conversa
     # não deve se chamar pela URL crua, nem por um resumo do que o vídeo é
     # quando o próprio YouTube já diz o nome dele.
-    title = (await fetch_video_title(url) if is_video_url(url) else None) or insights.get("title")
+    title = await fetch_video_title(url) if is_video_url(url) else None
 
-    return TranscriptionResult(
-        transcript=full_transcript,
-        summary=summary_markdown(insights),
-        chunks_used=num_chunks,
-        duration_estimate=duration_str,
-        title=title,
-        segments=segments,
-        insights=insights,
-        duration_s=insights.get("duration_s") or round(audio_seconds),
-        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+    return await analisar_transcricao(
+        modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
+        title_override=title,
     )
 
 
