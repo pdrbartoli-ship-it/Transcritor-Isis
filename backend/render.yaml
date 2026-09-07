@@ -25,3 +25,17 @@ services:
         sync: false
       - key: SUPADATA_API_KEY
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STRIPE_PRICE_INICIANTE_MENSAL
+        sync: false
+      - key: STRIPE_PRICE_INICIANTE_ANUAL
+        sync: false
+      - key: STRIPE_PRICE_AVANCADO_MENSAL
+        sync: false
+      - key: STRIPE_PRICE_AVANCADO_ANUAL
+        sync: false

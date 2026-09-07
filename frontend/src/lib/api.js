@@ -143,6 +143,14 @@ export async function generateInsights(transcript, segments = []) {
   return postJson('/insights', { transcript, segments })
 }
 
+// Só a versão web assina por aqui — o app Android é distribuído pela Play
+// Store, que exige Google Play Billing para assinatura consumida dentro do
+// app. Devolve a URL do Checkout hospedado do Stripe; quem chama só precisa
+// redirecionar (window.location.href = url).
+export async function criarCheckout(plano, ciclo) {
+  return postJson('/billing/create-checkout-session', { plano, ciclo })
+}
+
 // O chat fala sobre UMA conversa. O backend marca a transcrição com
 // cache_control, então a partir da segunda pergunta ela não é recobrada.
 export async function askConversation(question, conversation, { history = [], makeTitle = false } = {}) {

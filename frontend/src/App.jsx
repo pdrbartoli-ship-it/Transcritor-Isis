@@ -13,6 +13,8 @@ import Todos from './pages/conversa/Todos'
 import Timeline from './pages/conversa/Timeline'
 import Chat from './pages/conversa/Chat'
 import Mini from './pages/Mini'
+import AssinaturaSucesso from './pages/AssinaturaSucesso'
+import AssinaturaCancelada from './pages/AssinaturaCancelada'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
 
 function ProtectedRoute({ children }) {
@@ -72,6 +74,8 @@ export default function App() {
             <Route path="audio" element={<Home mode="file" />} />
             <Route path="video" element={<Home mode="url" />} />
           </Route>
+          <Route path="/assinatura/sucesso" element={<ProtectedRoute><AssinaturaSucesso /></ProtectedRoute>} />
+          <Route path="/assinatura/cancelada" element={<ProtectedRoute><AssinaturaCancelada /></ProtectedRoute>} />
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             {/* Rota própria por conversa: dá deep-link e faz o voltar do
                 navegador funcionar, o que o modelo antigo (tudo em state

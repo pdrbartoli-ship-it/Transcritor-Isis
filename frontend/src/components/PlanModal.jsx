@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { IconClose, IconCheck } from './Icons'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
+import { criarCheckout } from '../lib/api'
 
 // A mesma tabela da landing, dentro do app. Ela existe em dois lugares porque
 // as duas decisões de compra acontecem em momentos diferentes: quem nunca usou
@@ -9,39 +12,55 @@ const PLANOS = [
   {
     id: 'gratuito',
     nome: 'Gratuito',
-    preco: 'R$ 0',
-    periodo: 'para sempre',
+    precoMensal: 'R$ 0',
     itens: ['2 horas por mês', 'Resumo automático', 'Cifrado no seu aparelho'],
   },
   {
-    id: 'plus',
-    nome: 'Plus',
-    preco: 'R$ 39',
-    periodo: 'por mês',
+    id: 'iniciante',
+    nome: 'Iniciante',
+    precoMensal: 'R$ 14,99',
+    precoAnual: 'R$ 135',
     destaque: true,
-    itens: ['20 horas por mês', 'Documento pronto para baixar', 'App de Windows'],
+    itens: ['10 horas por mês', 'Documento pronto para baixar', 'App de Windows'],
   },
   {
-    id: 'ultra',
-    nome: 'Ultra',
-    preco: 'R$ 89',
-    periodo: 'por mês',
-    itens: ['Sem limite de horas', 'Resumos mais profundos', 'Prioridade na fila'],
+    id: 'avancado',
+    nome: 'Avançado',
+    precoMensal: 'R$ 19,99',
+    precoAnual: 'R$ 180',
+    itens: ['33 horas por mês', 'Resumos mais profundos', 'Prioridade na fila'],
   },
 ]
 
 export default function PlanModal({ onClose }) {
-  // O plano clicado na landing chega até aqui: quem escolheu Plus antes de
-  // criar a conta reencontra o Plus marcado, sem ter que decidir de novo.
-  const [escolhido, setEscolhido] = useState(() => {
-    try { return localStorage.getItem('dito-plano-escolhido') || 'gratuito' } catch { return 'gratuito' }
-  })
+  const { user } = useAuth()
+  const [ciclo, setCiclo] = useState('mensal')
+  const [planoAtual, setPlanoAtual] = useState('gratuito')
+  const [assinando, setAssinando] = useState(null) // id do plano em checkout
+  const [erro, setErro] = useState('')
 
-  // Ainda não há cobrança: o clique só registra a intenção, para sabermos
-  // quantos escolheriam cada plano antes de existir checkout de verdade.
-  function escolher(id) {
-    setEscolhido(id)
-    try { localStorage.setItem('dito-plano-escolhido', id) } catch { /* modo anônimo */ }
+  // O plano ativo vem direto do Supabase — quem escreve ali é só o webhook do
+  // Stripe, então esta leitura reflete a cobrança real, não uma intenção.
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('subscriptions')
+      .select('plano')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setPlanoAtual(data?.plano || 'gratuito'))
+  }, [user])
+
+  async function assinar(id) {
+    setErro('')
+    setAssinando(id)
+    try {
+      const { url } = await criarCheckout(id, ciclo)
+      window.location.href = url
+    } catch (err) {
+      setErro(err.message || 'Não foi possível iniciar o pagamento. Tente de novo.')
+      setAssinando(null)
+    }
   }
 
   return (
@@ -52,32 +71,39 @@ export default function PlanModal({ onClose }) {
           <button className="btn-icon" onClick={onClose}><IconClose /></button>
         </div>
 
-        <p className="text-muted">
-          Enquanto o Dito está em construção, tudo que você grava e transcreve é gratuito e
-          sem limite. Escolha o plano que faria sentido para você — é assim que decidimos os
-          limites antes de cobrar qualquer coisa.
-        </p>
-
-        <div className="planos">
-          {PLANOS.map(p => (
-            <button
-              key={p.id}
-              type="button"
-              className={`plano${escolhido === p.id ? ' on' : ''}${p.destaque ? ' destaque' : ''}`}
-              onClick={() => escolher(p.id)}
-              aria-pressed={escolhido === p.id}
-            >
-              <span className="plano-nome">{p.nome}</span>
-              <span className="plano-preco">{p.preco} <i>{p.periodo}</i></span>
-              <ul>
-                {p.itens.map(i => <li key={i}><IconCheck width={12} height={12} /> {i}</li>)}
-              </ul>
-            </button>
-          ))}
+        <div className="planos-ciclo">
+          <button type="button" className={ciclo === 'mensal' ? 'on' : ''} onClick={() => setCiclo('mensal')}>Mensal</button>
+          <button type="button" className={ciclo === 'anual' ? 'on' : ''} onClick={() => setCiclo('anual')}>Anual</button>
         </div>
 
-        <div className="modal-actions">
-          <button className="btn-primary" onClick={onClose}>Entendi</button>
+        {erro && <div className="alert alert-error">{erro}</div>}
+
+        <div className="planos">
+          {PLANOS.map(p => {
+            const pago = p.id !== 'gratuito'
+            const preco = pago && ciclo === 'anual' ? p.precoAnual : p.precoMensal
+            const periodo = !pago ? 'para sempre' : ciclo === 'anual' ? 'por ano' : 'por mês'
+            const ativo = planoAtual === p.id
+            return (
+              <div key={p.id} className={`plano${ativo ? ' on' : ''}${p.destaque ? ' destaque' : ''}`}>
+                <span className="plano-nome">{p.nome}</span>
+                <span className="plano-preco">{preco} <i>{periodo}</i></span>
+                <ul>
+                  {p.itens.map(i => <li key={i}><IconCheck width={12} height={12} /> {i}</li>)}
+                </ul>
+                {pago && (
+                  <button
+                    type="button"
+                    className="btn-primary plano-btn"
+                    disabled={ativo || assinando === p.id}
+                    onClick={() => assinar(p.id)}
+                  >
+                    {ativo ? 'Plano atual' : assinando === p.id ? 'Abrindo pagamento…' : 'Assinar'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

@@ -7,10 +7,8 @@ import {
 import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 
-// PREÇOS PROVISÓRIOS — nada aqui está cobrado ainda. Os valores e os limites
-// existem para a página ter uma aba de preço de verdade e para medirmos quem
-// clica em quê antes de haver cobrança. Trocar aqui e no PlanModal (a mesma
-// tabela aparece dentro do app) quando o plano for definido.
+// A mesma tabela aparece dentro do app, no PlanModal — mudou um preço ou um
+// limite? Trocar nos dois.
 const PLANOS = [
   {
     id: 'gratuito',
@@ -27,33 +25,33 @@ const PLANOS = [
     cta: 'Começar grátis',
   },
   {
-    id: 'plus',
-    nome: 'Plus',
-    preco: 'R$ 39',
+    id: 'iniciante',
+    nome: 'Iniciante',
+    preco: 'R$ 14,99',
     periodo: 'por mês',
     destaque: true,
     resumo: 'Para quem grava toda semana.',
     itens: [
-      '20 horas de transcrição por mês',
+      '10 horas de transcrição por mês',
       'Documento final pronto para baixar',
       'App de Windows: grava as duas vozes',
-      'Arquivos e reuniões longas sem corte',
+      'Ou R$ 135 por ano (2 meses de graça)',
     ],
-    cta: 'Assinar Plus',
+    cta: 'Assinar Iniciante',
   },
   {
-    id: 'ultra',
-    nome: 'Ultra',
-    preco: 'R$ 89',
+    id: 'avancado',
+    nome: 'Avançado',
+    preco: 'R$ 19,99',
     periodo: 'por mês',
     resumo: 'Para quem vive dentro de conversas.',
     itens: [
-      'Transcrição sem limite de horas',
+      '33 horas de transcrição por mês',
       'Resumos mais profundos, com mais contexto',
       'Prioridade no processamento',
-      'Suporte direto com quem faz o Dito',
+      'Ou R$ 180 por ano (2 meses de graça)',
     ],
-    cta: 'Assinar Ultra',
+    cta: 'Assinar Avançado',
   },
 ]
 
@@ -209,9 +207,9 @@ export default function Landing() {
   const [instalando, setInstalando] = useState(false)
   const instalar = () => setInstalando(true)
 
-  // O plano escolhido na landing viaja com a pessoa até depois do login, que é
-  // onde o checkout vai existir. Enquanto não há cobrança, o app lê isto no
-  // "Meu plano" e já mostra o plano certo em destaque.
+  // O plano escolhido na landing viaja com a pessoa até depois do login: o
+  // Layout lê isto assim que a sessão existe e já abre o "Meu plano" com o
+  // checkout pronto para o plano escolhido aqui.
   const escolherPlano = id => {
     try { localStorage.setItem('dito-plano-escolhido', id) } catch { /* modo anônimo */ }
     entrar()
@@ -382,8 +380,8 @@ export default function Landing() {
             ))}
           </div>
           <p className="lp-precos-nota">
-            Enquanto o Dito está em construção, tudo funciona sem cobrança — e você continua
-            com o que já gravou quando os planos entrarem no ar.
+            Cancele quando quiser, direto no seu plano. O pagamento é processado pelo Stripe —
+            o Dito nunca vê o número do seu cartão.
           </p>
         </section>
 

@@ -11,3 +11,4 @@ imageio[ffmpeg]
 # de assinatura do YouTube. Sem ele o download falha com "Signature solving failed".
 yt-dlp[default]>=2024.12.13
 trafilatura
+stripe>=11.1.0

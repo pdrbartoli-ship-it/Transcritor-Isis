@@ -6,8 +6,10 @@ import socket
 import logging
 import hashlib
 import asyncio
+import datetime
 import httpx
 import anthropic
+import stripe
 import shutil
 import tempfile
 import subprocess
@@ -97,18 +99,18 @@ REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "").strip().lower() in ("1", "true
 
 # Uma conversa de chat manda pergunta atrás de pergunta. Sem cache, cada uma
 # pagaria uma ida ao Supabase antes de chegar no Claude.
-_token_cache: dict[str, tuple[float, str]] = {}
+_token_cache: dict[str, tuple[float, str, str]] = {}
 TOKEN_CACHE_S = 300
 
 
-async def validar_token(token: str) -> str | None:
-    """Devolve o id do usuário dono do token, ou None se ele não valer."""
+async def validar_token_completo(token: str) -> tuple[str, str] | None:
+    """Devolve (id, email) do usuário dono do token, ou None se ele não valer."""
     chave = hashlib.sha256(token.encode()).hexdigest()
     agora = time()
 
     em_cache = _token_cache.get(chave)
     if em_cache and em_cache[0] > agora:
-        return em_cache[1]
+        return em_cache[1], em_cache[2]
 
     try:
         async with httpx.AsyncClient() as client:
@@ -127,10 +129,19 @@ async def validar_token(token: str) -> str | None:
     if resp.status_code != 200:
         return None
 
-    user_id = (resp.json() or {}).get("id")
+    dados = resp.json() or {}
+    user_id = dados.get("id")
+    email = dados.get("email") or ""
     if user_id:
-        _token_cache[chave] = (agora + TOKEN_CACHE_S, user_id)
-    return user_id
+        _token_cache[chave] = (agora + TOKEN_CACHE_S, user_id, email)
+        return user_id, email
+    return None
+
+
+async def validar_token(token: str) -> str | None:
+    """Devolve o id do usuário dono do token, ou None se ele não valer."""
+    resultado = await validar_token_completo(token)
+    return resultado[0] if resultado else None
 
 
 async def guarda_de_uso(request: Request) -> str | None:
@@ -157,6 +168,56 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
+
+# ── Assinatura (Stripe) ───────────────────────────────────────────────────
+# Só a versão web cobra: o app Android é distribuído pela Play Store, que
+# exige Google Play Billing para assinatura consumida dentro do app — cobrar
+# por Stripe ali violaria a política da loja.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+stripe.api_key = STRIPE_SECRET_KEY
+
+# service role: único jeito do backend escrever em `subscriptions` — a tabela
+# não dá insert/update para o usuário comum (RLS só libera o select da
+# própria linha), de propósito, para o plano de ninguém mudar sem passar pelo
+# Stripe de verdade.
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# Para onde o Checkout do Stripe volta depois do pagamento. HashRouter: as
+# rotas do frontend são "/#/caminho", não "/caminho".
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://dito.albiecloud.com").rstrip("/")
+
+# (plano, ciclo) → price_id do Stripe, e o mapa inverso. Uma única fonte, das
+# env vars, para não repetir a string em dois lugares.
+PRICE_POR_PLANO: dict[tuple[str, str], str] = {
+    ("iniciante", "mensal"): os.environ.get("STRIPE_PRICE_INICIANTE_MENSAL", ""),
+    ("iniciante", "anual"): os.environ.get("STRIPE_PRICE_INICIANTE_ANUAL", ""),
+    ("avancado", "mensal"): os.environ.get("STRIPE_PRICE_AVANCADO_MENSAL", ""),
+    ("avancado", "anual"): os.environ.get("STRIPE_PRICE_AVANCADO_ANUAL", ""),
+}
+PLANOS_STRIPE: dict[str, tuple[str, str]] = {
+    price_id: chave for chave, price_id in PRICE_POR_PLANO.items() if price_id
+}
+
+
+async def supabase_service_upsert(table: str, dados: dict) -> None:
+    """Escreve no Supabase ignorando RLS, com a service role key. Usado só
+    pelo webhook do Stripe — é o único caminho de escrita do backend no
+    banco; tudo o mais é feito pelo frontend via supabase-js sob RLS."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            json=dados,
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=minimal",
+            },
+            timeout=10.0,
+        )
+    if resp.status_code >= 300:
+        logger.error("Falha ao gravar assinatura no Supabase: %s %s", resp.status_code, resp.text)
 
 # Manifesto do live update do app Android, publicado pelo GitHub Actions.
 OTA_MANIFEST_URL = os.environ.get(
@@ -390,6 +451,15 @@ class AppUpdateResponse(BaseModel):
     url: str | None = None
     checksum: str | None = None
     message: str | None = None
+
+
+class CheckoutRequest(BaseModel):
+    plano: str  # 'iniciante' | 'avancado'
+    ciclo: str  # 'mensal' | 'anual'
+
+
+class CheckoutResponse(BaseModel):
+    url: str
 
 
 LANGUAGE_RULE = (
@@ -1650,5 +1720,114 @@ async def app_update(request: AppUpdateRequest):
         return AppUpdateResponse(message="Já está na versão mais recente.")
 
     return AppUpdateResponse(version=version, url=url, checksum=checksum)
+
+
+# ── Assinatura (Stripe, só web) ───────────────────────────────────────────
+@app.post("/billing/create-checkout-session", response_model=CheckoutResponse)
+async def create_checkout_session(body: CheckoutRequest, request: Request):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Cobrança não configurada.")
+
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    identidade = await validar_token_completo(token) if token else None
+    if not identidade:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para assinar.")
+    user_id, email = identidade
+
+    price_id = PRICE_POR_PLANO.get((body.plano, body.ciclo))
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Plano ou ciclo inválido.")
+
+    try:
+        session = await asyncio.to_thread(
+            stripe.checkout.Session.create,
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            client_reference_id=user_id,
+            customer_email=email or None,
+            success_url=f"{FRONTEND_URL}/#/assinatura/sucesso",
+            cancel_url=f"{FRONTEND_URL}/#/assinatura/cancelada",
+        )
+    except stripe.StripeError as exc:
+        logger.exception("Stripe recusou a criação da sessão de checkout")
+        raise HTTPException(status_code=502, detail="Não foi possível iniciar o pagamento.") from exc
+
+    return CheckoutResponse(url=session.url)
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Webhook não configurado.")
+
+    payload = await request.body()
+    assinatura = request.headers.get("stripe-signature", "")
+    try:
+        event = await asyncio.to_thread(
+            stripe.Webhook.construct_event, payload, assinatura, STRIPE_WEBHOOK_SECRET,
+        )
+    except (stripe.SignatureVerificationError, ValueError):
+        raise HTTPException(status_code=400, detail="Assinatura inválida.")
+
+    tipo = event["type"]
+    dados = event["data"]["object"]
+
+    if tipo == "checkout.session.completed":
+        user_id = dados.get("client_reference_id")
+        subscription_id = dados.get("subscription")
+        customer_id = dados.get("customer")
+        if user_id and subscription_id:
+            sub = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
+            await _gravar_assinatura(user_id, customer_id, sub)
+
+    elif tipo in ("customer.subscription.updated", "customer.subscription.deleted"):
+        user_id = await _user_id_da_subscription(dados)
+        if user_id:
+            await _gravar_assinatura(user_id, dados.get("customer"), dados)
+
+    return {"received": True}
+
+
+async def _user_id_da_subscription(sub: dict) -> str | None:
+    """`customer.subscription.*` não carrega `client_reference_id` — só o
+    `checkout.session.completed` traz. Para os eventos seguintes, achamos o
+    dono pela `stripe_subscription_id` já gravada da primeira vez."""
+    sub_id = sub.get("id")
+    if not sub_id:
+        return None
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/subscriptions",
+            params={"stripe_subscription_id": f"eq.{sub_id}", "select": "user_id", "limit": 1},
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            },
+            timeout=10.0,
+        )
+    linhas = resp.json() if resp.status_code == 200 else []
+    return linhas[0]["user_id"] if linhas else None
+
+
+async def _gravar_assinatura(user_id: str, customer_id: str | None, sub) -> None:
+    price_id = sub["items"]["data"][0]["price"]["id"] if sub.get("items") else None
+    plano, ciclo = PLANOS_STRIPE.get(price_id, (None, None))
+    status = sub.get("status")
+    cancelada = status in ("canceled", "incomplete_expired", "unpaid")
+
+    current_period_end = sub.get("current_period_end")
+    await supabase_service_upsert("subscriptions", {
+        "user_id": user_id,
+        "stripe_customer_id": customer_id,
+        "stripe_subscription_id": sub.get("id"),
+        "plano": "gratuito" if cancelada else (plano or "gratuito"),
+        "ciclo": None if cancelada else ciclo,
+        "status": status,
+        "current_period_end": (
+            None if not current_period_end
+            else datetime.datetime.fromtimestamp(current_period_end, tz=datetime.timezone.utc).isoformat()
+        ),
+    })
 
 

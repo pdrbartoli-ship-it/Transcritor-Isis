@@ -84,6 +84,19 @@ export default function Layout() {
     trackAppOpen()
   }, [user?.id])
 
+  // Quem escolheu um plano pago na landing antes de logar chega aqui direto
+  // no "Meu plano", já pronto para clicar em Assinar — sem isso a escolha
+  // feita na landing se perderia no meio do caminho até o checkout.
+  useEffect(() => {
+    if (!user?.id) return
+    let escolhido = null
+    try { escolhido = localStorage.getItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
+    if (escolhido === 'iniciante' || escolhido === 'avancado') {
+      setShowPlan(true)
+      try { localStorage.removeItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
+    }
+  }, [user?.id])
+
   // Busca com atraso. O contador de execução descarta a resposta de uma busca
   // já superada: sem ele, uma consulta lenta por "a" podia sobrescrever o
   // resultado de "ata" digitado depois.
