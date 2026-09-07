@@ -1814,12 +1814,19 @@ async def _user_id_da_subscription(sub: dict) -> str | None:
 
 
 async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -> None:
-    price_id = sub["items"]["data"][0]["price"]["id"] if sub.get("items") else None
+    primeiro_item = sub["items"]["data"][0] if sub.get("items") else None
+    price_id = primeiro_item["price"]["id"] if primeiro_item else None
     plano, ciclo = PLANOS_STRIPE.get(price_id, (None, None))
     status = sub.get("status")
     cancelada = status in ("canceled", "incomplete_expired", "unpaid")
 
-    current_period_end = sub.get("current_period_end")
+    # A partir da versão 2025 da API do Stripe, o fim do ciclo mora no item da
+    # assinatura, não mais na assinatura em si (suporte a múltiplos itens com
+    # ciclos diferentes). `sub.get` continua de fallback para contas na API
+    # antiga, que ainda tem o campo no nível de cima.
+    current_period_end = (
+        (primeiro_item or {}).get("current_period_end") or sub.get("current_period_end")
+    )
     await supabase_service_upsert("subscriptions", {
         "user_id": user_id,
         "stripe_customer_id": customer_id,
