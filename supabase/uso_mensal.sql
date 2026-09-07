@@ -6,7 +6,6 @@ create table public.uso_mensal (
   periodo_inicio timestamptz not null default now(),
   periodo_fim timestamptz not null,
   minutos_usados numeric not null default 0,
-  capturas_usadas int not null default 0,
   atualizado_em timestamptz not null default now()
 );
 
@@ -37,14 +36,13 @@ declare
     else now() + interval '1 month'
   end;
 begin
-  insert into public.uso_mensal (user_id, periodo_inicio, periodo_fim, minutos_usados, capturas_usadas)
-  values (p_user_id, now(), fim, p_minutos, 1)
+  insert into public.uso_mensal (user_id, periodo_inicio, periodo_fim, minutos_usados)
+  values (p_user_id, now(), fim, p_minutos)
   on conflict (user_id) do update set
-    periodo_inicio  = case when now() > uso_mensal.periodo_fim then now() else uso_mensal.periodo_inicio end,
-    periodo_fim     = case when now() > uso_mensal.periodo_fim then fim else uso_mensal.periodo_fim end,
-    minutos_usados  = case when now() > uso_mensal.periodo_fim then p_minutos else uso_mensal.minutos_usados + p_minutos end,
-    capturas_usadas = case when now() > uso_mensal.periodo_fim then 1 else uso_mensal.capturas_usadas + 1 end,
-    atualizado_em   = now()
+    periodo_inicio = case when now() > uso_mensal.periodo_fim then now() else uso_mensal.periodo_inicio end,
+    periodo_fim    = case when now() > uso_mensal.periodo_fim then fim else uso_mensal.periodo_fim end,
+    minutos_usados = case when now() > uso_mensal.periodo_fim then p_minutos else uso_mensal.minutos_usados + p_minutos end,
+    atualizado_em  = now()
   returning * into linha;
   return linha;
 end;

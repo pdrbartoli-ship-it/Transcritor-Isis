@@ -155,14 +155,13 @@ export async function generateInsights(transcript, segments = []) {
 export async function lerSaldo(userId) {
   const { data } = await supabase
     .from('uso_mensal')
-    .select('minutos_usados, capturas_usadas, periodo_fim')
+    .select('minutos_usados, periodo_fim')
     .eq('user_id', userId)
     .maybeSingle()
 
   const vencido = !data?.periodo_fim || new Date(data.periodo_fim) <= new Date()
   return {
     minutosUsados: vencido ? 0 : Number(data.minutos_usados || 0),
-    capturasUsadas: vencido ? 0 : Number(data.capturas_usadas || 0),
     periodoFim: vencido ? null : data.periodo_fim,
   }
 }

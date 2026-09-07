@@ -220,17 +220,8 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
         logger.error("Falha ao gravar assinatura no Supabase: %s %s", resp.status_code, resp.text)
 
 
-# ── Saldo de minutos e capturas ───────────────────────────────────────────
-# Os tetos vêm do precificacao.md e são o que a landing promete. O teto de
-# capturas existe por causa de um caso real: 1.000 minutos entregues em áudios
-# curtos de WhatsApp custam 11x o mesmo tempo entregue em vídeos longos, porque
-# cada captura paga ~2.500 tokens fixos de prompt. Sem ele, o Iniciante dá
-# prejuízo no pior caso.
-LIMITES_PLANO = {
-    "gratuito":  {"minutos": 120,  "capturas": 30},
-    "iniciante": {"minutos": 600,  "capturas": 120},
-    "avancado":  {"minutos": 2000, "capturas": 200},
-}
+# ── Saldo de minutos ──────────────────────────────────────────────────────
+LIMITES_PLANO = {"gratuito": 120, "iniciante": 600, "avancado": 2000}
 
 
 async def supabase_service_get(table: str, params: dict) -> list[dict]:
@@ -265,11 +256,11 @@ async def ler_saldo(user_id: str) -> dict:
     plano = assinatura.get("plano") or "gratuito"
     if assinatura.get("status") in ("canceled", "incomplete_expired", "unpaid"):
         plano = "gratuito"
-    limites = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
+    minutos_limite = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
 
     usos = await supabase_service_get(
         "uso_mensal",
-        {"user_id": f"eq.{user_id}", "select": "minutos_usados,capturas_usadas,periodo_fim", "limit": 1},
+        {"user_id": f"eq.{user_id}", "select": "minutos_usados,periodo_fim", "limit": 1},
     )
     uso = usos[0] if usos else {}
     vencido = True
@@ -287,9 +278,7 @@ async def ler_saldo(user_id: str) -> dict:
     return {
         "plano": plano,
         "minutos_usados": 0.0 if vencido else float(uso.get("minutos_usados") or 0),
-        "capturas_usadas": 0 if vencido else int(uso.get("capturas_usadas") or 0),
-        "minutos_limite": limites["minutos"],
-        "capturas_limite": limites["capturas"],
+        "minutos_limite": minutos_limite,
         # O ciclo do assinante segue o do Stripe; o do gratuito, o mês contado
         # a partir da primeira captura dele (a função no banco resolve isso).
         "periodo_fim_stripe": assinatura.get("current_period_end"),
@@ -332,14 +321,6 @@ async def guarda_de_captura(request: Request) -> str | None:
         return None
 
     saldo = await ler_saldo(user_id)
-    if saldo["capturas_usadas"] >= saldo["capturas_limite"]:
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"Você já fez as {saldo['capturas_limite']} capturas do seu plano neste mês. "
-                "Abra \"Meu plano\" para assinar um plano maior."
-            ),
-        )
     if saldo["minutos_usados"] >= saldo["minutos_limite"]:
         raise HTTPException(
             status_code=402,
