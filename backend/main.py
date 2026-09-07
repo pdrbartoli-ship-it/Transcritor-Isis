@@ -1412,11 +1412,17 @@ async def _cobrar_do_saldo(user_id: str | None, minutos: float, saldo: dict | No
         await registrar_uso(user_id, round(minutos, 2), saldo["periodo_fim_stripe"])
 
 
-def duracao_efetiva(segments: list[dict], audio_seconds: float) -> float:
-    """Quanto esta captura durou, de fato. O áudio sondado é a medida direta;
-    quando ele não existe — link do YouTube resolvido pelas legendas, que não
-    baixa áudio nenhum — o fim do último segmento é o que sobra."""
-    return segments[-1]["end"] if segments else audio_seconds
+def duracao_cobravel(segments: list[dict], audio_seconds: float) -> float:
+    """Quanto esta captura consome do saldo.
+
+    A sonda do arquivo (audio_seconds) manda sempre que existe: é medida, e o
+    relógio do Whisper não é. Num teste de 90 s ele devolveu segmentos até
+    119,98 s — cobrar por eles seria cobrar 2 min por 1,5 min de áudio.
+    O último segmento só entra quando não houve áudio nenhum para medir: é o
+    caso do link do YouTube resolvido pelas legendas."""
+    if audio_seconds and audio_seconds > 0:
+        return audio_seconds
+    return segments[-1]["end"] if segments else 0.0
 
 
 async def analisar_transcricao(
@@ -1436,7 +1442,7 @@ async def analisar_transcricao(
     É também o único ponto em que a duração já é final e o gasto grande (a
     análise da IA, 70-79% do custo por captura) ainda não aconteceu — por isso
     a checagem de saldo e o registro do consumo moram aqui, e não nas rotas."""
-    minutos = duracao_efetiva(segments, audio_seconds) / 60
+    minutos = duracao_cobravel(segments, audio_seconds) / 60
     saldo = await ler_saldo(user_id) if user_id else None
     if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
         restam = saldo["minutos_limite"] - saldo["minutos_usados"]
@@ -1453,7 +1459,7 @@ async def analisar_transcricao(
         await _cobrar_do_saldo(user_id, minutos, saldo)
         # Sem insights, a duração vem do último segmento (ou do próprio áudio):
         # é ela que a lista de conversas mostra ao lado do título.
-        duracao = duracao_efetiva(segments, audio_seconds)
+        duracao = segments[-1]["end"] if segments else audio_seconds
         return TranscriptionResult(
             transcript=full_transcript,
             summary=(resumo.get("summary") or "").strip(),
