@@ -1,24 +1,29 @@
 import { useState } from 'react'
-import { getTheme, setTheme } from '../lib/prefs'
+import { getTheme, setTheme, getIdioma, setIdioma, IDIOMAS } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
 
-// Só tema. Os ajustes de tom, formato e profundidade saíram: eram quatro
-// controles que quase ninguém tocava e que faziam a mesma captura render
-// resumos diferentes. O resumo agora é sempre neutro e em bullets.
+// Duas preferências de leitura, no mesmo lugar: como o app aparece (tema) e em
+// que língua ele escreve (idioma). Os ajustes de tom, formato e profundidade
+// saíram: eram quatro controles que quase ninguém tocava e que faziam a mesma
+// captura render resumos diferentes. O resumo agora é sempre neutro e em
+// bullets.
 export default function SettingsModal({ onClose }) {
   const [theme, setThemeState] = useState(getTheme())
+  const [idioma, setIdiomaState] = useState(getIdioma())
 
   function changeTheme(t) { setThemeState(t); setTheme(t) }
+  function changeIdioma(i) { setIdiomaState(i); setIdioma(i) }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Tema</h3>
+          <h3>Configurações</h3>
           <button className="btn-icon" onClick={onClose}><IconClose /></button>
         </div>
 
-        <div className="settings-group" style={{ marginBottom: 0 }}>
+        <div className="settings-group">
+          <label>Tema</label>
           <div className="seg">
             <button className={theme === 'light' ? 'on' : ''} onClick={() => changeTheme('light')}>
               <IconSun width={15} height={15} style={{ verticalAlign: '-2px', marginRight: 6 }} /> Claro
@@ -26,6 +31,29 @@ export default function SettingsModal({ onClose }) {
             <button className={theme === 'dark' ? 'on' : ''} onClick={() => changeTheme('dark')}>
               <IconMoon width={15} height={15} style={{ verticalAlign: '-2px', marginRight: 6 }} /> Escuro
             </button>
+          </div>
+        </div>
+
+        {/* A dica não é enfeite: sem ela, "Idioma" numa tela de transcrição é
+            lido como o idioma do áudio, e a pessoa muda a opção esperando
+            ajudar o Dito a entender a gravação. */}
+        <div className="settings-group" style={{ marginBottom: 0 }}>
+          <label>Idioma</label>
+          <p className="hint">
+            Em que língua o Dito escreve os resumos, os tópicos e as tarefas.
+            Não importa o idioma do vídeo ou do áudio: o Dito entende qualquer
+            um e escreve no que você escolher.
+          </p>
+          <div className="seg">
+            {IDIOMAS.map(({ code, label }) => (
+              <button
+                key={code}
+                className={idioma === code ? 'on' : ''}
+                onClick={() => changeIdioma(code)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 

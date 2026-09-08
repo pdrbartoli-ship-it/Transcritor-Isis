@@ -472,6 +472,53 @@ async def fetch_video_title(url: str) -> str | None:
     return None
 
 
+# Idioma de SAÍDA da análise: em que língua o app escreve título, resumo,
+# tópicos, tarefas e capítulos. Nada a ver com o idioma do áudio — o Whisper
+# detecta esse sozinho e a transcrição literal sai sempre no original.
+# "auto" é o comportamento de sempre (escrever no idioma da gravação) e
+# continua sendo o padrão de quem não manda o campo: app antigo em cache,
+# compartilhamento de outro app, conversa capturada antes disto existir.
+IDIOMA_AUTO = "auto"
+
+# O nome sai dentro de um prompt em português, então é assim que ele é escrito.
+IDIOMAS = {
+    "pt": "português do Brasil",
+    "en": "inglês",
+    "es": "espanhol",
+}
+
+
+def normalizar_idioma(idioma: str | None) -> str:
+    """Qualquer coisa fora da lista vira "auto" — um código desconhecido não
+    pode virar uma instrução de idioma inventada no prompt."""
+    codigo = (idioma or "").strip().lower()
+    return codigo if codigo in IDIOMAS else IDIOMA_AUTO
+
+
+REGRA_IDIOMA_AUTO = (
+    "IDIOMA: escreva TODOS os textos no MESMO idioma da transcrição. "
+    "Se a transcrição está em espanhol, escreva em espanhol; se em inglês, em inglês; "
+    "se em português, em português. Não traduza o conteúdo."
+)
+
+
+def regra_idioma(idioma: str | None) -> str:
+    """A instrução de idioma que fecha os prompts de análise.
+
+    Quando há idioma escolhido, ela precisa dizer explicitamente que é para
+    traduzir: sem isso o modelo trata o idioma da transcrição como o padrão
+    óbvio e devolve metade dos campos na língua da gravação."""
+    nome = IDIOMAS.get(normalizar_idioma(idioma))
+    if not nome:
+        return REGRA_IDIOMA_AUTO
+    return (
+        f"IDIOMA: escreva TODOS os textos em {nome}, seja qual for o idioma da transcrição. "
+        f"Se a gravação está em outra língua, TRADUZA: cada campo que você preencher sai "
+        f"em {nome}, sem exceção e sem misturar idiomas. "
+        "Nomes de pessoas, empresas e produtos ficam como foram ditos."
+    )
+
+
 class Usage(BaseModel):
     """Consumo de uma operação, para o app registrar quanto cada usuário gasta.
     Tokens cobrem as chamadas de texto (Claude); audio_seconds cobre a
@@ -516,6 +563,9 @@ class InsightsRequest(BaseModel):
     # pedido é a única coisa que limita o tamanho de uma chamada.
     transcript: str = Field(..., max_length=400_000)
     segments: list[dict] = []
+    # Idioma de saída da análise. Ausente = "auto", que é o que o app fazia
+    # antes deste campo existir.
+    language: str = IDIOMA_AUTO
 
 
 class InsightsResponse(BaseModel):
@@ -574,12 +624,6 @@ class CheckoutRequest(BaseModel):
 class CheckoutResponse(BaseModel):
     url: str
 
-
-LANGUAGE_RULE = (
-    "IDIOMA: escreva TODOS os textos no MESMO idioma da transcrição. "
-    "Se a transcrição está em espanhol, escreva em espanhol; se em inglês, em inglês; "
-    "se em português, em português. Não traduza o conteúdo."
-)
 
 # Uma passada só. Antes eram cinco chamadas em potencial (título, resumo,
 # tópicos, tarefas, capítulos); tudo isso sai do mesmo JSON, sobre a mesma
@@ -668,7 +712,7 @@ INSIGHTS_SCHEMA = {
     "additionalProperties": False,
 }
 
-INSIGHTS_INSTRUCTIONS = f"""Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula), com marcadores de tempo no formato [mm:ss] ou [h:mm:ss] a cada trecho. Extraia dela, de uma vez só, os campos pedidos.
+INSIGHTS_INSTRUCTIONS = """Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula), com marcadores de tempo no formato [mm:ss] ou [h:mm:ss] a cada trecho. Extraia dela, de uma vez só, os campos pedidos.
 
 Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, sem adjetivo de entusiasmo. Quem lê quer decidir, não se entreter.
 
@@ -678,9 +722,13 @@ Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, se
 - **speaker_turns**: uma entrada CADA VEZ que a voz muda de dono, com `start` em segundos (tirado do marcador de tempo mais próximo) e `speaker` igual ao `name` do locutor, ou ao `label` dele quando não há nome. Não repita a mesma pessoa em entradas seguidas — só marque a troca. Se a gravação tem uma voz só, devolva uma entrada em 0.
 - **topics**: EXATAMENTE 4 tópicos, os mais importantes da conversa. `label` é curtíssimo, 2 a 4 palavras, como uma etiqueta ("Política comercial", "Dimensionamento de equipes"). `detail` são 3 a 5 bullets em markdown (cada linha começando com "- ") desenvolvendo o tópico. `time_refs` são os intervalos [início, fim] em SEGUNDOS onde o tópico é discutido, tirados dos marcadores de tempo.
 - **todos**: ações concretas que ficaram combinadas — algo que alguém precisa fazer depois. `task` é curtíssimo e começa por verbo ("Revisar apresentação do Q4"). `description` é uma frase dizendo o que precisa ser feito. `owners` são os nomes dos responsáveis (lista vazia se não ficou claro). `due` é o prazo como foi dito ("até sexta", "no fim do mês") ou null. `time_ref` é o intervalo [início, fim] em segundos onde a ação foi combinada. Se a conversa não combinou nenhuma ação, devolva uma lista VAZIA — não invente tarefas para preencher espaço.
-- **chapters**: a conversa dividida em seções sequenciais por assunto, tipicamente entre 4 e 12. Cada uma com `start` e `end` em segundos, um `title` curto (igual em espírito aos labels de tópico) e 2 a 4 `bullets` com o que foi dito ali. As seções devem cobrir a conversa inteira, em ordem, sem buraco e sem sobreposição: o `start` de uma é o `end` da anterior, a primeira começa em 0 e a última termina no último marcador de tempo.
+- **chapters**: a conversa dividida em seções sequenciais por assunto, tipicamente entre 4 e 12. Cada uma com `start` e `end` em segundos, um `title` curto (igual em espírito aos labels de tópico) e 2 a 4 `bullets` com o que foi dito ali. As seções devem cobrir a conversa inteira, em ordem, sem buraco e sem sobreposição: o `start` de uma é o `end` da anterior, a primeira começa em 0 e a última termina no último marcador de tempo."""
 
-{LANGUAGE_RULE}"""
+
+def instrucoes_insights(idioma: str | None) -> str:
+    """A regra de idioma fecha o prompt em vez de estar embutida no texto: ela
+    é a única parte que muda de usuário para usuário."""
+    return f"{INSIGHTS_INSTRUCTIONS}\n\n{regra_idioma(idioma)}"
 
 
 # Containers que o Groq aceita como chegaram. Mandar o arquivo original poupa
@@ -1015,19 +1063,22 @@ async def call_insights(
     return data, *read_usage(response)
 
 
-async def extract_insights(transcript: str, segments: list[dict], effort: str | None = None) -> tuple[dict, int, int]:
+async def extract_insights(
+    transcript: str, segments: list[dict], effort: str | None = None,
+    idioma: str = IDIOMA_AUTO,
+) -> tuple[dict, int, int]:
     """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
     chamada só, sobre a transcrição com marcadores de tempo."""
     body = format_timed_transcript(segments) or transcript
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
         insights, tin, tout = await call_insights(
-            f"{INSIGHTS_INSTRUCTIONS}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA,
+            f"{instrucoes_insights(idioma)}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
         return normalize_insights(insights, segments), tin, tout
 
-    return await extract_insights_long(body, segments)
+    return await extract_insights_long(body, segments, idioma)
 
 
 SIMPLE_SUMMARY_SCHEMA = {
@@ -1040,30 +1091,33 @@ SIMPLE_SUMMARY_SCHEMA = {
     "additionalProperties": False,
 }
 
-SIMPLE_SUMMARY_INSTRUCTIONS = f"""Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula). Resuma-a de forma CURTA e direta.
+SIMPLE_SUMMARY_INSTRUCTIONS = """Você recebeu a transcrição de uma conversa (reunião, áudio, vídeo ou aula). Resuma-a de forma CURTA e direta.
 
 Registro: NEUTRO. Frases curtas, sem floreio, sem emoji, sem adjetivo de entusiasmo.
 
 - **title**: 3 a 7 palavras nomeando o assunto. Sem aspas, sem ponto final.
 - **summary**: SEMPRE em tópicos markdown, nunca em parágrafo corrido — cada linha começando com "- ". Entre 3 e 6 bullets, um fato ou decisão por linha, o mais importante primeiro. Nada de cabeçalho, nada de "Resumo:" no começo, nada de texto introdutório antes do primeiro bullet. Quem lê quer entender o essencial em quinze segundos, varrendo os tópicos — não lendo um parágrafo.
 
-Não invente nada que não esteja na transcrição. Se a gravação é curta ou não diz quase nada, use menos bullets (ou só 1): não encha linguiça para chegar em 3.
+Não invente nada que não esteja na transcrição. Se a gravação é curta ou não diz quase nada, use menos bullets (ou só 1): não encha linguiça para chegar em 3."""
 
-{LANGUAGE_RULE}"""
+
+def instrucoes_resumo_simples(idioma: str | None) -> str:
+    return f"{SIMPLE_SUMMARY_INSTRUCTIONS}\n\n{regra_idioma(idioma)}"
+
 
 # Um parágrafo cabe folgado nisto; o teto existe só para o corte não acontecer
 # em silêncio.
 SIMPLE_SUMMARY_MAX_TOKENS = 2000
 
 
-async def simple_summary(transcript: str) -> tuple[dict, int, int]:
+async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int]:
     """Título + resumo curto, numa chamada só ao Haiku.
 
     Sem map-reduce de propósito: mesmo o teto de upload (1 GB, ~8h de fala)
     rende uma transcrição bem dentro da janela de 200 mil tokens do Haiku, e
     fatiar aqui pagaria duas chamadas para produzir o mesmo parágrafo."""
     data, in_tokens, out_tokens = await call_insights(
-        f"{SIMPLE_SUMMARY_INSTRUCTIONS}\n\nTranscrição:\n{transcript}",
+        f"{instrucoes_resumo_simples(idioma)}\n\nTranscrição:\n{transcript}",
         SIMPLE_SUMMARY_SCHEMA,
         max_tokens=SIMPLE_SUMMARY_MAX_TOKENS,
         # O Haiku 4.5 não aceita `effort` — ver call_insights.
@@ -1099,7 +1153,7 @@ PART_SCHEMA = {
 }
 
 
-async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, int, int]:
+async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int]:
     """Transcrição longa: cada parte gera seus capítulos e tarefas em paralelo,
     e uma segunda chamada pequena — alimentada só pelos títulos de capítulo —
     consolida título, resumo e os 4 tópicos."""
@@ -1109,7 +1163,7 @@ async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, 
 
     results = await asyncio.gather(*[
         call_insights(
-            f"{INSIGHTS_INSTRUCTIONS}\n\nEsta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
+            f"{instrucoes_insights(idioma)}\n\nEsta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
             "Extraia apenas locutores, tarefas e capítulos DESTA parte. Os tempos já são absolutos "
             "em relação à conversa inteira — use-os como estão.\n\n"
             f"Transcrição (parte {i + 1}):\n{part}",
@@ -1134,7 +1188,7 @@ async def extract_insights_long(body: str, segments: list[dict]) -> tuple[dict, 
         for c in chapters
     )
     reduced, tin, tout = await call_insights(
-        f"{INSIGHTS_INSTRUCTIONS}\n\nAbaixo está o roteiro de uma conversa longa, seção por seção. "
+        f"{instrucoes_insights(idioma)}\n\nAbaixo está o roteiro de uma conversa longa, seção por seção. "
         "Com base nele, produza apenas title, summary_bullets e os 4 topics da conversa inteira. "
         "Os time_refs devem usar os tempos das seções.\n\n"
         f"Roteiro:\n{outline}",
@@ -1415,6 +1469,7 @@ async def analisar_transcricao(
     audio_seconds: float,
     title_override: str | None = None,
     user_id: str | None = None,
+    idioma: str = IDIOMA_AUTO,
 ) -> TranscriptionResult:
     """O trecho que as duas rotas de captura têm em comum: com a transcrição na
     mão, decidir qual análise rodar e montar o resultado. Sem isto, cada rota
@@ -1436,7 +1491,7 @@ async def analisar_transcricao(
         )
 
     if modo == MODO_SIMPLES:
-        resumo, in_tokens, out_tokens = await simple_summary(full_transcript)
+        resumo, in_tokens, out_tokens = await simple_summary(full_transcript, idioma)
         await _cobrar_do_saldo(user_id, minutos, saldo)
         # Sem insights, a duração vem do último segmento (ou do próprio áudio):
         # é ela que a lista de conversas mostra ao lado do título.
@@ -1454,7 +1509,7 @@ async def analisar_transcricao(
             usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
         )
 
-    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments)
+    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments, idioma=idioma)
     await _cobrar_do_saldo(user_id, minutos, saldo)
     return TranscriptionResult(
         transcript=full_transcript,
@@ -1510,12 +1565,14 @@ async def save_upload(file: UploadFile, dest_path: str) -> str:
 async def transcribe(
     file: UploadFile = File(...),
     mode: str = Form(MODO_COMPLETA),
+    language: str = Form(IDIOMA_AUTO),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
     modo = normalizar_modo(mode)
+    idioma = normalizar_idioma(language)
     filename = file.filename or "audio.m4a"
     tmpdir = tempfile.mkdtemp()
     try:
@@ -1535,7 +1592,7 @@ async def transcribe(
 
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
-                user_id=user_id,
+                user_id=user_id, idioma=idioma,
             )
         finally:
             # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
@@ -1547,8 +1604,10 @@ async def transcribe(
     # hash, mesmo que o nome mude (o compartilhamento do Android põe um prefixo
     # de tempo no nome a cada envio). O modo entra na chave porque o mesmo
     # áudio pedido nas duas profundidades são dois trabalhos diferentes — sem
-    # ele, quem pedisse a completa receberia o resumo simples já em voo.
-    key = capture_key("file", file_hash, modo)
+    # ele, quem pedisse a completa receberia o resumo simples já em voo. O
+    # idioma entra pelo mesmo motivo: a análise em inglês e a em português são
+    # dois resultados distintos do mesmo arquivo.
+    key = capture_key("file", file_hash, modo, idioma)
     try:
         return await run_once(key, build)
     finally:
@@ -1562,6 +1621,7 @@ async def transcribe(
 async def process_url(
     url: str = Form(...),
     mode: str = Form(MODO_COMPLETA),
+    language: str = Form(IDIOMA_AUTO),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -1570,10 +1630,11 @@ async def process_url(
         raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
     modo = normalizar_modo(mode)
+    idioma = normalizar_idioma(language)
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
-    key = capture_key("url", url.strip(), modo)
-    return await run_once(key, lambda: build_url_result(url, modo, user_id))
+    key = capture_key("url", url.strip(), modo, idioma)
+    return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma))
 
 
 def supadata_segments(content) -> list[dict]:
@@ -1594,7 +1655,10 @@ def supadata_segments(content) -> list[dict]:
     return segments
 
 
-async def build_url_result(url: str, modo: str = MODO_COMPLETA, user_id: str | None = None) -> TranscriptionResult:
+async def build_url_result(
+    url: str, modo: str = MODO_COMPLETA, user_id: str | None = None,
+    idioma: str = IDIOMA_AUTO,
+) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
@@ -1733,6 +1797,7 @@ async def build_url_result(url: str, modo: str = MODO_COMPLETA, user_id: str | N
         modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
         title_override=title,
         user_id=user_id,
+        idioma=idioma,
     )
 
 
@@ -1747,7 +1812,9 @@ async def insights(request: InsightsRequest):
     if not request.transcript.strip():
         raise HTTPException(status_code=400, detail="Não há transcrição para analisar.")
 
-    data, in_tokens, out_tokens = await extract_insights(request.transcript, request.segments)
+    data, in_tokens, out_tokens = await extract_insights(
+        request.transcript, request.segments, idioma=normalizar_idioma(request.language),
+    )
     return InsightsResponse(
         insights=data,
         summary=summary_markdown(data),

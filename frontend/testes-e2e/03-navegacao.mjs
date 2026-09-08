@@ -105,7 +105,7 @@ export default async function (browser) {
 
   // ── Modais do rodapé ──────────────────────────────────────
   await t('o tema escuro se aplica de verdade', async () => {
-    await page.getByRole('button', { name: /Tema/ }).click()
+    await page.getByRole('button', { name: /Configurações/ }).click()
     await page.waitForSelector('.modal', { timeout: 8000 })
     await page.locator('.modal .seg button', { hasText: 'Escuro' }).click()
     await page.waitForTimeout(400)
@@ -124,7 +124,7 @@ export default async function (browser) {
   })
 
   await t('voltar para o tema claro funciona', async () => {
-    await page.getByRole('button', { name: /Tema/ }).click()
+    await page.getByRole('button', { name: /Configurações/ }).click()
     await page.locator('.modal .seg button', { hasText: 'Claro' }).click()
     await page.locator('.modal .btn-primary').click()
     await page.waitForTimeout(400)

@@ -1,7 +1,7 @@
 // Preferências locais. Tom, formato e profundidade saíram do produto: eram
 // quatro ajustes que quase ninguém mexia e que faziam a mesma captura render
 // resumos diferentes sem o usuário entender por quê. Hoje o resumo é sempre
-// neutro e em bullets, e o que sobra aqui é o tema.
+// neutro e em bullets, e o que sobra aqui é tema e idioma.
 
 import { isTauriApp } from './platform'
 
@@ -40,4 +40,43 @@ export function syncNativeChrome(theme) {
       // Versão antiga do runtime ou permissão ausente: a barra fica como
       // estava, o que é chato mas não quebra nada.
     })
+}
+
+
+// ── Idioma ────────────────────────────────────────────────
+//
+// Idioma de SAÍDA: em que língua o Dito escreve título, resumo, tópicos,
+// tarefas e o resumo minuto a minuto. Não tem relação com o idioma do áudio,
+// que é detectado sozinho na transcrição — quem quiser ler em inglês uma
+// reunião em português muda só isto.
+//
+// Fica no localStorage e não no perfil do Supabase de propósito: é a mesma
+// natureza do tema (preferência de leitura, sem valor entre dispositivos) e
+// assim funciona antes mesmo de a sessão carregar.
+export const IDIOMA_AUTO = 'auto'
+
+// A ordem é a da lista na tela. O rótulo de cada idioma vem escrito NELE
+// mesmo: quem procura "English" numa tela em português acha pelo nome que
+// conhece, não por "Inglês". E o padrão se chama "Do áudio", não "Automático",
+// porque "automático" não diz automático em relação a quê.
+export const IDIOMAS = [
+  { code: IDIOMA_AUTO, label: 'Do áudio' },
+  { code: 'pt', label: 'Português' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
+]
+
+const CODIGOS = IDIOMAS.map(i => i.code)
+
+export function getIdioma() {
+  try {
+    const salvo = localStorage.getItem('dito-idioma')
+    return CODIGOS.includes(salvo) ? salvo : IDIOMA_AUTO
+  } catch {
+    return IDIOMA_AUTO
+  }
+}
+
+export function setIdioma(idioma) {
+  try { localStorage.setItem('dito-idioma', idioma) } catch {}
 }

@@ -303,7 +303,7 @@ export default function Layout() {
 
         <div className="sidebar-foot">
           <button className="nav-item" onClick={() => setShowSettings(true)}>
-            <IconSettings /> Tema
+            <IconSettings /> Configurações
           </button>
           <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
             <IconMessage /> Enviar feedback

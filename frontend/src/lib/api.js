@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { MODO_COMPLETA } from '../components/capture/modos'
+import { getIdioma } from './prefs'
 
 const API_URL = 'https://transcritor-backend.onrender.com'
 
@@ -119,6 +120,11 @@ const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 // minuto a minuto) ou 'simples' (um resumo curto e o chat). O backend trata
 // qualquer valor desconhecido como 'completa', que é o que ele fazia antes
 // deste campo existir.
+//
+// Já o idioma de saída é lido aqui dentro, e não recebido por parâmetro: é uma
+// preferência global, e são cinco caminhos de captura (gravação, arquivo,
+// link, compartilhamento de outro app, reanálise) que teriam de lembrar de
+// repassá-la. Ler no ponto do envio garante que nenhum deles escape.
 export async function transcribeFile(file, mode = MODO_COMPLETA) {
   await assertReadable(file)
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -131,6 +137,7 @@ export async function transcribeFile(file, mode = MODO_COMPLETA) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('mode', mode)
+  formData.append('language', getIdioma())
   return handleResponse(await postWithRetry('/transcribe', formData))
 }
 
@@ -138,6 +145,7 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   const formData = new FormData()
   formData.append('url', url)
   formData.append('mode', mode)
+  formData.append('language', getIdioma())
   return handleResponse(await postWithRetry('/process-url', formData))
 }
 
@@ -145,7 +153,7 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
 // capturadas antes desta versão, que não têm `insights` nem `segments`: custa
 // uma chamada de texto e não depende da mídia original, que nunca guardamos.
 export async function generateInsights(transcript, segments = []) {
-  return postJson('/insights', { transcript, segments })
+  return postJson('/insights', { transcript, segments, language: getIdioma() })
 }
 
 // Saldo do ciclo corrente, para o "Meu plano" e o aviso de saldo baixo. Um
