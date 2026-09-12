@@ -12,6 +12,7 @@ import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { lerSaldo } from '../lib/api'
 import { trackAppOpen } from '../lib/analytics'
+import { aplicarTemaDoUsuario } from '../lib/prefs'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin,
@@ -48,6 +49,12 @@ export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // A vitrine (landing, entrar, confirmar) é sempre clara, e o tema é um
+  // atributo do documento inteiro. É aqui, ao entrar no app, que a preferência
+  // de quem escolheu o escuro volta a valer — deixar isso a cargo da vitrine,
+  // ao desmontar, fazia a página piscar toda vez que ela remontava.
+  useEffect(() => { aplicarTemaDoUsuario() }, [])
 
   // O roteador guarda a posição no histórico em history.state.idx — é o que
   // diz se existe para onde voltar sem sair do app.

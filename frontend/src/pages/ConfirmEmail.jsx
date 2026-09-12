@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { refecharCofreComChaveLocal } from '../lib/chaves'
 import { IconCheck, IconMail } from '../components/Icons'
+import useTemaClaro from '../lib/useTemaClaro'
 
 const MIN_PASSWORD = 8
 
@@ -11,6 +12,7 @@ const MIN_PASSWORD = 8
 // assim o App Link do Android consegue abrir o app em vez do navegador. O que
 // chega aqui é um token de uso único, que trocamos por uma sessão.
 export default function ConfirmEmail() {
+  useTemaClaro()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const [status, setStatus] = useState('verificando')

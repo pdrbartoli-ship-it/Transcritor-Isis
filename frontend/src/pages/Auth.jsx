@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
 import { temChave, criarChave, abrirComSenha } from '../lib/chaves'
 import { siteUrl } from '../lib/platform'
+import useTemaClaro from '../lib/useTemaClaro'
 
 const MIN_PASSWORD = 8
 
@@ -33,6 +34,7 @@ function translateError(message) {
 const cleanEmail = value => value.trim().toLowerCase()
 
 export default function Auth() {
+  useTemaClaro()
   const { setHoldRedirect } = useAuth()
   const [mode, setMode] = useState('signup')
   const [email, setEmail] = useState('')

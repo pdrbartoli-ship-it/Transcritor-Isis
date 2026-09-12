@@ -46,15 +46,37 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
               É o app de Windows — o único que grava <strong>as duas vozes</strong> da chamada,
               com a janelinha flutuante por cima da reunião.
             </p>
+            {/* Os passos são o conteúdo principal desta tela: o arquivo já está
+                baixando, e o que falta a pessoa saber é o que fazer com ele. O
+                aviso do Windows é o ponto onde se desiste da instalação, então
+                ele vem descrito com as palavras exatas que vão aparecer — quem
+                reconhece a tela não se assusta com ela. */}
             <ol className="instalar-passos">
               <li>Abra o <strong>Dito-setup.exe</strong> na sua pasta de downloads.</li>
-              <li>O Windows pode avisar que o programa é de fora da loja — clique em <strong>Mais informações → Executar assim mesmo</strong>.</li>
+              <li>
+                Vai aparecer uma tela azul escrita <strong>“O Windows protegeu seu PC”</strong>.
+                É o aviso padrão para todo programa novo, não é sinal de problema.
+              </li>
+              <li>
+                Nela, clique em <strong>Mais informações</strong> e depois em{' '}
+                <strong>Executar assim mesmo</strong>.
+              </li>
               <li>Entre com seu e-mail e comece a gravar.</li>
             </ol>
-            <button className="btn-primary instalar-btn" onClick={baixarInstaladorWindows}>
-              <IconDownload width={16} height={16} />
-              {baixou ? 'Baixar de novo' : 'Baixar para Windows'}
-            </button>
+            {/* Depois que o download já começou, um botão grande escrito
+                "Baixar de novo" convida justamente ao clique errado: a pessoa
+                acha que precisa baixar outra vez em vez de abrir o arquivo. Só
+                quem percebeu que nada baixou procura por isto, e para esse caso
+                um link basta. */}
+            {baixou ? (
+              <button type="button" className="instalar-refazer" onClick={baixarInstaladorWindows}>
+                O download não começou? Baixar de novo
+              </button>
+            ) : (
+              <button className="btn-primary instalar-btn" onClick={baixarInstaladorWindows}>
+                <IconDownload width={16} height={16} /> Baixar para Windows
+              </button>
+            )}
           </>
         )}
 

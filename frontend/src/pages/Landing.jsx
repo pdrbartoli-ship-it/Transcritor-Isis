@@ -6,6 +6,7 @@ import {
 } from '../components/Icons'
 import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
+import useTemaClaro from '../lib/useTemaClaro'
 
 // A mesma tabela aparece dentro do app, no PlanModal — mudou um preço ou um
 // limite? Trocar nos dois.
@@ -198,6 +199,7 @@ function irPara(id) {
 }
 
 export default function Landing() {
+  useTemaClaro()
   const navigate = useNavigate()
   const entrar = () => navigate('/auth')
 

@@ -38,7 +38,11 @@ const PLANOS = [
 export default function PlanModal({ onClose }) {
   const { user } = useAuth()
   const [ciclo, setCiclo] = useState('mensal')
-  const [planoAtual, setPlanoAtual] = useState('gratuito')
+  // Nasce sem resposta, não como 'gratuito': assumir o gratuito fazia a marca
+  // de "plano atual" aparecer no primeiro card e depois pular para o certo
+  // quando o Supabase respondia. Sem palpite, ela aparece uma vez só, no lugar
+  // certo.
+  const [planoAtual, setPlanoAtual] = useState(null)
   const [assinando, setAssinando] = useState(null) // id do plano em checkout
   const [erro, setErro] = useState('')
   const [saldo, setSaldo] = useState(null)
@@ -93,12 +97,21 @@ export default function PlanModal({ onClose }) {
               <div key={p.id} className={`plano${ativo ? ' on' : ''}${p.destaque ? ' destaque' : ''}`}>
                 <span className="plano-nome">{p.nome}</span>
                 <span className="plano-preco">{preco} <i>{periodo}</i></span>
-                {ativo && saldo && (
-                  <span className="plano-saldo">
-                    {Math.round(saldo.minutosUsados)} de {p.minutos} minutos usados
-                    {saldo.periodoFim && ` · renova em ${new Date(saldo.periodoFim).toLocaleDateString('pt-BR')}`}
-                  </span>
-                )}
+                {/* A linha de saldo ocupa lugar em todos os cards desde o
+                    primeiro quadro, mesmo vazia. Ela só tem texto no plano
+                    ativo, e como os três cards da grade crescem juntos, era o
+                    texto chegando depois que fazia o modal inteiro se esticar
+                    sozinho na frente do usuário. */}
+                <span className="plano-saldo">
+                  {ativo && saldo && (
+                    <>
+                      <span>{Math.round(saldo.minutosUsados)} de {p.minutos} min usados</span>
+                      {saldo.periodoFim && (
+                        <span>renova em {new Date(saldo.periodoFim).toLocaleDateString('pt-BR')}</span>
+                      )}
+                    </>
+                  )}
+                </span>
                 <ul>
                   {p.itens.map(i => <li key={i}><IconCheck width={12} height={12} /> {i}</li>)}
                 </ul>

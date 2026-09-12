@@ -103,8 +103,16 @@ _token_cache: dict[str, tuple[float, str, str]] = {}
 TOKEN_CACHE_S = 300
 
 
+class LoginIndisponivel(Exception):
+    """O Supabase não respondeu. Diferente de token inválido: aqui não dá para
+    afirmar nada sobre quem está chamando, e dizer "entre na sua conta" para
+    quem já está logado é pior do que admitir a indisponibilidade."""
+
+
 async def validar_token_completo(token: str) -> tuple[str, str] | None:
-    """Devolve (id, email) do usuário dono do token, ou None se ele não valer."""
+    """Devolve (id, email) do usuário dono do token, ou None se ele não valer.
+
+    Levanta LoginIndisponivel quando não foi possível conferir."""
     chave = hashlib.sha256(token.encode()).hexdigest()
     agora = time()
 
@@ -112,19 +120,25 @@ async def validar_token_completo(token: str) -> tuple[str, str] | None:
     if em_cache and em_cache[0] > agora:
         return em_cache[1], em_cache[2]
 
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{SUPABASE_URL}/auth/v1/user",
-                headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
-                timeout=10.0,
-            )
-    except Exception:
-        # Recusar quando o Supabase não responde é a escolha certa: deixar
-        # passar transformaria uma instabilidade dele num portão aberto aqui.
-        # O cache de 5 minutos absorve as quedas curtas.
-        logger.warning("Supabase não respondeu na checagem do token")
-        return None
+    # Uma segunda tentativa cobre a instabilidade curta, que é a mais comum.
+    resp = None
+    for tentativa in range(2):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{SUPABASE_URL}/auth/v1/user",
+                    headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
+                    timeout=10.0,
+                )
+            break
+        except Exception:
+            if tentativa == 0:
+                continue
+            # Recusar quando o Supabase não responde é a escolha certa: deixar
+            # passar transformaria uma instabilidade dele num portão aberto
+            # aqui. O cache de 5 minutos absorve as quedas curtas.
+            logger.warning("Supabase não respondeu na checagem do token")
+            raise LoginIndisponivel
 
     if resp.status_code != 200:
         return None
@@ -151,7 +165,13 @@ async def guarda_de_uso(request: Request) -> str | None:
     mesma cota."""
     cabecalho = request.headers.get("authorization") or ""
     token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
-    user_id = await validar_token(token) if token else None
+    try:
+        user_id = await validar_token(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
 
     if not user_id:
         if REQUIRE_AUTH:
@@ -1959,7 +1979,13 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
 
     cabecalho = request.headers.get("authorization") or ""
     token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
-    identidade = await validar_token_completo(token) if token else None
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
     if not identidade:
         raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para assinar.")
     user_id, email = identidade

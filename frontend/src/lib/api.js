@@ -4,6 +4,13 @@ import { getIdioma } from './prefs'
 
 const API_URL = 'https://transcritor-backend.onrender.com'
 
+// Um token que ainda vale no instante do envio pode já ter vencido quando o
+// backend o confere: o Render hiberna e a requisição espera a instância subir,
+// e uma captura grande passa minutos no ar. Era isso que fazia aparecer "Entre
+// na sua conta" para quem estava logado. Renovar o que está perto de vencer
+// ANTES de enviar fecha essa janela.
+const RENOVAR_SE_FALTAR_S = 60
+
 // O backend precisa saber quem está chamando: as rotas que gastam crédito de
 // IA são fechadas para quem não tem conta. O token é o mesmo que o Supabase já
 // mantém para a sessão — não há nada novo a guardar.
@@ -11,13 +18,54 @@ const API_URL = 'https://transcritor-backend.onrender.com'
 // Falhar em silêncio (devolver {}) é de propósito: sem sessão a chamada segue
 // sem o cabeçalho e o backend responde 401, que a tela já sabe mostrar. Travar
 // aqui só trocaria uma mensagem clara por uma tela quebrada.
-async function authHeaders() {
+async function authHeaders({ forcar = false } = {}) {
   try {
     const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+    if (!session?.access_token) return {}
+
+    const faltam = (session.expires_at ?? 0) - Math.floor(Date.now() / 1000)
+    if (!forcar && faltam > RENOVAR_SE_FALTAR_S) {
+      return { Authorization: `Bearer ${session.access_token}` }
+    }
+
+    // Se a renovação falhar (rede caída, por exemplo), mandar o token velho
+    // ainda é melhor do que mandar nada: ele pode continuar valendo, e o
+    // backend é quem decide.
+    const { data } = await supabase.auth.refreshSession()
+    const token = data?.session?.access_token || session.access_token
+    return { Authorization: `Bearer ${token}` }
   } catch {
     return {}
   }
+}
+
+// Uma volta de envio, com as retentativas de rede. Fica separada do cuidado com
+// o token para que repetir por 401 não consuma o orçamento de retentativas de
+// conexão — são dois problemas diferentes.
+async function enviar(path, { body, headers }, retries) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(`${API_URL}${path}`, { method: 'POST', body, headers })
+    } catch (err) {
+      if (!isNetworkError(err) || attempt >= retries) {
+        throw isNetworkError(err) ? new Error(NETWORK_ERROR) : err
+      }
+      await sleep(1500)
+    }
+  }
+}
+
+// Um 401 em quem mandou token quase nunca é falta de login: é o token que
+// venceu no caminho. Renovar e repetir uma vez antes de acusar o usuário de
+// estar deslogado.
+async function comRenovacao(path, montarHeaders, body, retries) {
+  let headers = await montarHeaders()
+  let res = await enviar(path, { body, headers }, retries)
+  if (res.status === 401 && headers.Authorization) {
+    headers = await montarHeaders({ forcar: true })
+    if (headers.Authorization) res = await enviar(path, { body, headers }, retries)
+  }
+  return res
 }
 
 // `fetch` rejeita com TypeError quando a conexão falha antes de haver resposta
@@ -79,37 +127,17 @@ async function assertReadable(file) {
 // Uma falha de rede num upload longo costuma ser transitória (troca de Wi-Fi
 // para dados, servidor acordando). Uma segunda tentativa resolve a maioria.
 async function postWithRetry(path, body, { retries = 1 } = {}) {
-  const headers = await authHeaders()
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await fetch(`${API_URL}${path}`, { method: 'POST', body, headers })
-    } catch (err) {
-      if (!isNetworkError(err) || attempt >= retries) {
-        throw isNetworkError(err) ? new Error(NETWORK_ERROR) : err
-      }
-      await sleep(1500)
-    }
-  }
+  return comRenovacao(path, authHeaders, body, retries)
 }
 
 // Mesma proteção de rede das capturas, para as rotas que mandam JSON.
 async function postJson(path, payload, { retries = 1 } = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) }
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const res = await fetch(`${API_URL}${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      })
-      return await handleResponse(res)
-    } catch (err) {
-      if (!isNetworkError(err) || attempt >= retries) {
-        throw isNetworkError(err) ? new Error(NETWORK_ERROR) : err
-      }
-      await sleep(1500)
-    }
-  }
+  const montarHeaders = async opts => ({
+    'Content-Type': 'application/json',
+    ...(await authHeaders(opts)),
+  })
+  const res = await comRenovacao(path, montarHeaders, JSON.stringify(payload), retries)
+  return handleResponse(res)
 }
 
 // Mesmo teto do backend (main.py: MAX_UPLOAD_BYTES). Conferir aqui é o que

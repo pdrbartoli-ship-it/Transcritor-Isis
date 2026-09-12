@@ -3,7 +3,7 @@
 // resumos diferentes sem o usuário entender por quê. Hoje o resumo é sempre
 // neutro e em bullets, e o que sobra aqui é tema e idioma.
 
-import { isTauriApp } from './platform'
+import { isTauriApp, isStandalonePwa } from './platform'
 
 // Theme is stored separately so the boot script in index.html can read it
 // before React mounts (avoids a flash of the wrong theme).
@@ -40,6 +40,42 @@ export function syncNativeChrome(theme) {
       // Versão antiga do runtime ou permissão ausente: a barra fica como
       // estava, o que é chato mas não quebra nada.
     })
+}
+
+
+// ── Tema da vitrine ───────────────────────────────────────
+//
+// A landing e as telas de entrada são a primeira imagem do Dito para quem
+// chega, e o tema é um atributo do documento inteiro: quem já usava o app no
+// escuro voltava à landing e a via escura, então a mesma página tinha duas
+// caras conforme quem abrisse. Na vitrine o tom é sempre claro.
+//
+// Aplica sem gravar no localStorage: a preferência de quem já é usuário
+// continua intacta para quando ele entrar no app.
+//
+// Dentro do app empacotado (Windows ou PWA instalado) isto não vale — ali não
+// existe vitrine, e a tela de login é do app, que respeita o tema escolhido.
+function ehVitrine() {
+  return !isTauriApp() && !isStandalonePwa()
+}
+
+function aplicarTema(theme) {
+  document.documentElement.setAttribute('data-theme', theme)
+  syncBrowserChrome(theme)
+  syncNativeChrome(theme)
+}
+
+export function aplicarTemaDaVitrine() {
+  if (!ehVitrine()) return
+  aplicarTema('light')
+}
+
+// Chamada ao entrar no app, e não ao sair da vitrine: amarrar isto ao desmonte
+// de uma tela fazia a página piscar entre os dois temas sempre que ela
+// remontava. Vale em qualquer plataforma — dentro do app empacotado é o mesmo
+// tema que o script do index.html já tinha aplicado.
+export function aplicarTemaDoUsuario() {
+  aplicarTema(getTheme())
 }
 
 
