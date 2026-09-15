@@ -177,6 +177,18 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   return handleResponse(await postWithRetry('/process-url', formData))
 }
 
+// Duração do vídeo de um link, sem baixá-lo — para o botão dizer quantos
+// minutos a captura vai consumir. Null quando não dá para saber; nunca lança,
+// porque a estimativa é informação e não pode travar o envio.
+export async function duracaoDoLink(url) {
+  try {
+    const { duracao_s } = await postJson('/duracao-link', { url })
+    return duracao_s || null
+  } catch {
+    return null
+  }
+}
+
 // Reanálise de uma conversa que já tem transcrição. É o caminho das conversas
 // capturadas antes desta versão, que não têm `insights` nem `segments`: custa
 // uma chamada de texto e não depende da mídia original, que nunca guardamos.

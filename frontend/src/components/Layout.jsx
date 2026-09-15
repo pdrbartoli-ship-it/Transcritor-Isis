@@ -348,7 +348,7 @@ export default function Layout() {
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, plano: saldo?.plano ?? null, abrirPlano: () => setShowPlan(true) }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, abrirPlano: () => setShowPlan(true) }} />
         </div>
       </div>
 

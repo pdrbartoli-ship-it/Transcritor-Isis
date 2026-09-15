@@ -775,6 +775,30 @@ input::placeholder { color: var(--text-muted); }
 .home-greeting { text-align: center; margin-bottom: 40px; }
 .home-greeting h1 { font-family: var(--font-serif); font-size: 30px; font-weight: 500; letter-spacing: -0.01em; }
 .home-greeting p { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
+/* Relógio de minutos: no canto direito, fora do eixo central da home, e em tom
+   apagado — é consulta, não chamada para ação. A altura mínima guarda o lugar
+   dele antes de o saldo chegar, para o título não descer sozinho. */
+.home-topo { display: flex; justify-content: flex-end; min-height: 20px; margin-bottom: 8px; }
+.contador-minutos {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.contador-trilho { fill: none; stroke: var(--border); stroke-width: 2.5; }
+.contador-arco {
+  fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round;
+  transition: stroke-dasharray 0.4s ease;
+}
+/* Quanto a captura consome: ao lado do nome do modo, mais leve que ele. */
+.split-minutos { font-weight: 400; opacity: 0.85; }
+.linha-consumo {
+  margin-top: 10px; text-align: center;
+  font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.linha-consumo.excede { color: var(--danger); }
+.linha-consumo button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--accent); text-decoration: underline;
+}
 
 /* Versão ampliada do seletor de origem da barra lateral: aqui ele é a
    primeira decisão da tela, não um detalhe pequeno ao lado da navegação. */
@@ -1382,6 +1406,25 @@ input::placeholder { color: var(--text-muted); }
    pergunta ficava com duas caras conforme a tela — dentro do chat parecia uma
    caixa mais alta e desalinhada, fora dele parecia compacta e centralizada. */
 .chat-input { position: sticky; bottom: 0; max-width: 740px; width: 100%; }
+/* Com a contagem de perguntas embaixo do campo, quem fica preso ao rodapé é o
+   conjunto — sticky dentro de um embrulho da mesma altura não prende nada. O
+   fundo é o que impede as mensagens de aparecerem por trás da contagem. */
+.chat-input-area { position: sticky; bottom: 0; max-width: 740px; width: 100%; background: var(--bg); padding-bottom: 4px; }
+
+/* Perguntas restantes: informação de canto, no mesmo tom apagado do contador
+   de minutos da home. */
+.ask-restantes {
+  margin: 6px 0 0; text-align: center;
+  font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+/* Acabaram as perguntas: a barra mantém a casca da de perguntar (é o mesmo
+   lugar, a mesma intenção), mas no lugar do campo vem o convite. */
+.ask-bar.ask-esgotado {
+  align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 10px 10px 16px;
+  font-size: 13.5px; color: var(--text-muted);
+}
+.ask-bar.ask-esgotado .btn-sm { flex-shrink: 0; }
 
 .conversa-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .conversa-actions .btn-primary { display: inline-flex; align-items: center; gap: 7px; }

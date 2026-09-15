@@ -1770,6 +1770,39 @@ async def process_url(
     return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma))
 
 
+class DuracaoLinkRequest(BaseModel):
+    url: str = Field(..., max_length=2_000)
+
+
+@app.post("/duracao-link", dependencies=[Depends(guarda_de_uso)])
+async def duracao_link(body: DuracaoLinkRequest):
+    """Quanto dura o vídeo de um link, sem baixar nada — para a tela dizer
+    quantos minutos a captura vai consumir antes de a pessoa enviar.
+
+    Devolve {"duracao_s": null} sempre que não der para saber (artigo, rede sem
+    metadado, Supadata fora do ar): a estimativa é informação, e a falta dela
+    nunca pode impedir a transcrição. O porteiro fica porque cada consulta
+    custa um crédito do Supadata."""
+    url = body.url.strip()
+    if not SUPADATA_API_KEY or not is_video_url(url) or not is_safe_public_url(url):
+        return {"duracao_s": None}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.supadata.ai/v1/metadata",
+                headers={"x-api-key": SUPADATA_API_KEY},
+                params={"url": url},
+                timeout=15.0,
+            )
+        if resp.status_code != 200:
+            return {"duracao_s": None}
+        duracao = (resp.json().get("media") or {}).get("duration")
+        return {"duracao_s": float(duracao) if duracao else None}
+    except Exception:
+        logger.warning("Supadata não respondeu à duração do link")
+        return {"duracao_s": None}
+
+
 def supadata_segments(content) -> list[dict]:
     """Legendas do Supadata no mesmo formato dos segmentos do Whisper.
 

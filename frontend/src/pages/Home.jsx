@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { createConversation, seedChatWithSummary } from '../lib/conversas'
 import { MODO_SIMPLES } from '../components/capture/modos'
 import CapturePanel from '../components/CapturePanel'
+import ContadorMinutos from '../components/ContadorMinutos'
 import { IconMic, IconLink, IconFile } from '../components/Icons'
 
 // As três origens de captura. Viviam pequenas na barra lateral; centralizadas
@@ -18,7 +19,7 @@ const CAPTURE_MODES = [
 export default function Home({ mode = 'record' }) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { refreshConversations, abrirPlano } = useOutletContext()
+  const { refreshConversations, abrirPlano, saldo } = useOutletContext()
   const location = useLocation()
 
   const [saving, setSaving] = useState(false)
@@ -61,6 +62,12 @@ export default function Home({ mode = 'record' }) {
 
   return (
     <div className="home">
+      {/* O lugar do relógio existe antes de o saldo chegar: sem ele, o título
+          desceria alguns pixels sozinho quando o contador aparecesse. */}
+      <div className="home-topo">
+        {saldo && <ContadorMinutos usados={saldo.usados} limite={saldo.limite} />}
+      </div>
+
       <div className="home-capture">
         <div className="home-greeting">
           <h1>O que vamos registrar hoje?</h1>

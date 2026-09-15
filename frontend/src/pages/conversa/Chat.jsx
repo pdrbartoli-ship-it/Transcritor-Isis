@@ -9,6 +9,7 @@ import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import { cifrarMensagem, decifrarMensagens } from '../../lib/cofre'
+import { textoPerguntasRestantes } from './perguntas'
 
 // Cada mensagem reenvia o histórico; sem teto, uma conversa longa cresce sem
 // parar. O corte é por mensagem, para uma resposta gigante não comer o espaço
@@ -38,7 +39,7 @@ const SUGESTOES = [
 // cria a linha, as seguintes só acrescentam mensagens a ela.
 export default function Chat() {
   const { user } = useAuth()
-  const { conversation } = useOutletContext()
+  const { conversation, perguntasRestantes, atualizarPerguntasRestantes, abrirPlano } = useOutletContext()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -48,17 +49,42 @@ export default function Chat() {
   const [question, setQuestion] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
+  const [errorStatus, setErrorStatus] = useState(null)
   const bottomRef = useRef(null)
   const firstScrollRef = useRef(true)
 
+  const esgotado = perguntasRestantes === 0
+
   // Carrega a thread existente desta conversa, se houver, antes de qualquer
   // outra coisa: perguntar de novo precisa enxergar o que já foi perguntado.
+  //
+  // Quando se chega aqui com uma pergunta pendente (vinda da AskBar de outra
+  // tela), ela não pode esperar essa carga: descriptografar um histórico
+  // grande leva um tempo visível, e ficar esse tempo com a tela em branco pra
+  // só então fazer pergunta+"Pensando"+histórico aparecerem juntos, de
+  // supetão, é exatamente o "buga" que se quer evitar. Por isso a pergunta e
+  // o "Pensando" entram no ar na hora, otimistas, e o histórico se encaixa
+  // por baixo deles quando terminar de carregar — a `runAsk` (a chamada de
+  // verdade à IA) só dispara depois, já com o histórico certo em mãos.
   useEffect(() => {
     let cancelled = false
+    const pending = location.state?.ask
+    if (pending) navigate('.', { replace: true, state: null })
+
     setReady(false)
     setChatId(null)
-    setMessages([])
+    setError(null)
+    setErrorStatus(null)
     firstScrollRef.current = true
+    if (pending) {
+      setQuestion('')
+      setMessages([{ role: 'user', content: pending }])
+      setSending(true)
+    } else {
+      setMessages([])
+      setSending(false)
+    }
+
     ;(async () => {
       const { data: chat } = await supabase
         .from('chats').select('id')
@@ -66,17 +92,28 @@ export default function Chat() {
         .order('created_at', { ascending: true })
         .limit(1).maybeSingle()
       if (cancelled) return
+
+      let history = []
       if (chat) {
         setChatId(chat.id)
         const { data: msgs } = await supabase
           .from('chat_messages').select('role, content, enc_version')
           .eq('chat_id', chat.id).order('created_at')
-        const abertas = await decifrarMensagens(msgs)
-        if (!cancelled) setMessages(abertas)
+        history = await decifrarMensagens(msgs)
       }
-      if (!cancelled) setReady(true)
+      if (cancelled) return
+
+      if (pending) {
+        setMessages([...history, { role: 'user', content: pending }])
+        setReady(true)
+        await runAsk(pending, history)
+      } else {
+        setMessages(history)
+        setReady(true)
+      }
     })()
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id])
 
   // Reentrar numa conversa que já tem histórico disparava uma sequência de
@@ -92,17 +129,6 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [messages, sending, ready])
 
-  // Pergunta digitada na barra fixa da conversa: chega pelo state da rota e é
-  // enviada assim que a thread termina de carregar — antes disso, `messages`
-  // ainda não reflete o histórico salvo, e a pergunta perderia o contexto.
-  const pending = location.state?.ask
-  useEffect(() => {
-    if (!pending || !ready) return
-    navigate('.', { replace: true, state: null })
-    send(null, pending)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, ready])
-
   // Um chip não passa pelo campo: mandar o texto direto evita depender de o
   // setState ter sido aplicado antes do submit.
   function ask(texto) { send(null, texto) }
@@ -110,28 +136,41 @@ export default function Chat() {
   async function send(e, texto) {
     e?.preventDefault()
     const text = (texto ?? question).trim()
-    if (!text || sending) return
+    if (!text || sending || esgotado) return
 
     setQuestion('')
     setError(null)
+    setErrorStatus(null)
     setSending(true)
-    const asked = [...messages, { role: 'user', content: text }]
-    setMessages(asked)
+    const history = messages
+    setMessages([...history, { role: 'user', content: text }])
+    await runAsk(text, history)
+  }
 
+  // Compartilhada pela pergunta digitada aqui e pela pendente que chega já
+  // com a UI otimista no ar (ver o efeito de carga acima): as duas só diferem
+  // em COMO a pergunta entrou na tela, não em como a resposta é buscada,
+  // guardada e tratada quando falha.
+  async function runAsk(text, previousMessages) {
     try {
-      const history = messages
+      const history = previousMessages
         .slice(-MAX_HISTORY_MESSAGES)
         .map(m => ({ role: m.role, content: m.content.slice(0, MAX_CHARS_PER_TURN) }))
       const result = await askConversation(text, conversation, { history })
 
-      setMessages([...asked, { role: 'assistant', content: result.answer }])
+      setMessages(prev => [...prev, { role: 'assistant', content: result.answer }])
+      atualizarPerguntasRestantes?.(result.perguntas_restantes)
       await persist(text, result)
       track('chat', { usage: result.usage })
     } catch (err) {
       setError(err.message)
+      setErrorStatus(err.status || null)
+      // 402 aqui é o limite de perguntas desta transcrição: o servidor já
+      // disse que acabou, e a tela passa a mostrar o convite no lugar do campo.
+      if (err.status === 402) atualizarPerguntasRestantes?.(0)
       // A pergunta volta para o campo: perdê-la porque a rede caiu é a pior
       // parte de um erro aqui.
-      setMessages(messages)
+      setMessages(previousMessages)
       setQuestion(text)
     } finally {
       setSending(false)
@@ -175,13 +214,15 @@ export default function Chat() {
           <div className="chat-starter">
             <IconMessage width={26} height={26} />
             <p>Pergunte o que quiser sobre esta conversa — o que ficou decidido, o que fulano disse, o que faltou.</p>
-            <div className="starter-chips">
-              {SUGESTOES.map(texto => (
-                <button key={texto} type="button" onClick={() => ask(texto)} disabled={sending}>
-                  {texto}
-                </button>
-              ))}
-            </div>
+            {!esgotado && (
+              <div className="starter-chips">
+                {SUGESTOES.map(texto => (
+                  <button key={texto} type="button" onClick={() => ask(texto)} disabled={sending}>
+                    {texto}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {messages.map((m, i) => (
@@ -199,7 +240,9 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {/* O 402 do limite já vira o convite logo abaixo; repetir a mesma frase
+          num alerta vermelho em cima dele seria dizer duas vezes que acabou. */}
+      {error && errorStatus !== 402 && <div className="alert alert-error">{error}</div>}
 
       {/* Mesma casca visual do AskBar (classe .ask-bar): a barra de perguntar não
           pode ter uma cara dentro do chat e outra fora dele — .chat-input aqui
@@ -208,18 +251,30 @@ export default function Chat() {
           AskBar; `disabled` some por enviar (`send` já ignora texto vazio),
           não por a pergunta estar em branco — só assim o estado de repouso
           desta tela e o do AskBar são visualmente idênticos. */}
-      <form className="ask-bar chat-input" onSubmit={send}>
-        <ChatTextarea
-          value={question}
-          onChange={setQuestion}
-          onSubmit={send}
-          placeholder="Pergunte qualquer coisa sobre esta conversa"
-          disabled={sending}
-        />
-        <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">
-          <IconSend width={18} height={18} />
-        </button>
-      </form>
+      {esgotado ? (
+        <div className="ask-bar chat-input ask-esgotado">
+          <span>Você usou todas as perguntas desta transcrição.</span>
+          <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>
+        </div>
+      ) : (
+        <div className="chat-input-area">
+          <form className="ask-bar chat-input" onSubmit={send}>
+            <ChatTextarea
+              value={question}
+              onChange={setQuestion}
+              onSubmit={send}
+              placeholder="Pergunte qualquer coisa sobre esta conversa"
+              disabled={sending}
+            />
+            <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">
+              <IconSend width={18} height={18} />
+            </button>
+          </form>
+          {perguntasRestantes != null && (
+            <p className="ask-restantes">{textoPerguntasRestantes(perguntasRestantes)}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
