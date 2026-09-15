@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { formatTime } from './estimate'
 import { MODOS, MODO_SIMPLES, MODO_COMPLETA, modoRecomendado } from './modos'
-import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile } from '../Icons'
+import { planoPorId } from '../../lib/planos'
+import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile, IconLock } from '../Icons'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
 // arquivo, textos do microfone, tamanho dos alvos de toque) fica em
@@ -44,11 +46,18 @@ export function ProcessingBox() {
 // significaria mandar uma reunião de uma hora no resumo curto porque o teste
 // anterior era um áudio de dois minutos.
 export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loading, disabled }) {
-  const [modo, setModo] = useState(recomendado)
+  // O plano vem do Layout. Enquanto não chega, nada fica trancado: quem paga
+  // não pode ver um cadeado piscando, e o backend atende como simples quem
+  // pedir a completa sem ter direito a ela.
+  const { plano, abrirPlano } = useOutletContext() || {}
+  const completaLiberada = !plano || planoPorId(plano).completa
+  const sugerido = completaLiberada ? recomendado : MODO_SIMPLES
+
+  const [modo, setModo] = useState(sugerido)
   const [aberto, setAberto] = useState(false)
   const caixaRef = useRef(null)
 
-  useEffect(() => { setModo(recomendado) }, [recomendado])
+  useEffect(() => { setModo(sugerido) }, [sugerido])
 
   // Fechar clicando fora e no Esc: sem isso a lista fica pendurada na tela
   // depois que a pessoa desiste dela, cobrindo o resto do painel.
@@ -92,23 +101,38 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loadin
 
       {aberto && (
         <ul className="split-menu" role="listbox" aria-label="Tipo de transcrição">
-          {[MODO_SIMPLES, MODO_COMPLETA].map(m => (
-            <li key={m}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={m === modo}
-                className={m === modo ? 'on' : ''}
-                onClick={() => { setModo(m); setAberto(false) }}
-              >
-                <span className="split-menu-head">
-                  <span className="split-menu-label">{MODOS[m].label}</span>
-                  {m === recomendado && <span className="split-badge">Recomendada</span>}
-                </span>
-                <span className="split-menu-hint">{MODOS[m].hint}</span>
-              </button>
-            </li>
-          ))}
+          {[MODO_SIMPLES, MODO_COMPLETA].map(m => {
+            const travada = m === MODO_COMPLETA && !completaLiberada
+            return (
+              <li key={m}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m === modo}
+                  // Sem aria-disabled: a opção trancada FAZ algo (abre os
+                  // planos), e anunciá-la como desabilitada mentiria para quem
+                  // usa leitor de tela. O "Planos pagos" do selo já está no nome.
+                  className={[m === modo && 'on', travada && 'travada'].filter(Boolean).join(' ')}
+                  onClick={() => {
+                    setAberto(false)
+                    // Trancada não é parede: o clique leva aos planos, que é
+                    // onde ela se destrava, e a explicação do que ela entrega
+                    // já está logo abaixo do nome.
+                    if (travada) { abrirPlano?.(); return }
+                    setModo(m)
+                  }}
+                >
+                  <span className="split-menu-head">
+                    <span className="split-menu-label">{MODOS[m].label}</span>
+                    {travada
+                      ? <span className="split-badge pago"><IconLock width={11} height={11} /> Planos pagos</span>
+                      : m === sugerido && <span className="split-badge">Recomendada</span>}
+                  </span>
+                  <span className="split-menu-hint">{MODOS[m].hint}</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

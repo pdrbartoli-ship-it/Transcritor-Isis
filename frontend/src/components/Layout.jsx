@@ -13,6 +13,7 @@ import { listConversations, searchConversations, formatCapturedAt, groupConversa
 import { lerSaldo } from '../lib/api'
 import { trackAppOpen } from '../lib/analytics'
 import { aplicarTemaDoUsuario } from '../lib/prefs'
+import { planoPorId } from '../lib/planos'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin,
@@ -32,10 +33,6 @@ function KindIcon({ sourceType }) {
 // caractere dispara uma consulta por letra e faz respostas antigas chegarem
 // depois das novas.
 const SEARCH_DEBOUNCE_MS = 250
-
-// Os mesmos tetos do backend (main.py: LIMITES_PLANO). Aqui eles só desenham o
-// aviso; quem barra de verdade é o servidor.
-const MINUTOS_DO_PLANO = { gratuito: 120, iniciante: 600, avancado: 2000 }
 
 // Abaixo disto não vale interromper ninguém; acima, quem avisa é o próprio
 // erro da captura.
@@ -117,8 +114,10 @@ export default function Layout() {
     ])
       .then(([uso, { data }]) => {
         if (!ativo) return
-        const limite = MINUTOS_DO_PLANO[data?.plano] || MINUTOS_DO_PLANO.gratuito
-        setSaldo({ usados: uso.minutosUsados, limite })
+        // O plano vai junto do saldo porque as telas de dentro precisam dele
+        // para desenhar o que está liberado — o cadeado da transcrição completa.
+        const plano = data?.plano || 'gratuito'
+        setSaldo({ usados: uso.minutosUsados, limite: planoPorId(plano).minutos, plano })
       })
       .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
     return () => { ativo = false }
@@ -349,7 +348,7 @@ export default function Layout() {
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, abrirPlano: () => setShowPlan(true) }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, plano: saldo?.plano ?? null, abrirPlano: () => setShowPlan(true) }} />
         </div>
       </div>
 

@@ -215,6 +215,8 @@ export async function criarCheckout(plano, ciclo) {
 export async function askConversation(question, conversation, { history = [], makeTitle = false } = {}) {
   return postJson('/chat', {
     question,
+    // Qual transcrição: o limite de perguntas do plano é contado por ela.
+    session_id: conversation.id,
     title: conversation.title,
     date: new Date(conversation.created_at).toLocaleDateString('pt-BR'),
     transcript: conversation.transcript,

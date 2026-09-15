@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom'
 import { usePlatform } from '../lib/platform'
 import { sharedFileToFile } from '../lib/sharedContent'
 import { useCapture } from './capture/useCapture'
-import { modoRecomendado } from './capture/modos'
+import { useOutletContext } from 'react-router-dom'
+import { modoRecomendado, MODO_SIMPLES } from './capture/modos'
+import { planoPorId } from '../lib/planos'
 import { readMediaDuration } from './capture/estimate'
 import { useMiniRecorder } from './recorder/useMiniRecorder'
 import MiniRecorder from './recorder/MiniRecorder'
@@ -29,6 +31,12 @@ import CaptureNative from './capture/CaptureNative'
 // tela normal por trás.
 export default function CapturePanel({ onResult, variant = 'hero', mode = 'record', autoCapture = null, onAutoCaptureDone, extraLoading = false, onVerPlanos }) {
   const { isNative, isMobile } = usePlatform()
+  const { plano } = useOutletContext() || {}
+  // O compartilhamento de outro app processa sozinho, sem o botão onde o
+  // cadeado aparece: no Grátis a escolha automática já nasce simples.
+  const modoAutomatico = opcoes => (
+    !plano || planoPorId(plano).completa ? modoRecomendado(opcoes) : MODO_SIMPLES
+  )
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
 
@@ -58,7 +66,7 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
     ;(async () => {
       try {
         if (autoCapture.kind === 'url') {
-          await capture.submitUrl(autoCapture.url, modoRecomendado({ origem: 'url' }))
+          await capture.submitUrl(autoCapture.url, modoAutomatico({ origem: 'url' }))
         } else {
           const file = await sharedFileToFile(autoCapture)
           if (cancelled) return
@@ -68,7 +76,7 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
           // curto.
           const durationSec = await readMediaDuration(file)
           if (cancelled) return
-          await capture.sendFile(file, modoRecomendado({ origem: 'file', durationSec }), durationSec)
+          await capture.sendFile(file, modoAutomatico({ origem: 'file', durationSec }), durationSec)
         }
       } catch (err) {
         if (!cancelled) capture.setError(err.message)

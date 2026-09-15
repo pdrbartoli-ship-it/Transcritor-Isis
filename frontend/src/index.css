@@ -1002,6 +1002,14 @@ input::placeholder { color: var(--text-muted); }
   border-radius: 999px; padding: 2px 7px;
 }
 .split-menu-hint { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+/* A completa no menu de quem está no Grátis: continua visível e clicável (abre
+   os planos), mas não se confunde com uma opção que já está disponível. */
+.split-menu button.travada .split-menu-label { color: var(--text-muted); }
+.split-badge.pago {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--text-muted); background: var(--surface-2);
+}
+.empty-insights .nota-plano { margin: 10px 0 0; font-size: 12px; }
 
 /* ── Arquivo escolhido, esperando a escolha do modo ─────── */
 .file-review {

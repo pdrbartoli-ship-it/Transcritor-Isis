@@ -54,6 +54,16 @@ async def _insights_falsos(*args, **kwargs):
 main.process_audio_bytes = _transcricao_falsa
 main.extract_insights = _insights_falsos
 
+
+# O plano mora no Supabase. Sem este dublê, todo usuário falso dos testes seria
+# lido como Grátis — e o /insights, que é da transcrição completa, passaria a
+# barrar com 402 antes de chegar ao porteiro que queremos testar.
+async def _plano_pago(user_id):
+    return "avancado"
+
+
+main.ler_plano = _plano_pago
+
 client = TestClient(main.app, raise_server_exceptions=False)
 TOKEN_BOM = "token-valido-de-teste"
 UID = "11111111-2222-3333-4444-555555555555"

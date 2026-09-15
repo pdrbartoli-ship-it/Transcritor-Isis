@@ -4,36 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { criarCheckout, lerSaldo } from '../lib/api'
 
-// A mesma tabela da landing, dentro do app. Ela existe em dois lugares porque
-// as duas decisões de compra acontecem em momentos diferentes: quem nunca usou
-// escolhe na landing, quem já usa escolhe aqui, quando bate o limite. Mudou um
-// preço ou um limite? Trocar nos dois — Landing.jsx tem a lista gêmea.
-const PLANOS = [
-  {
-    id: 'gratuito',
-    nome: 'Gratuito',
-    precoMensal: 'R$ 0',
-    minutos: 120,
-    itens: ['2 horas por mês', 'Resumo automático', 'Cifrado no seu aparelho'],
-  },
-  {
-    id: 'iniciante',
-    nome: 'Iniciante',
-    precoMensal: 'R$ 14,99',
-    precoAnual: 'R$ 135',
-    minutos: 600,
-    destaque: true,
-    itens: ['10 horas por mês', 'Documento pronto para baixar', 'App de Windows'],
-  },
-  {
-    id: 'avancado',
-    nome: 'Avançado',
-    precoMensal: 'R$ 19,99',
-    precoAnual: 'R$ 180',
-    minutos: 2000,
-    itens: ['33 horas por mês', 'Resumos mais profundos', 'Prioridade na fila'],
-  },
-]
+import { PLANOS } from '../lib/planos'
 
 export default function PlanModal({ onClose }) {
   const { user } = useAuth()

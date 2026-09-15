@@ -8,53 +8,7 @@ import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 
-// A mesma tabela aparece dentro do app, no PlanModal — mudou um preço ou um
-// limite? Trocar nos dois.
-const PLANOS = [
-  {
-    id: 'gratuito',
-    nome: 'Gratuito',
-    preco: 'R$ 0',
-    periodo: 'para sempre',
-    resumo: 'Para experimentar sem compromisso.',
-    itens: [
-      '2 horas de transcrição por mês',
-      'Resumo automático de tudo que você grava',
-      'Perguntas sobre a própria conversa',
-      'Cifrado no seu aparelho',
-    ],
-    cta: 'Começar grátis',
-  },
-  {
-    id: 'iniciante',
-    nome: 'Iniciante',
-    preco: 'R$ 14,99',
-    periodo: 'por mês',
-    destaque: true,
-    resumo: 'Para quem grava toda semana.',
-    itens: [
-      '10 horas de transcrição por mês',
-      'Documento final pronto para baixar',
-      'App de Windows: grava as duas vozes',
-      'Ou R$ 135 por ano (2 meses de graça)',
-    ],
-    cta: 'Assinar Iniciante',
-  },
-  {
-    id: 'avancado',
-    nome: 'Avançado',
-    preco: 'R$ 19,99',
-    periodo: 'por mês',
-    resumo: 'Para quem vive dentro de conversas.',
-    itens: [
-      '33 horas de transcrição por mês',
-      'Resumos mais profundos, com mais contexto',
-      'Prioridade no processamento',
-      'Ou R$ 180 por ano (2 meses de graça)',
-    ],
-    cta: 'Assinar Avançado',
-  },
-]
+import { PLANOS } from '../lib/planos'
 
 // A demonstração roda sozinha em cinco tempos, na ordem em que a pessoa vive o
 // produto: já está gravando, finaliza, sobe, vira texto, vira resumo. O último
@@ -363,9 +317,10 @@ export default function Landing() {
                 {p.destaque && <span className="lp-plano-selo">Mais escolhido</span>}
                 <h3>{p.nome}</h3>
                 <div className="lp-plano-preco">
-                  <strong>{p.preco}</strong>
-                  <span>{p.periodo}</span>
+                  <strong>{p.precoMensal}</strong>
+                  <span>{p.precoAnual ? 'por mês' : 'para sempre'}</span>
                 </div>
+                {p.precoAnual && <p className="text-muted text-sm">ou {p.precoAnual} por ano</p>}
                 <p className="lp-plano-resumo">{p.resumo}</p>
                 <ul>
                   {p.itens.map(i => (

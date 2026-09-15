@@ -46,7 +46,10 @@ export default function Home({ mode = 'record' }) {
     setError(null)
     try {
       const conversation = await createConversation(user.id, result, sourceType, sourceName)
-      const simples = mode === MODO_SIMPLES
+      // Vale o modo que o backend RODOU, não o pedido: no plano Grátis um
+      // pedido de completa (de uma versão antiga do app, que não conhece o
+      // cadeado) é atendido como simples, e cairia numa tela sem tópicos.
+      const simples = (result.mode || mode) === MODO_SIMPLES
       if (simples) await seedChatWithSummary(user.id, conversation.id, result.summary)
       await refreshConversations()
       navigate(`/conversa/${conversation.id}${simples ? '/chat' : ''}`)
