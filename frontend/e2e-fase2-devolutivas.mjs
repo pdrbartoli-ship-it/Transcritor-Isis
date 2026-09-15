@@ -47,7 +47,10 @@ async function simularGratis(ctx) {
   })
 }
 
-const botaoPrincipal = page => page.locator('.url-form .split-main')
+// O modo escrito no botão, sem o " · N min" que a Fase 3 acrescenta quando a
+// duração do link chega — o que se testa aqui é qual modo está selecionado.
+const modoNoBotao = async page =>
+  (await page.locator('.url-form .split-main').textContent()).replace(/·\s*\d+\s*min/, '').trim()
 
 const navegador = await chromium.launch()
 
@@ -80,10 +83,10 @@ const navegador = await chromium.launch()
   // O plano chega depois do primeiro desenho; é quando ele chega que o botão
   // troca de completa (a recomendação para link) para simples.
   await page.waitForFunction(
-    () => document.querySelector('.url-form .split-main')?.textContent.trim() === 'Transcrição simples',
+    () => document.querySelector('.url-form .split-main')?.textContent.trim().startsWith('Transcrição simples'),
     null, { timeout: 15000 },
   ).catch(() => {})
-  checar('Grátis · link do YouTube já vem em "Transcrição simples"', (await botaoPrincipal(page).textContent()).trim() === 'Transcrição simples')
+  checar('Grátis · link do YouTube já vem em "Transcrição simples"', (await modoNoBotao(page)) === 'Transcrição simples')
 
   await page.click('.url-form .split-toggle')
   const completa = page.locator('.split-menu li button', { hasText: 'Transcrição completa' })
@@ -94,7 +97,7 @@ const navegador = await chromium.launch()
   await completa.click()
   const abriuPlanos = await page.waitForSelector('.modal-wide', { timeout: 5000 }).then(() => true).catch(() => false)
   checar('Grátis · clicar na completa abre os planos', abriuPlanos)
-  checar('Grátis · e o botão continua em simples', (await botaoPrincipal(page).textContent()).trim() === 'Transcrição simples')
+  checar('Grátis · e o botão continua em simples', (await modoNoBotao(page)) === 'Transcrição simples')
 
   if (abriuPlanos) {
     await page.waitForSelector('.plano.on', { timeout: 10000 }).catch(() => {})
@@ -121,7 +124,7 @@ const navegador = await chromium.launch()
   await page.goto(`${RAIZ}/#/video`, { waitUntil: 'networkidle' })
   await page.fill('.url-form input[type="url"]', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
   await page.waitForTimeout(3000)
-  checar('Iniciante · link do YouTube continua em "Transcrição completa"', (await botaoPrincipal(page).textContent()).trim() === 'Transcrição completa')
+  checar('Iniciante · link do YouTube continua em "Transcrição completa"', (await modoNoBotao(page)) === 'Transcrição completa', await modoNoBotao(page))
   await page.click('.url-form .split-toggle')
   const completa = page.locator('.split-menu li button', { hasText: 'Transcrição completa' })
   checar('Iniciante · completa sem cadeado', !(await completa.getAttribute('class'))?.includes('travada'))

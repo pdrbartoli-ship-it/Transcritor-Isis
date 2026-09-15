@@ -131,7 +131,9 @@ export default function Layout() {
     let escolhido = null
     try { escolhido = localStorage.getItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
     if (escolhido === 'iniciante' || escolhido === 'avancado') {
-      setShowPlan(true)
+      // O id do plano no lugar do `true`: o modal abre direto nas opções de
+      // faturamento dele, sem fazer escolher de novo na tabela.
+      setShowPlan(escolhido)
       try { localStorage.removeItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
     }
   }, [user?.id])
@@ -366,7 +368,12 @@ export default function Layout() {
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
-      {showPlan && <PlanModal onClose={() => setShowPlan(false)} />}
+      {showPlan && (
+        <PlanModal
+          inicial={typeof showPlan === 'string' ? showPlan : null}
+          onClose={() => setShowPlan(false)}
+        />
+      )}
       <Toast />
     </div>
   )

@@ -8,7 +8,7 @@ import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 
-import { PLANOS } from '../lib/planos'
+import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
 
 // A demonstração roda sozinha em cinco tempos, na ordem em que a pessoa vive o
 // produto: já está gravando, finaliza, sobe, vira texto, vira resumo. O último
@@ -316,11 +316,18 @@ export default function Landing() {
               <article key={p.id} className={`lp-plano${p.destaque ? ' destaque' : ''}`}>
                 {p.destaque && <span className="lp-plano-selo">Mais escolhido</span>}
                 <h3>{p.nome}</h3>
+                {/* Mesma manchete do "Meu plano": o anual por mês na frente, o
+                    mensal logo abaixo. A escolha entre os dois é feita só na hora
+                    de pagar. */}
                 <div className="lp-plano-preco">
-                  <strong>{p.precoMensal}</strong>
-                  <span>{p.precoAnual ? 'por mês' : 'para sempre'}</span>
+                  <strong>{formatarPreco(p.anual ? precoMensalNoAnual(p) : 0)}</strong>
+                  <span>{p.anual ? 'por mês' : 'para sempre'}</span>
                 </div>
-                {p.precoAnual && <p className="text-muted text-sm">ou {p.precoAnual} por ano</p>}
+                {p.anual && (
+                  <p className="text-muted text-sm">
+                    com cobrança anual · {formatarPreco(p.mensal)} cobrado mensalmente
+                  </p>
+                )}
                 <p className="lp-plano-resumo">{p.resumo}</p>
                 <ul>
                   {p.itens.map(i => (

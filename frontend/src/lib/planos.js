@@ -4,7 +4,8 @@
 //
 // Quem BARRA de verdade é o backend (main.py: LIMITES_PLANO,
 // PERGUNTAS_POR_TRANSCRICAO, PLANOS_COM_COMPLETA). Aqui os números só desenham
-// a tela: mudou um lá, muda aqui.
+// a tela: mudou um lá, muda aqui. Os preços cobrados de fato são os price IDs
+// do Stripe; `mensal` e `anual` precisam bater com eles.
 export const PLANOS = [
   {
     id: 'gratuito',
@@ -12,7 +13,8 @@ export const PLANOS = [
     minutos: 100,
     perguntas: 2,
     completa: false,
-    precoMensal: 'R$ 0',
+    mensal: 0,
+    anual: null,
     resumo: 'Para experimentar sem compromisso.',
     cta: 'Começar grátis',
     itens: [
@@ -28,8 +30,8 @@ export const PLANOS = [
     minutos: 1000,
     perguntas: 10,
     completa: true,
-    precoMensal: 'R$ 14,99',
-    precoAnual: 'R$ 135',
+    mensal: 14.99,
+    anual: 135,
     destaque: true,
     resumo: 'Para quem grava toda semana.',
     cta: 'Assinar Iniciante',
@@ -46,8 +48,8 @@ export const PLANOS = [
     minutos: 2000,
     perguntas: null,
     completa: true,
-    precoMensal: 'R$ 19,99',
-    precoAnual: 'R$ 180',
+    mensal: 19.99,
+    anual: 180,
     resumo: 'Para quem vive dentro de conversas.',
     cta: 'Assinar Avançado',
     itens: [
@@ -61,3 +63,13 @@ export const PLANOS = [
 // Plano desconhecido (sem assinatura, id antigo) vale como o grátis — é o que o
 // backend também faz.
 export const planoPorId = id => PLANOS.find(p => p.id === id) || PLANOS[0]
+
+export const formatarPreco = valor =>
+  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// O preço que a vitrine mostra primeiro: o anual dividido pelo mês. Derivado do
+// anual, e não escrito à mão, para a manchete nunca divergir do que é cobrado.
+export const precoMensalNoAnual = plano => plano.anual / 12
+
+export const economiaAnual = plano =>
+  Math.round((1 - precoMensalNoAnual(plano) / plano.mensal) * 100)
