@@ -91,9 +91,11 @@ jobs:
             throw 'app.exe não encontrado em target/release'
           }
 
-          # A Store exige versão maior a cada envio e o último campo zerado; o
-          # número da execução do workflow cresce sozinho.
-          $versao = "0.1.${{ github.run_number }}.0"
+          # Regras da Store para a versão: o último campo zerado (é dela) e o
+          # primeiro diferente de zero — "0.1.x.0" instala num PC mas é recusado
+          # no envio. O número da execução do workflow cresce sozinho, e é o que
+          # garante versão maior a cada build.
+          $versao = "1.0.${{ github.run_number }}.0"
 
           $layout = 'msix-layout'
           New-Item -ItemType Directory -Force "$layout/Assets" | Out-Null
