@@ -496,6 +496,17 @@ def js_runtime_args() -> list[str]:
     return []
 
 
+def erro_do_ytdlp(stderr: str | None) -> str:
+    """O motivo real da falha do yt-dlp, para a mensagem de erro.
+
+    O stderr costuma abrir com WARNINGs que não impedem nada; cortar o começo
+    dele mostrava só o aviso e escondia a linha ERROR que diz o que quebrou."""
+    stderr = stderr or ""
+    logger.warning("yt-dlp falhou: %s", stderr[-2000:])
+    erros = [l for l in stderr.splitlines() if l.startswith("ERROR")]
+    return (" ".join(erros) or stderr.strip())[-300:]
+
+
 def is_safe_public_url(url: str) -> bool:
     """Recusa qualquer link que não seja http/https, ou cujo endereço resolva
     para dentro da rede do servidor. Sem isto, `/process-url` vira um jeito de
@@ -1892,7 +1903,7 @@ async def build_url_result(
                             capture_output=True, text=True, timeout=300,
                         )
                         if result.returncode != 0:
-                            raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+                            raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {erro_do_ytdlp(result.stderr)}")
                     except subprocess.TimeoutExpired:
                         raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
                     audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
@@ -1926,7 +1937,7 @@ async def build_url_result(
                         capture_output=True, text=True, timeout=300
                     )
                     if result.returncode != 0:
-                        raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+                        raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {erro_do_ytdlp(result.stderr)}")
                 except subprocess.TimeoutExpired:
                     raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
 
