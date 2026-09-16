@@ -478,11 +478,21 @@ VIDEO_HOSTS = [
 ]
 
 
-# O deno é instalado pelo buildCommand do render.yaml fora do PATH do processo,
-# então o yt-dlp precisa ser apontado para ele. Sem runtime JS o YouTube falha
-# com "Signature solving failed".
+# O deno é o runtime JS que resolve os desafios do YouTube; sem ele o yt-dlp
+# avisa "n challenge solving failed" e fica sem formato para baixar. O pacote
+# `deno` do requirements.txt garante o binário mesmo que o build do Render não
+# rode o instalador do render.yaml.
+def _deno_do_pip() -> str:
+    try:
+        import deno
+        return deno.find_deno_bin()
+    except Exception:
+        return ""
+
+
 DENO_PATHS = [
     os.environ.get("DENO_BIN", ""),
+    _deno_do_pip(),
     "/opt/render/project/.deno/bin/deno",
     shutil.which("deno") or "",
 ]
@@ -504,7 +514,14 @@ def erro_do_ytdlp(stderr: str | None) -> str:
     stderr = stderr or ""
     logger.warning("yt-dlp falhou: %s", stderr[-2000:])
     erros = [l for l in stderr.splitlines() if l.startswith("ERROR")]
-    return (" ".join(erros) or stderr.strip())[-300:]
+    # TEMPORÁRIO (diagnóstico do YouTube, 2026-09-16): com -v, mostra versões e
+    # runtime JS que o yt-dlp achou no Render. Remover quando o download voltar.
+    debug = [
+        l for l in stderr.splitlines()
+        if l.startswith(("[debug] yt-dlp version", "[debug] JS runtimes", "[debug] Optional libraries"))
+        or "[jsc" in l
+    ]
+    return ((" ".join(erros) or stderr.strip())[-300:] + (" || " + " | ".join(debug) if debug else ""))[:900]
 
 
 def is_safe_public_url(url: str) -> bool:
@@ -1895,6 +1912,7 @@ async def build_url_result(
                                 "--extract-audio", "--audio-format", "m4a",
                                 "--audio-quality", "64K",
                                 "--no-playlist",
+                                "-v",  # TEMPORÁRIO: ver erro_do_ytdlp
                                 "--cookies", cookies_path,
                                 # Logado, o yt-dlp usa o cliente tv_downgraded,
                                 # que o YouTube passou a recusar com "The page

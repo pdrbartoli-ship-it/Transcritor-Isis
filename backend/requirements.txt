@@ -10,5 +10,7 @@ imageio[ffmpeg]
 # O extra [default] traz o yt-dlp-ejs, os scripts que resolvem os desafios
 # de assinatura do YouTube. Sem ele o download falha com "Signature solving failed".
 yt-dlp[default]>=2024.12.13
+# Runtime JS que roda aqueles scripts (redistribuição oficial do Deno).
+deno
 trafilatura
 stripe>=11.1.0
