@@ -514,14 +514,7 @@ def erro_do_ytdlp(stderr: str | None) -> str:
     stderr = stderr or ""
     logger.warning("yt-dlp falhou: %s", stderr[-2000:])
     erros = [l for l in stderr.splitlines() if l.startswith("ERROR")]
-    # TEMPORÁRIO (diagnóstico do YouTube, 2026-09-16): com -v, mostra versões e
-    # runtime JS que o yt-dlp achou no Render. Remover quando o download voltar.
-    debug = [
-        l for l in stderr.splitlines()
-        if l.startswith(("[debug] yt-dlp version", "[debug] JS runtimes", "[debug] Optional libraries"))
-        or "[jsc" in l
-    ]
-    return ((" ".join(erros) or stderr.strip())[-300:] + (" || " + " | ".join(debug) if debug else ""))[:900]
+    return (" ".join(erros) or stderr.strip())[-300:]
 
 
 def is_safe_public_url(url: str) -> bool:
@@ -1912,7 +1905,6 @@ async def build_url_result(
                                 "--extract-audio", "--audio-format", "m4a",
                                 "--audio-quality", "64K",
                                 "--no-playlist",
-                                "-v",  # TEMPORÁRIO: ver erro_do_ytdlp
                                 "--cookies", cookies_path,
                                 # Logado, o yt-dlp usa o cliente tv_downgraded,
                                 # que o YouTube passou a recusar com "The page
