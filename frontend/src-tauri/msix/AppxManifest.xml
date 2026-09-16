@@ -25,7 +25,11 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Dito</DisplayName>
+    <!-- O ponto faz parte do nome reservado no Partner Center
+         (Manage app names: "Dito."), a marca da própria landing — sem ele a
+         Store recusa o pacote: "usa um nome de exibição que você não
+         reservou". -->
+    <DisplayName>Dito.</DisplayName>
     <PublisherDisplayName>Albie Cloud</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -41,7 +45,7 @@
   <Applications>
     <Application Id="Dito" Executable="Dito.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Dito"
+        DisplayName="Dito."
         Description="Transcreve e resume reuniões, aulas e áudios — e grava as duas vozes da chamada."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
