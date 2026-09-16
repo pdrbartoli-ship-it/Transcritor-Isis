@@ -1896,6 +1896,11 @@ async def build_url_result(
                                 "--audio-quality", "64K",
                                 "--no-playlist",
                                 "--cookies", cookies_path,
+                                # Logado, o yt-dlp usa o cliente tv_downgraded,
+                                # que o YouTube passou a recusar com "The page
+                                # needs to be reloaded" (yt-dlp#17389). Contorno
+                                # indicado pelos mantenedores até a correção.
+                                "--extractor-args", "youtube:player_client=default,web_embedded",
                                 *js_runtime_args(),
                                 "-o", output_template,
                                 url,
