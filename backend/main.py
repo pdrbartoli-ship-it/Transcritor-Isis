@@ -241,7 +241,7 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
 
 
 # ── Saldo de minutos ──────────────────────────────────────────────────────
-LIMITES_PLANO = {"gratuito": 120, "iniciante": 600, "avancado": 2000}
+LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
 
 
 async def supabase_service_get(table: str, params: dict) -> list[dict]:
