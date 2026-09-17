@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
+import { planoPorId } from '../../lib/planos'
 import { IconChevron, IconDownload } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import MarkdownText from '../../components/chat/MarkdownText'
@@ -18,7 +19,10 @@ import {
 // invisível para quem não sabe.
 export default function Conversa() {
   const navigate = useNavigate()
-  const { conversation, setConversation, refreshConversations } = useOutletContext()
+  const { conversation, setConversation, refreshConversations, plano, abrirPlano } = useOutletContext()
+  // Sem plano lido ainda, nada fica trancado: quem paga não pode ver cadeado
+  // piscando, e o backend recusa de qualquer forma quem não tem direito.
+  const completaLiberada = !plano || planoPorId(plano).completa
 
   const [error, setError] = useState(null)
   const [regenerating, setRegenerating] = useState(false)
@@ -47,7 +51,10 @@ export default function Conversa() {
       setConversation(c => ({ ...c, insights: fresh, summary }))
       await refreshConversations()
     } catch (err) {
-      setError(`Não foi possível analisar esta conversa: ${err.message}`)
+      // 402 é o plano que mudou desde que a tela abriu (assinatura cancelada):
+      // o texto do backend já é o convite, e prefixá-lo com "não foi possível"
+      // o transformaria em cara de defeito.
+      setError(err.status === 402 ? err.message : `Não foi possível analisar esta conversa: ${err.message}`)
     } finally {
       setRegenerating(false)
     }
@@ -92,9 +99,18 @@ export default function Conversa() {
         )}
         <div className="empty-insights">
           <p>Esta conversa ainda não tem os 4 tópicos, a lista de próximos passos nem o resumo minuto a minuto.</p>
-          <button className="btn-primary" onClick={regenerate} disabled={regenerating}>
-            {regenerating ? <><span className="spinner spinner-sm" /> Analisando…</> : 'Fazer a transcrição completa'}
-          </button>
+          {/* No Grátis o botão continua aqui, e é o mesmo convite: mostrar o que
+              falta e levar aos planos, em vez de esconder que a completa existe. */}
+          {completaLiberada ? (
+            <button className="btn-primary" onClick={regenerate} disabled={regenerating}>
+              {regenerating ? <><span className="spinner spinner-sm" /> Analisando…</> : 'Fazer a transcrição completa'}
+            </button>
+          ) : (
+            <>
+              <button className="btn-primary" onClick={abrirPlano}>Ver planos</button>
+              <p className="nota-plano">A transcrição completa faz parte dos planos Iniciante e Avançado.</p>
+            </>
+          )}
         </div>
       </div>
     )

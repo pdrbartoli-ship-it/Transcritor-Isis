@@ -13,6 +13,7 @@ import { listConversations, searchConversations, formatCapturedAt, groupConversa
 import { lerSaldo } from '../lib/api'
 import { trackAppOpen } from '../lib/analytics'
 import { aplicarTemaDoUsuario } from '../lib/prefs'
+import { planoPorId } from '../lib/planos'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin,
@@ -32,10 +33,6 @@ function KindIcon({ sourceType }) {
 // caractere dispara uma consulta por letra e faz respostas antigas chegarem
 // depois das novas.
 const SEARCH_DEBOUNCE_MS = 250
-
-// Os mesmos tetos do backend (main.py: LIMITES_PLANO). Aqui eles só desenham o
-// aviso; quem barra de verdade é o servidor.
-const MINUTOS_DO_PLANO = { gratuito: 120, iniciante: 600, avancado: 2000 }
 
 // Abaixo disto não vale interromper ninguém; acima, quem avisa é o próprio
 // erro da captura.
@@ -117,8 +114,10 @@ export default function Layout() {
     ])
       .then(([uso, { data }]) => {
         if (!ativo) return
-        const limite = MINUTOS_DO_PLANO[data?.plano] || MINUTOS_DO_PLANO.gratuito
-        setSaldo({ usados: uso.minutosUsados, limite })
+        // O plano vai junto do saldo porque as telas de dentro precisam dele
+        // para desenhar o que está liberado — o cadeado da transcrição completa.
+        const plano = data?.plano || 'gratuito'
+        setSaldo({ usados: uso.minutosUsados, limite: planoPorId(plano).minutos, plano })
       })
       .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
     return () => { ativo = false }
@@ -130,11 +129,16 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id) return
     let escolhido = null
-    try { escolhido = localStorage.getItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
-    if (escolhido === 'iniciante' || escolhido === 'avancado') {
-      setShowPlan(true)
-      try { localStorage.removeItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
-    }
+    // A leitura e a limpeza andam juntas: o "Começar grátis" da landing também
+    // grava aqui, e limpar só no ramo dos planos pagos deixava esse valor no
+    // navegador para sempre.
+    try {
+      escolhido = localStorage.getItem('dito-plano-escolhido')
+      localStorage.removeItem('dito-plano-escolhido')
+    } catch { /* modo anônimo */ }
+    // O id do plano no lugar do `true`: o modal abre direto nas opções de
+    // faturamento dele, sem fazer escolher de novo na tabela.
+    if (escolhido === 'iniciante' || escolhido === 'avancado') setShowPlan(escolhido)
   }, [user?.id])
 
   // Busca com atraso. O contador de execução descarta a resposta de uma busca
@@ -349,7 +353,7 @@ export default function Layout() {
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, abrirPlano: () => setShowPlan(true) }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, abrirPlano: () => setShowPlan(true) }} />
         </div>
       </div>
 
@@ -367,7 +371,12 @@ export default function Layout() {
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
-      {showPlan && <PlanModal onClose={() => setShowPlan(false)} />}
+      {showPlan && (
+        <PlanModal
+          inicial={typeof showPlan === 'string' ? showPlan : null}
+          onClose={() => setShowPlan(false)}
+        />
+      )}
       <Toast />
     </div>
   )

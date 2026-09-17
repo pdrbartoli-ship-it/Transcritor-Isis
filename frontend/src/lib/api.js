@@ -42,10 +42,10 @@ async function authHeaders({ forcar = false } = {}) {
 // Uma volta de envio, com as retentativas de rede. Fica separada do cuidado com
 // o token para que repetir por 401 não consuma o orçamento de retentativas de
 // conexão — são dois problemas diferentes.
-async function enviar(path, { body, headers }, retries) {
+async function enviar(path, { body, headers, signal }, retries) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fetch(`${API_URL}${path}`, { method: 'POST', body, headers })
+      return await fetch(`${API_URL}${path}`, { method: 'POST', body, headers, signal })
     } catch (err) {
       if (!isNetworkError(err) || attempt >= retries) {
         throw isNetworkError(err) ? new Error(NETWORK_ERROR) : err
@@ -58,12 +58,12 @@ async function enviar(path, { body, headers }, retries) {
 // Um 401 em quem mandou token quase nunca é falta de login: é o token que
 // venceu no caminho. Renovar e repetir uma vez antes de acusar o usuário de
 // estar deslogado.
-async function comRenovacao(path, montarHeaders, body, retries) {
+async function comRenovacao(path, montarHeaders, body, retries, signal) {
   let headers = await montarHeaders()
-  let res = await enviar(path, { body, headers }, retries)
+  let res = await enviar(path, { body, headers, signal }, retries)
   if (res.status === 401 && headers.Authorization) {
     headers = await montarHeaders({ forcar: true })
-    if (headers.Authorization) res = await enviar(path, { body, headers }, retries)
+    if (headers.Authorization) res = await enviar(path, { body, headers, signal }, retries)
   }
   return res
 }
@@ -76,10 +76,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 const isNetworkError = err => err instanceof TypeError
 
+// Um 5xx quase nunca é o nosso código falando: é o proxy do Render enquanto a
+// instância acorda, e o corpo vem em HTML, não em JSON. Sem esta distinção o
+// fallback mostrava o `statusText` cru — "Bad Gateway" aparecendo no meio do
+// pagamento. As mensagens que o backend escreve (`detail`) continuam passando.
+const SERVER_ERROR = 'O servidor não respondeu como esperado. Tente de novo em instantes.'
+
 async function handleResponse(res) {
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    const erro = new Error(err.detail || 'Erro desconhecido')
+    const err = await res.json().catch(() => ({}))
+    const erro = new Error(err.detail || (res.status >= 500 ? SERVER_ERROR : 'Erro desconhecido'))
     // O 402 (saldo do mês esgotado) merece um convite para assinar, e não a
     // mesma cara de "deu erro" de uma queda de rede — quem mostra precisa
     // conseguir distinguir os dois.
@@ -131,12 +137,12 @@ async function postWithRetry(path, body, { retries = 1 } = {}) {
 }
 
 // Mesma proteção de rede das capturas, para as rotas que mandam JSON.
-async function postJson(path, payload, { retries = 1 } = {}) {
+async function postJson(path, payload, { retries = 1, signal } = {}) {
   const montarHeaders = async opts => ({
     'Content-Type': 'application/json',
     ...(await authHeaders(opts)),
   })
-  const res = await comRenovacao(path, montarHeaders, JSON.stringify(payload), retries)
+  const res = await comRenovacao(path, montarHeaders, JSON.stringify(payload), retries, signal)
   return handleResponse(res)
 }
 
@@ -177,6 +183,18 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   return handleResponse(await postWithRetry('/process-url', formData))
 }
 
+// Duração do vídeo de um link, sem baixá-lo — para o botão dizer quantos
+// minutos a captura vai consumir. Null quando não dá para saber; nunca lança,
+// porque a estimativa é informação e não pode travar o envio.
+export async function duracaoDoLink(url) {
+  try {
+    const { duracao_s } = await postJson('/duracao-link', { url })
+    return duracao_s || null
+  } catch {
+    return null
+  }
+}
+
 // Reanálise de uma conversa que já tem transcrição. É o caminho das conversas
 // capturadas antes desta versão, que não têm `insights` nem `segments`: custa
 // uma chamada de texto e não depende da mídia original, que nunca guardamos.
@@ -202,12 +220,51 @@ export async function lerSaldo(userId) {
   }
 }
 
+// O `fetch` não desiste sozinho: uma instância do Render subindo devagar podia
+// deixar um botão de cobrança preso em "Abrindo…" por minutos, sem erro e sem
+// saída — e era isso que levava a pessoa a recarregar a página e tentar de
+// novo, que é como nascia a cobrança dupla. Com o teto, a espera vira uma
+// mensagem com saída. Vale tanto para abrir o checkout quanto o portal: os
+// dois são a mesma instância do Render acordando.
+const BILLING_TIMEOUT_MS = 45000
+
+async function postJsonComTeto(path, payload, mensagemTeto) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), BILLING_TIMEOUT_MS)
+  try {
+    return await postJson(path, payload, { signal: controller.signal })
+  } catch (err) {
+    // `abort` rejeita com AbortError, que não é erro de rede nem resposta do
+    // servidor: sem este caso a tela mostraria o texto cru do DOMException.
+    if (err?.name === 'AbortError') throw new Error(mensagemTeto)
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Só a versão web assina por aqui — o app Android é distribuído pela Play
 // Store, que exige Google Play Billing para assinatura consumida dentro do
 // app. Devolve a URL do Checkout hospedado do Stripe; quem chama só precisa
 // redirecionar (window.location.href = url).
 export async function criarCheckout(plano, ciclo) {
-  return postJson('/billing/create-checkout-session', { plano, ciclo })
+  return postJsonComTeto(
+    '/billing/create-checkout-session',
+    { plano, ciclo },
+    'O servidor demorou demais para responder. Nada foi cobrado — tente de novo.',
+  )
+}
+
+// Troca de plano, mudança de forma de pagamento e cancelamento não são
+// telas nossas: é o Portal do Stripe, aberto para a assinatura já existente.
+// Ele modifica a MESMA assinatura em vez de criar outra — é o que faz a troca
+// de plano não virar uma segunda cobrança do lado da primeira.
+export async function abrirPortalAssinatura() {
+  return postJsonComTeto(
+    '/billing/portal-session',
+    {},
+    'O servidor demorou demais para responder. Tente de novo.',
+  )
 }
 
 // O chat fala sobre UMA conversa. O backend marca a transcrição com
@@ -215,6 +272,8 @@ export async function criarCheckout(plano, ciclo) {
 export async function askConversation(question, conversation, { history = [], makeTitle = false } = {}) {
   return postJson('/chat', {
     question,
+    // Qual transcrição: o limite de perguntas do plano é contado por ela.
+    session_id: conversation.id,
     title: conversation.title,
     date: new Date(conversation.created_at).toLocaleDateString('pt-BR'),
     transcript: conversation.transcript,

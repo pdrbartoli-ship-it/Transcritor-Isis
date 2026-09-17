@@ -71,3 +71,108 @@ jobs:
             "Mais informações" e depois em "Executar assim mesmo".
           prerelease: true
           files: frontend/src-tauri/target/release/bundle/nsis/*.exe
+
+      # ── Pacote MSIX para a Microsoft Store ──────────────────────────────
+      # O mesmo Dito compilado acima, empacotado como MSIX. Enviado à Store
+      # nesse formato (e não como o instalador .exe), o pacote é assinado pela
+      # própria Microsoft: sem pagar certificado e sem o aviso "O Windows
+      # protegeu seu PC". Manifesto e ícones moram em frontend/src-tauri/msix.
+      #
+      # makeappx e signtool já vêm no Windows SDK do runner — é o que o winapp
+      # CLI da Microsoft usa por baixo, sem precisar instalar nada.
+      - name: Montar o pacote MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raiz = 'frontend/src-tauri'
+          $exe = "$raiz/target/release/app.exe"
+          if (-not (Test-Path $exe)) {
+            Get-ChildItem "$raiz/target/release" -Filter *.exe | Format-Table Name
+            throw 'app.exe não encontrado em target/release'
+          }
+
+          # Regras da Store para a versão: o último campo zerado (é dela) e o
+          # primeiro diferente de zero — "0.1.x.0" instala num PC mas é recusado
+          # no envio. O número da execução do workflow cresce sozinho, e é o que
+          # garante versão maior a cada build.
+          $versao = "1.0.${{ github.run_number }}.0"
+
+          $layout = 'msix-layout'
+          New-Item -ItemType Directory -Force "$layout/Assets" | Out-Null
+          Copy-Item $exe "$layout/Dito.exe"
+          Copy-Item "$raiz/msix/Assets/*" "$layout/Assets/"
+          (Get-Content "$raiz/msix/AppxManifest.xml" -Raw).Replace('__VERSION__', $versao) |
+            Set-Content "$layout/AppxManifest.xml" -Encoding utf8
+
+          $makeappx = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\10.*\x64\makeappx.exe' |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $makeappx) { throw 'makeappx.exe não encontrado no Windows SDK do runner' }
+          "SDK_BIN=$($makeappx.DirectoryName)" | Out-File -Append $env:GITHUB_ENV
+          "MSIX_VERSAO=$versao" | Out-File -Append $env:GITHUB_ENV
+
+          New-Item -ItemType Directory -Force msix-saida | Out-Null
+          & $makeappx.FullName pack /d $layout /p msix-saida/Dito-store.msix /o
+          if ($LASTEXITCODE -ne 0) { throw 'makeappx falhou' }
+
+      # Cópia assinada com um certificado de teste, só para instalar num PC fora
+      # da Store: a gravação das duas vozes precisa ser provada numa máquina de
+      # verdade antes do envio. O certificado nasce a cada build (a senha não é
+      # segredo, ele não vale para nada além disso) e o assunto dele tem de ser
+      # igual ao Publisher do manifesto. Esta cópia NÃO vai para a Store.
+      - name: Assinar cópia de teste
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cert = New-SelfSignedCertificate -Type Custom `
+            -Subject 'CN=83C50F24-B6E7-4443-A4B7-95AFDF314BFA' `
+            -KeyUsage DigitalSignature -FriendlyName 'Dito (teste)' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $senha = ConvertTo-SecureString -String 'dito-teste' -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath teste.pfx -Password $senha | Out-Null
+          Export-Certificate -Cert $cert -FilePath msix-saida/Dito-teste.cer | Out-Null
+          Copy-Item msix-saida/Dito-store.msix msix-saida/Dito-teste.msix
+          & "$env:SDK_BIN\signtool.exe" sign /fd SHA256 /f teste.pfx /p dito-teste msix-saida/Dito-teste.msix
+          if ($LASTEXITCODE -ne 0) { throw 'signtool falhou' }
+
+      # Release separada da "desktop-latest": o link de download da landing
+      # continua apontando para o instalador .exe até o Dito estar na Store.
+      - name: Publicar pacotes MSIX na Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-store
+          name: Dito para a Microsoft Store (pacotes)
+          body: |
+            Versão ${{ env.MSIX_VERSAO }}, a partir do commit ${{ github.sha }}.
+
+            - **Dito-store.msix** — o arquivo que se envia no Partner Center. Sem assinatura: quem assina é a Store.
+            - **Dito-teste.msix** e **Dito-teste.cer** — cópia assinada com um certificado de teste, para instalar num PC antes do envio. Primeiro instale o .cer em "Pessoas Confiáveis" do computador local; depois abra o .msix.
+          prerelease: true
+          files: |
+            msix-saida/Dito-store.msix
+            msix-saida/Dito-teste.msix
+            msix-saida/Dito-teste.cer
+
+      # Prova, no próprio runner, que o pacote instala e que o Dito abre pela
+      # identidade do pacote. Vem depois da publicação de propósito: se falhar,
+      # os arquivos já estão lá para investigar. A gravação não dá para testar
+      # aqui — a máquina do CI não tem dispositivo de áudio.
+      - name: Instalar e abrir o pacote de teste
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Certificate -FilePath msix-saida/Dito-teste.cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+          Add-AppxPackage -Path msix-saida/Dito-teste.msix
+          $pacote = Get-AppxPackage -Name 'AlbieCloud.57831C11EA014'
+          if (-not $pacote) { throw 'o pacote não aparece como instalado' }
+          "Instalado: $($pacote.PackageFullName)"
+          "Family name: $($pacote.PackageFamilyName)"
+
+          Start-Process "shell:AppsFolder\$($pacote.PackageFamilyName)!Dito"
+          Start-Sleep -Seconds 20
+          $processo = Get-Process -Name Dito -ErrorAction SilentlyContinue
+          if (-not $processo) { throw 'o Dito não estava aberto 20 s depois de iniciado pelo pacote' }
+          "Dito aberto pelo pacote (PID $($processo.Id))"
+
+          $processo | Stop-Process -Force
+          Remove-AppxPackage -Package $pacote.PackageFullName

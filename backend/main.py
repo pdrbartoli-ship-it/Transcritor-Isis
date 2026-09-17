@@ -240,8 +240,22 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
         logger.error("Falha ao gravar assinatura no Supabase: %s %s", resp.status_code, resp.text)
 
 
-# ── Saldo de minutos ──────────────────────────────────────────────────────
+# ── Régua dos planos ──────────────────────────────────────────────────────
+# A tela desenha os mesmos números a partir de frontend/src/lib/planos.js:
+# mudou um lá, muda aqui. Quem barra de verdade é este lado.
 LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
+
+# Perguntas por transcrição; None é sem limite. Não renova: cada conversa nasce
+# com o saldo dela, e é no momento de maior interesse — a pessoa querendo saber
+# mais daquela conversa — que o limite convida a assinar.
+PERGUNTAS_POR_TRANSCRICAO = {"gratuito": 2, "iniciante": 10, "avancado": None}
+
+# Quem tem a transcrição completa: 4 tópicos, próximos passos e resumo minuto a
+# minuto. O Iniciante ficou de fora de propósito — só simples, para o avançado
+# ser o único degrau que entrega o modelo maior.
+PLANOS_COM_COMPLETA = {"avancado"}
+
+NOMES_PLANO = {"gratuito": "Grátis", "iniciante": "Iniciante", "avancado": "Avançado"}
 
 
 async def supabase_service_get(table: str, params: dict) -> list[dict]:
@@ -262,12 +276,9 @@ async def supabase_service_get(table: str, params: dict) -> list[dict]:
     return resp.json() or []
 
 
-async def ler_saldo(user_id: str) -> dict:
-    """Plano do usuário e quanto ele já gastou no ciclo corrente.
-
-    Um período já vencido conta como zero: a virada de verdade acontece na
-    próxima escrita (registrar_uso), e sem esta regra o consumo do mês passado
-    apareceria no começo de cada ciclo novo."""
+async def ler_plano_e_assinatura(user_id: str) -> tuple[str, dict]:
+    """Plano vigente e a linha da assinatura. Assinatura cancelada, vencida ou
+    sem pagamento vale como o plano grátis."""
     assinaturas = await supabase_service_get(
         "subscriptions",
         {"user_id": f"eq.{user_id}", "select": "plano,status,current_period_end", "limit": 1},
@@ -276,6 +287,20 @@ async def ler_saldo(user_id: str) -> dict:
     plano = assinatura.get("plano") or "gratuito"
     if assinatura.get("status") in ("canceled", "incomplete_expired", "unpaid"):
         plano = "gratuito"
+    return plano, assinatura
+
+
+async def ler_plano(user_id: str) -> str:
+    return (await ler_plano_e_assinatura(user_id))[0]
+
+
+async def ler_saldo(user_id: str) -> dict:
+    """Plano do usuário e quanto ele já gastou no ciclo corrente.
+
+    Um período já vencido conta como zero: a virada de verdade acontece na
+    próxima escrita (registrar_uso), e sem esta regra o consumo do mês passado
+    apareceria no começo de cada ciclo novo."""
+    plano, assinatura = await ler_plano_e_assinatura(user_id)
     minutos_limite = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
 
     usos = await supabase_service_get(
@@ -324,6 +349,74 @@ async def registrar_uso(user_id: str, minutos: float, periodo_fim: str | None) -
         # Não derruba a captura: a pessoa já esperou o processamento inteiro, e
         # perder a conversa por causa do contador seria pior que perder a conta.
         logger.error("Falha ao registrar uso de %s: %s %s", user_id, resp.status_code, resp.text)
+
+
+async def _rpc_service(nome: str, args: dict) -> httpx.Response:
+    """Chama uma função do banco com a service role — as do contador de
+    perguntas não são executáveis pelo usuário comum."""
+    async with httpx.AsyncClient() as client:
+        return await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/{nome}",
+            json=args,
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=10.0,
+        )
+
+
+async def consumir_pergunta(user_id: str, session_id: str, plano: str, limite: int) -> int | None:
+    """Gasta uma pergunta desta transcrição e devolve quantas já foram usadas.
+
+    Recusa com 402 quando o limite do plano já foi atingido. Devolve None
+    quando não deu para contar (função ainda não criada no banco, Supabase fora
+    do ar): o contador é alavanca de venda, não trava de segurança, e travar o
+    chat inteiro por falha dele puniria justamente quem está usando o produto."""
+    try:
+        resp = await _rpc_service(
+            "consumir_pergunta",
+            {"p_user_id": user_id, "p_session_id": session_id, "p_limite": limite},
+        )
+    except Exception:
+        logger.warning("Supabase não respondeu ao contar a pergunta de %s", user_id)
+        return None
+
+    # 400 é o banco recusando o pedido em si: id que não é de conversa nenhuma,
+    # ou conversa de outra pessoa. Isso não é falha do contador.
+    if resp.status_code == 400:
+        raise HTTPException(status_code=403, detail="Não encontramos esta conversa na sua conta.")
+    if resp.status_code != 200:
+        logger.error("Falha ao contar pergunta de %s: %s %s", user_id, resp.status_code, resp.text)
+        return None
+
+    usadas = resp.json()
+    if usadas is None:
+        proximo = (
+            f"o Iniciante para ter {PERGUNTAS_POR_TRANSCRICAO['iniciante']} perguntas por transcrição"
+            if plano == "gratuito"
+            else "o Avançado para perguntar sem limite"
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Você já fez as {limite} perguntas desta transcrição no plano "
+                f"{NOMES_PLANO.get(plano, plano)}. Assine {proximo} — é em \"Meu plano\"."
+            ),
+        )
+    return int(usadas)
+
+
+async def devolver_pergunta(user_id: str, session_id: str) -> None:
+    """A IA falhou depois de a pergunta ser contada: quem recebeu um erro não
+    pode sair dele com uma pergunta a menos."""
+    try:
+        resp = await _rpc_service("devolver_pergunta", {"p_session_id": session_id})
+        if resp.status_code >= 300:
+            logger.error("Falha ao devolver pergunta de %s: %s %s", user_id, resp.status_code, resp.text)
+    except Exception:
+        logger.warning("Supabase não respondeu ao devolver a pergunta de %s", user_id)
 
 
 async def guarda_de_captura(request: Request) -> str | None:
@@ -386,11 +479,21 @@ VIDEO_HOSTS = [
 ]
 
 
-# O deno é instalado pelo buildCommand do render.yaml fora do PATH do processo,
-# então o yt-dlp precisa ser apontado para ele. Sem runtime JS o YouTube falha
-# com "Signature solving failed".
+# O deno é o runtime JS que resolve os desafios do YouTube; sem ele o yt-dlp
+# avisa "n challenge solving failed" e fica sem formato para baixar. O pacote
+# `deno` do requirements.txt garante o binário mesmo que o build do Render não
+# rode o instalador do render.yaml.
+def _deno_do_pip() -> str:
+    try:
+        import deno
+        return deno.find_deno_bin()
+    except Exception:
+        return ""
+
+
 DENO_PATHS = [
     os.environ.get("DENO_BIN", ""),
+    _deno_do_pip(),
     "/opt/render/project/.deno/bin/deno",
     shutil.which("deno") or "",
 ]
@@ -402,6 +505,17 @@ def js_runtime_args() -> list[str]:
         if path and os.path.exists(path):
             return ["--js-runtimes", f"deno:{path}"]
     return []
+
+
+def erro_do_ytdlp(stderr: str | None) -> str:
+    """O motivo real da falha do yt-dlp, para a mensagem de erro.
+
+    O stderr costuma abrir com WARNINGs que não impedem nada; cortar o começo
+    dele mostrava só o aviso e escondia a linha ERROR que diz o que quebrou."""
+    stderr = stderr or ""
+    logger.warning("yt-dlp falhou: %s", stderr[-2000:])
+    erros = [l for l in stderr.splitlines() if l.startswith("ERROR")]
+    return (" ".join(erros) or stderr.strip())[-300:]
 
 
 def is_safe_public_url(url: str) -> bool:
@@ -610,10 +724,17 @@ class ChatRequest(BaseModel):
     summary: str | None = None
     history: list[ChatTurn] = []
     make_title: bool = False
+    # A transcrição de que se está falando, para o limite de perguntas do plano.
+    # Opcional porque as versões antigas do app não mandam: a elas o chat
+    # continua respondendo, só sem contar.
+    session_id: str | None = Field(None, max_length=64)
 
 
 class ChatResponse(BaseModel):
     answer: str
+    # Quantas perguntas ainda cabem nesta transcrição. None quando o plano não
+    # tem limite ou quando não deu para contar.
+    perguntas_restantes: int | None = None
     title: str | None = None
     usage: Usage = Usage()
 
@@ -1460,6 +1581,20 @@ def normalizar_modo(modo: str | None) -> str:
     return MODO_SIMPLES if (modo or "").strip().lower() == MODO_SIMPLES else MODO_COMPLETA
 
 
+async def modo_do_plano(modo: str, user_id: str | None) -> str:
+    """A completa é dos planos pagos. No Grátis o pedido é atendido como
+    simples em vez de recusado: versões antigas do app pedem a completa por
+    padrão (não conhecem o cadeado), e recusar deixaria quem ainda não
+    atualizou sem conseguir transcrever nada.
+
+    Tem de rodar ANTES de montar a chave do run_once: a chave leva o modo, e
+    com o modo pedido um Grátis podia pegar carona na captura completa de um
+    assinante que mandou o mesmo link no mesmo instante."""
+    if modo == MODO_COMPLETA and user_id and await ler_plano(user_id) not in PLANOS_COM_COMPLETA:
+        return MODO_SIMPLES
+    return modo
+
+
 async def _cobrar_do_saldo(user_id: str | None, minutos: float, saldo: dict | None) -> None:
     """Desconta depois da análise dar certo: quem esperou o processamento e
     recebeu um erro não deve pagar minutos por isso."""
@@ -1591,7 +1726,7 @@ async def transcribe(
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
-    modo = normalizar_modo(mode)
+    modo = await modo_do_plano(normalizar_modo(mode), user_id)
     idioma = normalizar_idioma(language)
     filename = file.filename or "audio.m4a"
     tmpdir = tempfile.mkdtemp()
@@ -1649,12 +1784,45 @@ async def process_url(
     if not is_safe_public_url(url):
         raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
-    modo = normalizar_modo(mode)
+    modo = await modo_do_plano(normalizar_modo(mode), user_id)
     idioma = normalizar_idioma(language)
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
     key = capture_key("url", url.strip(), modo, idioma)
     return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma))
+
+
+class DuracaoLinkRequest(BaseModel):
+    url: str = Field(..., max_length=2_000)
+
+
+@app.post("/duracao-link", dependencies=[Depends(guarda_de_uso)])
+async def duracao_link(body: DuracaoLinkRequest):
+    """Quanto dura o vídeo de um link, sem baixar nada — para a tela dizer
+    quantos minutos a captura vai consumir antes de a pessoa enviar.
+
+    Devolve {"duracao_s": null} sempre que não der para saber (artigo, rede sem
+    metadado, Supadata fora do ar): a estimativa é informação, e a falta dela
+    nunca pode impedir a transcrição. O porteiro fica porque cada consulta
+    custa um crédito do Supadata."""
+    url = body.url.strip()
+    if not SUPADATA_API_KEY or not is_video_url(url) or not is_safe_public_url(url):
+        return {"duracao_s": None}
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.supadata.ai/v1/metadata",
+                headers={"x-api-key": SUPADATA_API_KEY},
+                params={"url": url},
+                timeout=15.0,
+            )
+        if resp.status_code != 200:
+            return {"duracao_s": None}
+        duracao = (resp.json().get("media") or {}).get("duration")
+        return {"duracao_s": float(duracao) if duracao else None}
+    except Exception:
+        logger.warning("Supadata não respondeu à duração do link")
+        return {"duracao_s": None}
 
 
 def supadata_segments(content) -> list[dict]:
@@ -1739,6 +1907,11 @@ async def build_url_result(
                                 "--audio-quality", "64K",
                                 "--no-playlist",
                                 "--cookies", cookies_path,
+                                # Logado, o yt-dlp usa o cliente tv_downgraded,
+                                # que o YouTube passou a recusar com "The page
+                                # needs to be reloaded" (yt-dlp#17389). Contorno
+                                # dos mantenedores, tirando o tv_downgraded de vez.
+                                "--extractor-args", "youtube:player_client=default,-tv_downgraded,web_embedded",
                                 *js_runtime_args(),
                                 "-o", output_template,
                                 url,
@@ -1746,7 +1919,7 @@ async def build_url_result(
                             capture_output=True, text=True, timeout=300,
                         )
                         if result.returncode != 0:
-                            raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+                            raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {erro_do_ytdlp(result.stderr)}")
                     except subprocess.TimeoutExpired:
                         raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
                     audio_files = [f for f in os.listdir(tmpdir) if f.endswith((".m4a", ".mp3", ".webm", ".opus"))]
@@ -1780,7 +1953,7 @@ async def build_url_result(
                         capture_output=True, text=True, timeout=300
                     )
                     if result.returncode != 0:
-                        raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {result.stderr[:200]}")
+                        raise HTTPException(status_code=400, detail=f"Não foi possível baixar o vídeo: {erro_do_ytdlp(result.stderr)}")
                 except subprocess.TimeoutExpired:
                     raise HTTPException(status_code=400, detail="Tempo esgotado ao baixar o vídeo.")
 
@@ -1821,8 +1994,8 @@ async def build_url_result(
     )
 
 
-@app.post("/insights", response_model=InsightsResponse, dependencies=[Depends(guarda_de_uso)])
-async def insights(request: InsightsRequest):
+@app.post("/insights", response_model=InsightsResponse)
+async def insights(request: InsightsRequest, user_id: str | None = Depends(guarda_de_uso)):
     """Gera os campos da tela de conversa a partir de uma transcrição que já
     existe. É o caminho das conversas capturadas antes desta versão: reanalisar
     o texto guardado custa uma chamada de texto, contra re-transcrever o áudio
@@ -1831,6 +2004,17 @@ async def insights(request: InsightsRequest):
         raise HTTPException(status_code=500, detail="Chave de API não configurada.")
     if not request.transcript.strip():
         raise HTTPException(status_code=400, detail="Não há transcrição para analisar.")
+    # Reanalisar é fazer a transcrição completa de uma conversa que saiu
+    # simples — exatamente o que o cadeado guarda na hora de capturar.
+    if user_id and await ler_plano(user_id) not in PLANOS_COM_COMPLETA:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "A transcrição completa faz parte dos planos Iniciante e Avançado. "
+                "Assine em \"Meu plano\" para ter os tópicos, os próximos passos e "
+                "o resumo minuto a minuto."
+            ),
+        )
 
     data, in_tokens, out_tokens = await extract_insights(
         request.transcript, request.segments, idioma=normalizar_idioma(request.language),
@@ -1842,8 +2026,8 @@ async def insights(request: InsightsRequest):
     )
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(guarda_de_uso)])
-async def chat(request: ChatRequest):
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest, user_id: str | None = Depends(guarda_de_uso)):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chave de API não configurada.")
 
@@ -1886,6 +2070,25 @@ REGRAS OBRIGATÓRIAS:
     ]
     messages.append({"role": "user", "content": request.question})
 
+    # A pergunta é contada ANTES da IA: conferir e somar numa instrução só, no
+    # banco, é o que impede duas perguntas simultâneas de passarem juntas do
+    # limite — e recusar aqui não gasta um token. Se a IA falhar, ela volta.
+    restantes = None
+    contou = False
+    if user_id:
+        plano = await ler_plano(user_id)
+        limite = PERGUNTAS_POR_TRANSCRICAO.get(plano, PERGUNTAS_POR_TRANSCRICAO["gratuito"])
+        if limite is not None:
+            if request.session_id:
+                usadas = await consumir_pergunta(user_id, request.session_id, plano, limite)
+                if usadas is not None:
+                    contou = True
+                    restantes = max(0, limite - usadas)
+            else:
+                # Enquanto esta linha aparecer, ainda há gente numa versão do app
+                # que não manda a conversa — e que pergunta sem contar.
+                logger.info("Pergunta sem session_id de %s (versão antiga do app)", user_id)
+
     client = anthropic_client()
     try:
         response = await client.messages.create(
@@ -1894,8 +2097,12 @@ REGRAS OBRIGATÓRIAS:
             system=system,
             messages=messages,
         )
-    except anthropic.APIError as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
+    except Exception as e:
+        if contou:
+            await devolver_pergunta(user_id, request.session_id)
+        if isinstance(e, anthropic.APIError):
+            raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
+        raise
 
     answer = next((b.text for b in response.content if b.type == "text"), "")
     in_tokens, out_tokens = read_usage(response)
@@ -1911,6 +2118,7 @@ REGRAS OBRIGATÓRIAS:
 
     return ChatResponse(
         answer=answer,
+        perguntas_restantes=restantes,
         title=title,
         usage=Usage(
             input_tokens=in_tokens,
@@ -1994,19 +2202,101 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
     if not price_id:
         raise HTTPException(status_code=400, detail="Plano ou ciclo inválido.")
 
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "plano,ciclo,status,stripe_customer_id", "limit": 1},
+    )
+    assinatura = assinaturas[0] if assinaturas else {}
+    vigente = assinatura.get("status") not in (None, "canceled", "incomplete_expired", "unpaid")
+
+    # Quem já assina QUALQUER plano pago não abre outro checkout — nem para o
+    # mesmo plano, nem para trocar de plano. Criar uma assinatura nova ao lado
+    # da que já existe cobra as duas; trocar de plano é o Portal do Stripe
+    # (abaixo), que modifica a assinatura em vez de criar outra.
+    if vigente:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Você já assina o plano {NOMES_PLANO.get(assinatura.get('plano'), assinatura.get('plano'))}. "
+                'Troque de plano em "Meu plano" → Gerenciar assinatura.'
+            ),
+        )
+
+    # Reaproveitar o cliente do Stripe mantém as cobranças da mesma pessoa numa
+    # ficha só. Sem isso, cada checkout criava um cliente novo a partir do
+    # e-mail, e o histórico de quem troca de plano nascia picado.
+    customer_id = assinatura.get("stripe_customer_id") or None
+
+    # Recarregar a página no meio de um checkout lento criava uma sessão nova a
+    # cada tentativa — e duas delas concluídas são duas assinaturas cobrando. A
+    # janela de 10 minutos faz a retentativa cair na MESMA sessão do Stripe. O
+    # cliente entra na chave porque ele muda os parâmetros do pedido, e o Stripe
+    # recusa a mesma chave com parâmetros diferentes.
+    janela = int(time() // 600)
+    chave_idem = f"checkout:{user_id}:{customer_id or 'novo'}:{body.plano}:{body.ciclo}:{janela}"
+
     try:
         session = await asyncio.to_thread(
             stripe.checkout.Session.create,
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             client_reference_id=user_id,
-            customer_email=email or None,
+            # `customer` e `customer_email` são mutuamente exclusivos no Stripe.
+            **({"customer": customer_id} if customer_id else {"customer_email": email or None}),
             success_url=f"{FRONTEND_URL}/#/assinatura/sucesso",
             cancel_url=f"{FRONTEND_URL}/#/assinatura/cancelada",
+            idempotency_key=chave_idem,
         )
     except stripe.StripeError as exc:
         logger.exception("Stripe recusou a criação da sessão de checkout")
         raise HTTPException(status_code=502, detail="Não foi possível iniciar o pagamento.") from exc
+
+    return CheckoutResponse(url=session.url)
+
+
+# A troca de plano de verdade não passa por Checkout: é a MESMA assinatura
+# mudando de preço, não uma segunda nascendo. Isso é o Portal do Stripe, não
+# código nosso — ele já resolve o que decidimos: upgrade cobra a diferença na
+# hora, downgrade só entra na renovação. (É o comportamento padrão do Portal
+# quando "Atualizar assinaturas" está ligado com proração — configurar isso é
+# um passo no painel do Stripe, não algo que este endpoint decide.)
+@app.post("/billing/portal-session", response_model=CheckoutResponse)
+async def criar_sessao_portal(request: Request):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Cobrança não configurada.")
+
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
+    if not identidade:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para gerenciar a assinatura.")
+    user_id, _ = identidade
+
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "stripe_customer_id", "limit": 1},
+    )
+    customer_id = assinaturas[0].get("stripe_customer_id") if assinaturas else None
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="Você ainda não tem assinatura para gerenciar.")
+
+    try:
+        session = await asyncio.to_thread(
+            stripe.billing_portal.Session.create,
+            customer=customer_id,
+            return_url=f"{FRONTEND_URL}/#/",
+        )
+    except stripe.StripeError as exc:
+        logger.exception("Stripe recusou a criação da sessão do portal")
+        raise HTTPException(
+            status_code=502, detail="Não foi possível abrir o gerenciamento da assinatura."
+        ) from exc
 
     return CheckoutResponse(url=session.url)
 
@@ -2043,6 +2333,17 @@ async def billing_webhook(request: Request):
         user_id = await _user_id_da_subscription(dados)
         if user_id:
             await _gravar_assinatura(user_id, dados.get("customer"), dados)
+        else:
+            # A linha ainda não existe: este evento chegou antes do
+            # `checkout.session.completed` que a cria. Responder 200 aqui faria
+            # o Stripe dar a entrega por boa e nunca reenviar — a atualização
+            # sumiria em silêncio, sem erro em lugar nenhum. O 409 pede a
+            # reentrega, que ele faz com espera crescente por até três dias.
+            logger.warning(
+                "Assinatura %s sem dono conhecido ainda; pedindo reentrega do evento %s",
+                dados.get("id"), tipo,
+            )
+            raise HTTPException(status_code=409, detail="Assinatura ainda não registrada.")
 
     return {"received": True}
 

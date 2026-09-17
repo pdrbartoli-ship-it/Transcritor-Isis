@@ -3,6 +3,44 @@
 Levantamento feito direto no código em 12/09/2026. Cada item abaixo tem causa
 raiz identificada, arquivo e linha.
 
+## Andamento — atualizado em 15/09/2026
+
+| Fase | Devolutivas | Situação | Commit |
+|---|---|---|---|
+| 1 · Parar de perder o usuário | 1, 2 (parte rápida), 3, 5, 9 | No ar, verificada em produção | `bc2d452` |
+| 2 · A régua certa | 4, 7, 8 | No ar, verificada em produção | `f611a41` |
+| 3 · O limite visível | 10 | No ar, verificada em produção | `8dd786b` |
+| 4 · A compra fácil | 6 | No ar, verificada em produção | `1b16eee` |
+| 5 · Download sem susto | 2 (parte definitiva) | Aguardando a conta na Microsoft Store | — |
+
+Cada fase tem um teste de ponta a ponta no repositório
+(`frontend/e2e-fase{1..4}-devolutivas.mjs`), rodado contra o site publicado.
+O limite de perguntas foi provado no backend real, numa conversa descartável:
+10 perguntas aceitas, a 11ª recusada com o convite de upgrade.
+
+**O que mudou em relação a este plano durante a execução**
+
+- **Item 9:** a causa real do logout era a janelinha flutuante do app de
+  Windows, que criava um segundo cliente Supabase disputando a renovação do
+  mesmo token.
+- **Fase 2:** o plano aparece na tela como "Grátis". Versões antigas do app
+  que pedem a completa para um usuário Grátis recebem a simples, em vez de
+  recusa. O contador de perguntas mora no banco
+  (`supabase/perguntas_transcricao.sql`, já rodado).
+- **Fase 3:** a linha "restam X dos seus Y" mostra o saldo depois da captura,
+  e avisa antes do envio quando a captura não cabe. A duração de link vem do
+  metadado do Supadata, que custa 1 crédito por link colado.
+- **Fase 4:** nas opções de faturamento o anual vem marcado, porque é o preço
+  que o card acabou de mostrar. Quem escolhe um plano na landing cai direto nas
+  opções dele depois do login.
+
+**Pendências conhecidas**
+
+- O logout do item 9 é intermitente: só dias de uso confirmam que acabou.
+- A tela de conversa sem análise, com o botão "Ver planos" para o Grátis, não
+  foi testada com uma conta Grátis de verdade (a de teste é Iniciante).
+- A Fase 5 depende de você abrir a conta de desenvolvedor na Microsoft.
+
 ---
 
 ## Como eu li as devolutivas

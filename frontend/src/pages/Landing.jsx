@@ -8,54 +8,7 @@ import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 
-// A mesma tabela aparece dentro do app, no PlanModal — mudou um preço ou um
-// limite? Trocar nos dois.
-const PLANOS = [
-  {
-    id: 'gratuito',
-    nome: 'Gratuito',
-    preco: 'R$ 0',
-    periodo: 'para sempre',
-    resumo: 'Para experimentar sem compromisso.',
-    itens: [
-      '100 minutos de transcrição por mês',
-      'Resumo automático de tudo que você grava',
-      '2 perguntas por conversa',
-      'Cifrado no seu aparelho',
-    ],
-    cta: 'Começar grátis',
-  },
-  {
-    id: 'iniciante',
-    nome: 'Iniciante',
-    preco: 'R$ 20',
-    periodo: 'por mês',
-    destaque: true,
-    resumo: 'Para quem grava toda semana.',
-    itens: [
-      '250 minutos de transcrição por mês',
-      'Resumo automático de tudo que você grava',
-      '10 perguntas por conversa',
-      'Ou R$ 216 por ano (equivale a R$ 18/mês)',
-    ],
-    cta: 'Assinar Iniciante',
-  },
-  {
-    id: 'avancado',
-    nome: 'Avançado',
-    preco: 'R$ 40',
-    periodo: 'por mês',
-    resumo: 'Para quem quer o máximo de detalhe em cada conversa.',
-    itens: [
-      '800 minutos de transcrição por mês',
-      'Transcrição completa: tópicos, tarefas e capítulos organizados',
-      'Perguntas ilimitadas, em qualquer conversa',
-      'IA mais avançada, com respostas mais completas',
-      'Ou R$ 432 por ano (equivale a R$ 36/mês)',
-    ],
-    cta: 'Assinar Avançado',
-  },
-]
+import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
 
 // A demonstração roda sozinha em cinco tempos, na ordem em que a pessoa vive o
 // produto: já está gravando, finaliza, sobe, vira texto, vira resumo. O último
@@ -363,10 +316,18 @@ export default function Landing() {
               <article key={p.id} className={`lp-plano${p.destaque ? ' destaque' : ''}`}>
                 {p.destaque && <span className="lp-plano-selo">Mais escolhido</span>}
                 <h3>{p.nome}</h3>
+                {/* Mesma manchete do "Meu plano": o anual por mês na frente, o
+                    mensal logo abaixo. A escolha entre os dois é feita só na hora
+                    de pagar. */}
                 <div className="lp-plano-preco">
-                  <strong>{p.preco}</strong>
-                  <span>{p.periodo}</span>
+                  <strong>{formatarPreco(p.anual ? precoMensalNoAnual(p) : 0)}</strong>
+                  <span>{p.anual ? 'por mês' : 'para sempre'}</span>
                 </div>
+                {p.anual && (
+                  <p className="text-muted text-sm">
+                    com cobrança anual · {formatarPreco(p.mensal)} cobrado mensalmente
+                  </p>
+                )}
                 <p className="lp-plano-resumo">{p.resumo}</p>
                 <ul>
                   {p.itens.map(i => (

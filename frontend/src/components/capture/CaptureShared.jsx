@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { formatTime } from './estimate'
 import { MODOS, MODO_SIMPLES, MODO_COMPLETA, modoRecomendado } from './modos'
-import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile } from '../Icons'
+import { planoPorId } from '../../lib/planos'
+import { duracaoDoLink } from '../../lib/api'
+import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile, IconLock } from '../Icons'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
 // arquivo, textos do microfone, tamanho dos alvos de toque) fica em
@@ -31,6 +34,13 @@ export function ProcessingBox() {
   )
 }
 
+// Minutos que uma captura consome do mês. Arredonda para o mais próximo — é a
+// duração que a pessoa reconhece —, mas nunca abaixo de 1: um áudio de 20 s
+// escrito "0 min" leria como de graça.
+export function minutosDaCaptura(duracaoSec) {
+  return duracaoSec > 0 ? Math.max(1, Math.round(duracaoSec / 60)) : null
+}
+
 // Botão de transcrever com a lista das duas profundidades pendurada nele.
 //
 // É um botão dividido, não um menu: a metade grande já executa a opção
@@ -43,12 +53,23 @@ export function ProcessingBox() {
 // acompanha: o usuário ainda não escolheu nada, e manter a escolha anterior
 // significaria mandar uma reunião de uma hora no resumo curto porque o teste
 // anterior era um áudio de dois minutos.
-export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loading, disabled }) {
-  const [modo, setModo] = useState(recomendado)
+//
+// `duracaoSec` põe no próprio botão quanto a captura vai consumir. Foi a
+// escolha no lugar de um "Consumir X minutos?" antes do envio: a mesma
+// informação, sem cobrar um clique a mais de quem já decidiu.
+export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, loading, disabled }) {
+  // O plano vem do Layout. Enquanto não chega, nada fica trancado: quem paga
+  // não pode ver um cadeado piscando, e o backend atende como simples quem
+  // pedir a completa sem ter direito a ela.
+  const { plano, abrirPlano } = useOutletContext() || {}
+  const completaLiberada = !plano || planoPorId(plano).completa
+  const sugerido = completaLiberada ? recomendado : MODO_SIMPLES
+
+  const [modo, setModo] = useState(sugerido)
   const [aberto, setAberto] = useState(false)
   const caixaRef = useRef(null)
 
-  useEffect(() => { setModo(recomendado) }, [recomendado])
+  useEffect(() => { setModo(sugerido) }, [sugerido])
 
   // Fechar clicando fora e no Esc: sem isso a lista fica pendurada na tela
   // depois que a pessoa desiste dela, cobrindo o resto do painel.
@@ -65,6 +86,7 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loadin
   }, [aberto])
 
   const travado = disabled || loading
+  const minutos = minutosDaCaptura(duracaoSec)
 
   return (
     <div className="split-btn" ref={caixaRef}>
@@ -76,7 +98,7 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loadin
       >
         {loading
           ? <><span className="spinner spinner-sm" /> Processando…</>
-          : MODOS[modo].label}
+          : <>{MODOS[modo].label}{minutos && <span className="split-minutos"> · {minutos} min</span>}</>}
       </button>
       <button
         type="button"
@@ -92,26 +114,67 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, onSubmit, loadin
 
       {aberto && (
         <ul className="split-menu" role="listbox" aria-label="Tipo de transcrição">
-          {[MODO_SIMPLES, MODO_COMPLETA].map(m => (
-            <li key={m}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={m === modo}
-                className={m === modo ? 'on' : ''}
-                onClick={() => { setModo(m); setAberto(false) }}
-              >
-                <span className="split-menu-head">
-                  <span className="split-menu-label">{MODOS[m].label}</span>
-                  {m === recomendado && <span className="split-badge">Recomendada</span>}
-                </span>
-                <span className="split-menu-hint">{MODOS[m].hint}</span>
-              </button>
-            </li>
-          ))}
+          {[MODO_SIMPLES, MODO_COMPLETA].map(m => {
+            const travada = m === MODO_COMPLETA && !completaLiberada
+            return (
+              <li key={m}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m === modo}
+                  // Sem aria-disabled: a opção trancada FAZ algo (abre os
+                  // planos), e anunciá-la como desabilitada mentiria para quem
+                  // usa leitor de tela. O "Planos pagos" do selo já está no nome.
+                  className={[m === modo && 'on', travada && 'travada'].filter(Boolean).join(' ')}
+                  onClick={() => {
+                    setAberto(false)
+                    // Trancada não é parede: o clique leva aos planos, que é
+                    // onde ela se destrava, e a explicação do que ela entrega
+                    // já está logo abaixo do nome.
+                    if (travada) { abrirPlano?.(); return }
+                    setModo(m)
+                  }}
+                >
+                  <span className="split-menu-head">
+                    <span className="split-menu-label">{MODOS[m].label}</span>
+                    {travada
+                      ? <span className="split-badge pago"><IconLock width={11} height={11} /> Planos pagos</span>
+                      : m === sugerido && <span className="split-badge">Recomendada</span>}
+                  </span>
+                  <span className="split-menu-hint">{MODOS[m].hint}</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
+  )
+}
+
+// A linha discreta debaixo do botão: quanto do mês sobra depois desta captura.
+// Quando a captura não cabe, ela avisa ANTES do envio — descobrir isso só
+// depois de esperar o upload e a transcrição era o pior jeito de saber.
+export function LinhaConsumo({ duracaoSec }) {
+  const { saldo, abrirPlano } = useOutletContext() || {}
+  if (!saldo) return null
+
+  const restam = Math.max(0, Math.round(saldo.limite - saldo.usados))
+  const minutos = minutosDaCaptura(duracaoSec)
+
+  if (minutos && minutos > restam) {
+    return (
+      <p className="linha-consumo excede">
+        Esta captura tem {minutos} min e restam {restam} no seu mês.
+        {abrirPlano && <> <button type="button" onClick={abrirPlano}>Ver planos</button></>}
+      </p>
+    )
+  }
+
+  return (
+    <p className="linha-consumo">
+      Restam {minutos ? restam - minutos : restam} dos seus {saldo.limite} minutos
+    </p>
   )
 }
 
@@ -146,11 +209,13 @@ export function RecordingReview({ recordingTime, onSubmit, onReset, loading }) {
       <div className="record-actions">
         <TranscribeButton
           recomendado={modoRecomendado({ origem: 'record', durationSec: recordingTime })}
+          duracaoSec={recordingTime}
           onSubmit={onSubmit}
           loading={loading}
         />
         <button className="btn-ghost" onClick={onReset} disabled={loading}>Regravar</button>
       </div>
+      <LinhaConsumo duracaoSec={recordingTime} />
     </>
   )
 }
@@ -173,38 +238,68 @@ export function FileReview({ pendingFile, onSubmit, onReset, loading }) {
       <div className="record-actions">
         <TranscribeButton
           recomendado={modoRecomendado({ origem: 'file', durationSec })}
+          duracaoSec={durationSec}
           onSubmit={onSubmit}
           loading={loading}
         />
         <button className="btn-ghost" onClick={onReset} disabled={loading}>Trocar arquivo</button>
       </div>
+      <LinhaConsumo duracaoSec={durationSec} />
     </div>
   )
 }
 
+// Espera a pessoa parar de digitar (ou terminar de colar) antes de perguntar:
+// cada consulta custa um crédito do Supadata, e um link digitado letra a letra
+// dispararia uma por tecla.
+const ESPERA_DURACAO_MS = 600
+
+function useDuracaoDoLink(url) {
+  const [duracao, setDuracao] = useState(null)
+
+  useEffect(() => {
+    setDuracao(null)
+    const limpo = url.trim()
+    if (!/^https?:\/\/\S+\.\S+/.test(limpo)) return
+    let ativo = true
+    const espera = setTimeout(async () => {
+      const segundos = await duracaoDoLink(limpo)
+      if (ativo) setDuracao(segundos)
+    }, ESPERA_DURACAO_MS)
+    return () => { ativo = false; clearTimeout(espera) }
+  }, [url])
+
+  return duracao
+}
+
 export function UrlForm({ url, setUrl, onSubmit, loading }) {
+  const duracaoSec = useDuracaoDoLink(url)
   return (
-    <div className="url-form">
-      <input
-        type="url"
-        value={url}
-        onChange={e => setUrl(e.target.value)}
-        placeholder="Cole um link do YouTube"
-        disabled={loading}
-        onKeyDown={e => {
-          // Sem <form> em volta (o botão dividido tem um botão dentro do outro,
-          // e um submit implícito dispararia o modo errado), então o Enter
-          // precisa ser ligado à mão — é como quem cola um link espera enviar.
-          if (e.key === 'Enter' && url.trim() && !loading) onSubmit(modoRecomendado({ origem: 'url' }))
-        }}
-      />
-      <TranscribeButton
-        recomendado={modoRecomendado({ origem: 'url' })}
-        onSubmit={onSubmit}
-        loading={loading}
-        disabled={!url.trim()}
-      />
-    </div>
+    <>
+      <div className="url-form">
+        <input
+          type="url"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="Cole um link do YouTube"
+          disabled={loading}
+          onKeyDown={e => {
+            // Sem <form> em volta (o botão dividido tem um botão dentro do outro,
+            // e um submit implícito dispararia o modo errado), então o Enter
+            // precisa ser ligado à mão — é como quem cola um link espera enviar.
+            if (e.key === 'Enter' && url.trim() && !loading) onSubmit(modoRecomendado({ origem: 'url' }))
+          }}
+        />
+        <TranscribeButton
+          recomendado={modoRecomendado({ origem: 'url' })}
+          duracaoSec={duracaoSec}
+          onSubmit={onSubmit}
+          loading={loading}
+          disabled={!url.trim()}
+        />
+      </div>
+      {url.trim() && <LinhaConsumo duracaoSec={duracaoSec} />}
+    </>
   )
 }
 

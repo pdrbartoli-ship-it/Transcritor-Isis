@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifesto do pacote MSIX do Dito para a Microsoft Store.
+
+  Identity e PublisherDisplayName vêm do Partner Center (Product management →
+  Product identity) e precisam ser idênticos aos de lá, senão a Store recusa o
+  envio. __VERSION__ é trocado pelo CI (.github/workflows/build-desktop.yml):
+  a Store exige versão maior a cada envio, com o último campo zerado.
+
+  runFullTrust é o que deixa um app de desktop comum (o Tauri) rodar dentro do
+  pacote; o microfone precisa ser declarado para o Windows oferecer a permissão
+  a um app empacotado. O áudio do sistema (loopback do WASAPI) não exige
+  capacidade nenhuma.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="AlbieCloud.57831C11EA014"
+    Publisher="CN=83C50F24-B6E7-4443-A4B7-95AFDF314BFA"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <!-- O ponto faz parte do nome reservado no Partner Center
+         (Manage app names: "Dito."), a marca da própria landing — sem ele a
+         Store recusa o pacote: "usa um nome de exibição que você não
+         reservou". -->
+    <DisplayName>Dito.</DisplayName>
+    <PublisherDisplayName>Albie Cloud</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="pt-BR" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Dito" Executable="Dito.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Dito."
+        Description="Transcreve e resume reuniões, aulas e áudios — e grava as duas vozes da chamada."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" ShortName="Dito" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>
