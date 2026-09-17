@@ -2010,7 +2010,7 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
         raise HTTPException(
             status_code=402,
             detail=(
-                "A transcrição completa faz parte dos planos Iniciante e Avançado. "
+                "A transcrição completa faz parte do plano Avançado. "
                 "Assine em \"Meu plano\" para ter os tópicos, os próximos passos e "
                 "o resumo minuto a minuto."
             ),
