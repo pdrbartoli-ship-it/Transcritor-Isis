@@ -937,6 +937,8 @@ input::placeholder { color: var(--text-muted); }
 }
 .faturamento-voltar:hover { color: var(--text); }
 .planos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+.planos-gerenciar { display: flex; justify-content: center; margin-top: 16px; }
+.planos-gerenciar .btn-ghost { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .plano {
   display: flex; flex-direction: column; gap: 6px; text-align: left;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { IconClose, IconCheck } from './Icons'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { criarCheckout, lerSaldo, wakeBackend } from '../lib/api'
+import { criarCheckout, lerSaldo, wakeBackend, abrirPortalAssinatura } from '../lib/api'
 import { PLANOS, formatarPreco, precoMensalNoAnual, economiaAnual } from '../lib/planos'
 
 // O "Meu plano" em dois tempos, no desenho do Notion.
@@ -34,12 +34,16 @@ export default function PlanModal({ onClose, inicial = null }) {
   // uma espera que a pessoa aguenta. Sem isto, "Abrindo pagamento…" parado por
   // 30s parece travamento, e quem acha que travou recarrega a página.
   const [demorando, setDemorando] = useState(false)
+  const [abrindoPortal, setAbrindoPortal] = useState(false)
   const [erro, setErro] = useState('')
 
   // `planoAtual` nulo é "ainda não sei", não "nenhum": enquanto o Supabase não
   // responde, nenhum card sabe se é o plano vigente, e deixar os botões vivos
   // nessa janela permitia comprar de novo o plano que a pessoa já assina.
   const carregandoPlano = planoAtual === null
+  // Quem já paga algo não cria assinatura nova clicando num outro card — isso
+  // é a troca de plano de verdade, que vive no Portal do Stripe, não aqui.
+  const jaAssinante = !carregandoPlano && planoAtual !== 'gratuito'
 
   // O plano ativo vem direto do Supabase — quem escreve ali é só o webhook do
   // Stripe, então esta leitura reflete a cobrança real, não uma intenção.
@@ -59,11 +63,12 @@ export default function PlanModal({ onClose, inicial = null }) {
   }, [user])
 
   // O Render hiberna, e a primeira chamada depois disso leva dezenas de
-  // segundos. Acordar quando a tela de pagamento abre — e não quando o botão é
-  // clicado — faz a espera acontecer enquanto a pessoa ainda lê os preços.
+  // segundos. Acordar quando "Meu plano" abre — e não quando o botão de pagar
+  // ou de gerenciar é clicado — faz a espera acontecer enquanto a pessoa ainda
+  // lê a tela, não depois que ela já decidiu.
   useEffect(() => {
-    if (escolhido) wakeBackend()
-  }, [escolhido])
+    wakeBackend()
+  }, [])
 
   function escolher(plano) {
     setErro('')
@@ -84,6 +89,18 @@ export default function PlanModal({ onClose, inicial = null }) {
       setAssinando(false)
     } finally {
       clearTimeout(aviso)
+    }
+  }
+
+  async function gerenciarAssinatura() {
+    setErro('')
+    setAbrindoPortal(true)
+    try {
+      const { url } = await abrirPortalAssinatura()
+      window.location.href = url
+    } catch (err) {
+      setErro(err.message || 'Não foi possível abrir o gerenciamento da assinatura.')
+      setAbrindoPortal(false)
     }
   }
 
@@ -154,19 +171,40 @@ export default function PlanModal({ onClose, inicial = null }) {
                   <ul>
                     {p.itens.map(i => <li key={i}><IconCheck width={12} height={12} /> {i}</li>)}
                   </ul>
-                  {pago && (
+                  {pago && (ativo ? (
+                    <button type="button" className="btn-primary plano-btn" disabled>
+                      Plano atual
+                    </button>
+                  ) : !jaAssinante ? (
+                    // Só quem ainda não paga nada cria assinatura nova por
+                    // aqui. Quem já é assinante e quer outro plano troca pelo
+                    // Portal, no link abaixo da grade — clicar num card
+                    // diferente não pode abrir um checkout novo.
                     <button
                       type="button"
                       className="btn-primary plano-btn"
-                      disabled={ativo || carregandoPlano}
+                      disabled={carregandoPlano}
                       onClick={() => escolher(p)}
                     >
-                      {ativo ? 'Plano atual' : 'Fazer upgrade'}
+                      Fazer upgrade
                     </button>
-                  )}
+                  ) : null)}
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {!escolhido && jaAssinante && (
+          <div className="planos-gerenciar">
+            <button type="button" className="btn-ghost" onClick={gerenciarAssinatura} disabled={abrindoPortal}>
+              {abrindoPortal ? (
+                <>
+                  <span className="spinner spinner-sm" />
+                  Abrindo…
+                </>
+              ) : 'Trocar de plano, forma de pagamento ou cancelar'}
+            </button>
           </div>
         )}
       </div>

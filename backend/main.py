@@ -2208,14 +2208,17 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
     assinatura = assinaturas[0] if assinaturas else {}
     vigente = assinatura.get("status") not in (None, "canceled", "incomplete_expired", "unpaid")
 
-    # Quem já assina exatamente isto não pode abrir outro checkout. O botão da
-    # tabela fica clicável na janela em que a tela ainda não sabe qual é o plano
-    # atual, e o Stripe aceitaria a segunda assinatura sem reclamar: duas
-    # cobranças na mesma pessoa, e só uma delas visível em `subscriptions`.
-    if vigente and assinatura.get("plano") == body.plano and assinatura.get("ciclo") == body.ciclo:
+    # Quem já assina QUALQUER plano pago não abre outro checkout — nem para o
+    # mesmo plano, nem para trocar de plano. Criar uma assinatura nova ao lado
+    # da que já existe cobra as duas; trocar de plano é o Portal do Stripe
+    # (abaixo), que modifica a assinatura em vez de criar outra.
+    if vigente:
         raise HTTPException(
             status_code=409,
-            detail=f"Você já assina o plano {NOMES_PLANO.get(body.plano, body.plano)}.",
+            detail=(
+                f"Você já assina o plano {NOMES_PLANO.get(assinatura.get('plano'), assinatura.get('plano'))}. "
+                'Troque de plano em "Meu plano" → Gerenciar assinatura.'
+            ),
         )
 
     # Reaproveitar o cliente do Stripe mantém as cobranças da mesma pessoa numa
@@ -2246,6 +2249,53 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
     except stripe.StripeError as exc:
         logger.exception("Stripe recusou a criação da sessão de checkout")
         raise HTTPException(status_code=502, detail="Não foi possível iniciar o pagamento.") from exc
+
+    return CheckoutResponse(url=session.url)
+
+
+# A troca de plano de verdade não passa por Checkout: é a MESMA assinatura
+# mudando de preço, não uma segunda nascendo. Isso é o Portal do Stripe, não
+# código nosso — ele já resolve o que decidimos: upgrade cobra a diferença na
+# hora, downgrade só entra na renovação. (É o comportamento padrão do Portal
+# quando "Atualizar assinaturas" está ligado com proração — configurar isso é
+# um passo no painel do Stripe, não algo que este endpoint decide.)
+@app.post("/billing/portal-session", response_model=CheckoutResponse)
+async def criar_sessao_portal(request: Request):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Cobrança não configurada.")
+
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
+    if not identidade:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para gerenciar a assinatura.")
+    user_id, _ = identidade
+
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "stripe_customer_id", "limit": 1},
+    )
+    customer_id = assinaturas[0].get("stripe_customer_id") if assinaturas else None
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="Você ainda não tem assinatura para gerenciar.")
+
+    try:
+        session = await asyncio.to_thread(
+            stripe.billing_portal.Session.create,
+            customer=customer_id,
+            return_url=f"{FRONTEND_URL}/#/",
+        )
+    except stripe.StripeError as exc:
+        logger.exception("Stripe recusou a criação da sessão do portal")
+        raise HTTPException(
+            status_code=502, detail="Não foi possível abrir o gerenciamento da assinatura."
+        ) from exc
 
     return CheckoutResponse(url=session.url)
 

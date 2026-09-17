@@ -220,37 +220,51 @@ export async function lerSaldo(userId) {
   }
 }
 
-// Só a versão web assina por aqui — o app Android é distribuído pela Play
-// Store, que exige Google Play Billing para assinatura consumida dentro do
-// app. Devolve a URL do Checkout hospedado do Stripe; quem chama só precisa
-// redirecionar (window.location.href = url).
-//
 // O `fetch` não desiste sozinho: uma instância do Render subindo devagar podia
-// deixar o botão preso em "Abrindo pagamento…" por minutos, sem erro e sem
+// deixar um botão de cobrança preso em "Abrindo…" por minutos, sem erro e sem
 // saída — e era isso que levava a pessoa a recarregar a página e tentar de
 // novo, que é como nascia a cobrança dupla. Com o teto, a espera vira uma
-// mensagem com saída.
-const CHECKOUT_TIMEOUT_MS = 45000
+// mensagem com saída. Vale tanto para abrir o checkout quanto o portal: os
+// dois são a mesma instância do Render acordando.
+const BILLING_TIMEOUT_MS = 45000
 
-export async function criarCheckout(plano, ciclo) {
+async function postJsonComTeto(path, payload, mensagemTeto) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), CHECKOUT_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), BILLING_TIMEOUT_MS)
   try {
-    return await postJson(
-      '/billing/create-checkout-session',
-      { plano, ciclo },
-      { signal: controller.signal },
-    )
+    return await postJson(path, payload, { signal: controller.signal })
   } catch (err) {
     // `abort` rejeita com AbortError, que não é erro de rede nem resposta do
     // servidor: sem este caso a tela mostraria o texto cru do DOMException.
-    if (err?.name === 'AbortError') {
-      throw new Error('O servidor demorou demais para responder. Nada foi cobrado — tente de novo.')
-    }
+    if (err?.name === 'AbortError') throw new Error(mensagemTeto)
     throw err
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Só a versão web assina por aqui — o app Android é distribuído pela Play
+// Store, que exige Google Play Billing para assinatura consumida dentro do
+// app. Devolve a URL do Checkout hospedado do Stripe; quem chama só precisa
+// redirecionar (window.location.href = url).
+export async function criarCheckout(plano, ciclo) {
+  return postJsonComTeto(
+    '/billing/create-checkout-session',
+    { plano, ciclo },
+    'O servidor demorou demais para responder. Nada foi cobrado — tente de novo.',
+  )
+}
+
+// Troca de plano, mudança de forma de pagamento e cancelamento não são
+// telas nossas: é o Portal do Stripe, aberto para a assinatura já existente.
+// Ele modifica a MESMA assinatura em vez de criar outra — é o que faz a troca
+// de plano não virar uma segunda cobrança do lado da primeira.
+export async function abrirPortalAssinatura() {
+  return postJsonComTeto(
+    '/billing/portal-session',
+    {},
+    'O servidor demorou demais para responder. Tente de novo.',
+  )
 }
 
 // O chat fala sobre UMA conversa. O backend marca a transcrição com
