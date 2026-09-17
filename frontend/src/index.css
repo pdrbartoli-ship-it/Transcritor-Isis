@@ -125,6 +125,13 @@ body {
   margin: 0 auto;
 }
 .spinner-sm { width: 14px; height: 14px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 6px; margin-left: 0; }
+/* Dentro de um botão de destaque o spinner padrão some: ele é desenhado com a
+   cor de destaque, que ali é justamente a cor do fundo. `currentColor` o
+   amarra ao texto do botão, que muda junto com o tema. */
+.btn-primary .spinner {
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Buttons ────────────────────────────────────────────── */

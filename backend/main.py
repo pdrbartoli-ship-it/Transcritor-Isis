@@ -2201,15 +2201,47 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
     if not price_id:
         raise HTTPException(status_code=400, detail="Plano ou ciclo inválido.")
 
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "plano,ciclo,status,stripe_customer_id", "limit": 1},
+    )
+    assinatura = assinaturas[0] if assinaturas else {}
+    vigente = assinatura.get("status") not in (None, "canceled", "incomplete_expired", "unpaid")
+
+    # Quem já assina exatamente isto não pode abrir outro checkout. O botão da
+    # tabela fica clicável na janela em que a tela ainda não sabe qual é o plano
+    # atual, e o Stripe aceitaria a segunda assinatura sem reclamar: duas
+    # cobranças na mesma pessoa, e só uma delas visível em `subscriptions`.
+    if vigente and assinatura.get("plano") == body.plano and assinatura.get("ciclo") == body.ciclo:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Você já assina o plano {NOMES_PLANO.get(body.plano, body.plano)}.",
+        )
+
+    # Reaproveitar o cliente do Stripe mantém as cobranças da mesma pessoa numa
+    # ficha só. Sem isso, cada checkout criava um cliente novo a partir do
+    # e-mail, e o histórico de quem troca de plano nascia picado.
+    customer_id = assinatura.get("stripe_customer_id") or None
+
+    # Recarregar a página no meio de um checkout lento criava uma sessão nova a
+    # cada tentativa — e duas delas concluídas são duas assinaturas cobrando. A
+    # janela de 10 minutos faz a retentativa cair na MESMA sessão do Stripe. O
+    # cliente entra na chave porque ele muda os parâmetros do pedido, e o Stripe
+    # recusa a mesma chave com parâmetros diferentes.
+    janela = int(time() // 600)
+    chave_idem = f"checkout:{user_id}:{customer_id or 'novo'}:{body.plano}:{body.ciclo}:{janela}"
+
     try:
         session = await asyncio.to_thread(
             stripe.checkout.Session.create,
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             client_reference_id=user_id,
-            customer_email=email or None,
+            # `customer` e `customer_email` são mutuamente exclusivos no Stripe.
+            **({"customer": customer_id} if customer_id else {"customer_email": email or None}),
             success_url=f"{FRONTEND_URL}/#/assinatura/sucesso",
             cancel_url=f"{FRONTEND_URL}/#/assinatura/cancelada",
+            idempotency_key=chave_idem,
         )
     except stripe.StripeError as exc:
         logger.exception("Stripe recusou a criação da sessão de checkout")
@@ -2250,6 +2282,17 @@ async def billing_webhook(request: Request):
         user_id = await _user_id_da_subscription(dados)
         if user_id:
             await _gravar_assinatura(user_id, dados.get("customer"), dados)
+        else:
+            # A linha ainda não existe: este evento chegou antes do
+            # `checkout.session.completed` que a cria. Responder 200 aqui faria
+            # o Stripe dar a entrega por boa e nunca reenviar — a atualização
+            # sumiria em silêncio, sem erro em lugar nenhum. O 409 pede a
+            # reentrega, que ele faz com espera crescente por até três dias.
+            logger.warning(
+                "Assinatura %s sem dono conhecido ainda; pedindo reentrega do evento %s",
+                dados.get("id"), tipo,
+            )
+            raise HTTPException(status_code=409, detail="Assinatura ainda não registrada.")
 
     return {"received": True}
 

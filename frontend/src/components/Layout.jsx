@@ -129,13 +129,16 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id) return
     let escolhido = null
-    try { escolhido = localStorage.getItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
-    if (escolhido === 'iniciante' || escolhido === 'avancado') {
-      // O id do plano no lugar do `true`: o modal abre direto nas opções de
-      // faturamento dele, sem fazer escolher de novo na tabela.
-      setShowPlan(escolhido)
-      try { localStorage.removeItem('dito-plano-escolhido') } catch { /* modo anônimo */ }
-    }
+    // A leitura e a limpeza andam juntas: o "Começar grátis" da landing também
+    // grava aqui, e limpar só no ramo dos planos pagos deixava esse valor no
+    // navegador para sempre.
+    try {
+      escolhido = localStorage.getItem('dito-plano-escolhido')
+      localStorage.removeItem('dito-plano-escolhido')
+    } catch { /* modo anônimo */ }
+    // O id do plano no lugar do `true`: o modal abre direto nas opções de
+    // faturamento dele, sem fazer escolher de novo na tabela.
+    if (escolhido === 'iniciante' || escolhido === 'avancado') setShowPlan(escolhido)
   }, [user?.id])
 
   // Busca com atraso. O contador de execução descarta a resposta de uma busca

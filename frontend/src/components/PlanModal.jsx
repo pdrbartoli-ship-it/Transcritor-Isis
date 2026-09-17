@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { IconClose, IconCheck } from './Icons'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { criarCheckout, lerSaldo } from '../lib/api'
+import { criarCheckout, lerSaldo, wakeBackend } from '../lib/api'
 import { PLANOS, formatarPreco, precoMensalNoAnual, economiaAnual } from '../lib/planos'
 
 // O "Meu plano" em dois tempos, no desenho do Notion.
@@ -30,7 +30,16 @@ export default function PlanModal({ onClose, inicial = null }) {
   // as opções no mensal pareceria o preço subir na hora de pagar.
   const [ciclo, setCiclo] = useState('anual')
   const [assinando, setAssinando] = useState(false)
+  // Depois de alguns segundos o texto do botão muda: uma espera explicada é
+  // uma espera que a pessoa aguenta. Sem isto, "Abrindo pagamento…" parado por
+  // 30s parece travamento, e quem acha que travou recarrega a página.
+  const [demorando, setDemorando] = useState(false)
   const [erro, setErro] = useState('')
+
+  // `planoAtual` nulo é "ainda não sei", não "nenhum": enquanto o Supabase não
+  // responde, nenhum card sabe se é o plano vigente, e deixar os botões vivos
+  // nessa janela permitia comprar de novo o plano que a pessoa já assina.
+  const carregandoPlano = planoAtual === null
 
   // O plano ativo vem direto do Supabase — quem escreve ali é só o webhook do
   // Stripe, então esta leitura reflete a cobrança real, não uma intenção.
@@ -42,8 +51,19 @@ export default function PlanModal({ onClose, inicial = null }) {
       .eq('user_id', user.id)
       .maybeSingle()
       .then(({ data }) => setPlanoAtual(data?.plano || 'gratuito'))
+      // Falhar a leitura não pode deixar os botões travados para sempre: sem
+      // resposta, tratamos como gratuito e quem barra de verdade a compra
+      // repetida é o backend (409 em /billing/create-checkout-session).
+      .catch(() => setPlanoAtual('gratuito'))
     lerSaldo(user.id).then(setSaldo).catch(() => setSaldo(null))
   }, [user])
+
+  // O Render hiberna, e a primeira chamada depois disso leva dezenas de
+  // segundos. Acordar quando a tela de pagamento abre — e não quando o botão é
+  // clicado — faz a espera acontecer enquanto a pessoa ainda lê os preços.
+  useEffect(() => {
+    if (escolhido) wakeBackend()
+  }, [escolhido])
 
   function escolher(plano) {
     setErro('')
@@ -54,12 +74,16 @@ export default function PlanModal({ onClose, inicial = null }) {
   async function assinar() {
     setErro('')
     setAssinando(true)
+    setDemorando(false)
+    const aviso = setTimeout(() => setDemorando(true), 3000)
     try {
       const { url } = await criarCheckout(escolhido.id, ciclo)
       window.location.href = url
     } catch (err) {
       setErro(err.message || 'Não foi possível iniciar o pagamento. Tente de novo.')
       setAssinando(false)
+    } finally {
+      clearTimeout(aviso)
     }
   }
 
@@ -79,6 +103,7 @@ export default function PlanModal({ onClose, inicial = null }) {
             ciclo={ciclo}
             setCiclo={setCiclo}
             assinando={assinando}
+            demorando={demorando}
             onAssinar={assinar}
             onVoltar={() => { setErro(''); setEscolhido(null) }}
           />
@@ -133,7 +158,7 @@ export default function PlanModal({ onClose, inicial = null }) {
                     <button
                       type="button"
                       className="btn-primary plano-btn"
-                      disabled={ativo}
+                      disabled={ativo || carregandoPlano}
                       onClick={() => escolher(p)}
                     >
                       {ativo ? 'Plano atual' : 'Fazer upgrade'}
@@ -149,7 +174,7 @@ export default function PlanModal({ onClose, inicial = null }) {
   )
 }
 
-function Faturamento({ plano, ciclo, setCiclo, assinando, onAssinar, onVoltar }) {
+function Faturamento({ plano, ciclo, setCiclo, assinando, demorando, onAssinar, onVoltar }) {
   const anual = ciclo === 'anual'
   return (
     <div className="faturamento">
@@ -189,7 +214,12 @@ function Faturamento({ plano, ciclo, setCiclo, assinando, onAssinar, onVoltar })
       </div>
 
       <button type="button" className="btn-primary faturamento-btn" onClick={onAssinar} disabled={assinando}>
-        {assinando ? 'Abrindo pagamento…' : 'Continuar para o pagamento'}
+        {assinando ? (
+          <>
+            <span className="spinner spinner-sm" />
+            {demorando ? 'Ainda abrindo — o servidor está acordando…' : 'Abrindo pagamento…'}
+          </>
+        ) : 'Continuar para o pagamento'}
       </button>
       <button type="button" className="faturamento-voltar" onClick={onVoltar} disabled={assinando}>
         Ver todos os planos
