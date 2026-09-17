@@ -99,7 +99,7 @@ REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "").strip().lower() in ("1", "true
 
 # Uma conversa de chat manda pergunta atrás de pergunta. Sem cache, cada uma
 # pagaria uma ida ao Supabase antes de chegar no Claude.
-_token_cache: dict[str, tuple[float, str, str]] = {}
+_token_cache: dict[str, tuple[float, str, str, bool]] = {}
 TOKEN_CACHE_S = 300
 
 
@@ -109,8 +109,11 @@ class LoginIndisponivel(Exception):
     quem já está logado é pior do que admitir a indisponibilidade."""
 
 
-async def validar_token_completo(token: str) -> tuple[str, str] | None:
-    """Devolve (id, email) do usuário dono do token, ou None se ele não valer.
+async def validar_token_completo(token: str) -> tuple[str, str, bool] | None:
+    """Devolve (id, email, é_convidado) do usuário dono do token, ou None se ele
+    não valer. `é_convidado` vem do `is_anonymous` que o Supabase marca nas
+    sessões criadas por `signInAnonymously` — sem senha, sem e-mail, sem chave
+    de criptografia possível, e é isso que rege o teto do modo convidado.
 
     Levanta LoginIndisponivel quando não foi possível conferir."""
     chave = hashlib.sha256(token.encode()).hexdigest()
@@ -118,7 +121,7 @@ async def validar_token_completo(token: str) -> tuple[str, str] | None:
 
     em_cache = _token_cache.get(chave)
     if em_cache and em_cache[0] > agora:
-        return em_cache[1], em_cache[2]
+        return em_cache[1], em_cache[2], em_cache[3]
 
     # Uma segunda tentativa cobre a instabilidade curta, que é a mais comum.
     resp = None
@@ -146,9 +149,10 @@ async def validar_token_completo(token: str) -> tuple[str, str] | None:
     dados = resp.json() or {}
     user_id = dados.get("id")
     email = dados.get("email") or ""
+    convidado = bool(dados.get("is_anonymous"))
     if user_id:
-        _token_cache[chave] = (agora + TOKEN_CACHE_S, user_id, email)
-        return user_id, email
+        _token_cache[chave] = (agora + TOKEN_CACHE_S, user_id, email, convidado)
+        return user_id, email, convidado
     return None
 
 
@@ -166,12 +170,17 @@ async def guarda_de_uso(request: Request) -> str | None:
     cabecalho = request.headers.get("authorization") or ""
     token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
     try:
-        user_id = await validar_token(token) if token else None
+        identidade = await validar_token_completo(token) if token else None
     except LoginIndisponivel:
         raise HTTPException(
             status_code=503,
             detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
         )
+    user_id = identidade[0] if identidade else None
+    # Guardado no request para `guarda_de_captura` ler sem validar o token de
+    # novo — o cache de `validar_token_completo` até tornaria barato repetir,
+    # mas duas fontes de verdade para a mesma pergunta é como elas divergem.
+    request.state.convidado = bool(identidade and identidade[2])
 
     if not user_id:
         if REQUIRE_AUTH:
@@ -245,6 +254,12 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
 # mudou um lá, muda aqui. Quem barra de verdade é este lado.
 LIMITES_PLANO = {"gratuito": 100, "iniciante": 1000, "avancado": 2000}
 
+# O convidado (signInAnonymously, sem senha, sem chave de criptografia) tem
+# direito a UMA captura, de até 90 min — não é um teto mensal como os planos
+# acima, é vitalício por identidade anônima. `ler_saldo` troca o teto do
+# gratuito por este quando `convidado=True`.
+LIMITE_CONVIDADO_MIN = 90
+
 # Perguntas por transcrição; None é sem limite. Não renova: cada conversa nasce
 # com o saldo dela, e é no momento de maior interesse — a pessoa querendo saber
 # mais daquela conversa — que o limite convida a assinar.
@@ -293,14 +308,19 @@ async def ler_plano(user_id: str) -> str:
     return (await ler_plano_e_assinatura(user_id))[0]
 
 
-async def ler_saldo(user_id: str) -> dict:
+async def ler_saldo(user_id: str, convidado: bool = False) -> dict:
     """Plano do usuário e quanto ele já gastou no ciclo corrente.
 
     Um período já vencido conta como zero: a virada de verdade acontece na
     próxima escrita (registrar_uso), e sem esta regra o consumo do mês passado
-    apareceria no começo de cada ciclo novo."""
+    apareceria no começo de cada ciclo novo. Para o convidado isso é um efeito
+    colateral aceito: depois de 30 dias na mesma identidade anônima — rara,
+    porque limpar o navegador já cria uma nova de graça — o teto reabriria. O
+    modo convidado sempre foi uma barreira frouxa contra o reuso casual, não
+    uma trava de segurança; a trava de verdade é exigir conta para qualquer
+    coisa além da primeira captura."""
     plano, assinatura = await ler_plano_e_assinatura(user_id)
-    minutos_limite = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
+    minutos_limite = LIMITE_CONVIDADO_MIN if convidado else LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"])
 
     usos = await supabase_service_get(
         "uso_mensal",
@@ -432,13 +452,25 @@ async def guarda_de_captura(request: Request) -> str | None:
     if not user_id:
         return None
 
-    saldo = await ler_saldo(user_id)
+    convidado = bool(getattr(request.state, "convidado", False))
+    saldo = await ler_saldo(user_id, convidado=convidado)
+
+    if convidado and saldo["minutos_usados"] > 0:
+        # O convidado tem direito a UMA captura, não a "até 90 min" somados em
+        # várias — por isso este é um `> 0`, e não o `>=` do resto da função.
+        raise HTTPException(
+            status_code=402,
+            detail="Sua captura de teste já foi usada. Crie uma conta para continuar gravando.",
+        )
     if saldo["minutos_usados"] >= saldo["minutos_limite"]:
         raise HTTPException(
             status_code=402,
             detail=(
                 f"Você usou os {saldo['minutos_limite']} minutos do seu plano neste mês. "
                 "Abra \"Meu plano\" para assinar um plano maior."
+            ) if not convidado else (
+                f"Esta captura passaria dos {saldo['minutos_limite']} min do modo convidado. "
+                "Crie uma conta para gravar sem esse limite."
             ),
         )
     return user_id
@@ -1624,6 +1656,7 @@ async def analisar_transcricao(
     title_override: str | None = None,
     user_id: str | None = None,
     idioma: str = IDIOMA_AUTO,
+    convidado: bool = False,
 ) -> TranscriptionResult:
     """O trecho que as duas rotas de captura têm em comum: com a transcrição na
     mão, decidir qual análise rodar e montar o resultado. Sem isto, cada rota
@@ -1631,9 +1664,13 @@ async def analisar_transcricao(
 
     É também o único ponto em que a duração já é final e o gasto grande (a
     análise da IA, 70-79% do custo por captura) ainda não aconteceu — por isso
-    a checagem de saldo e o registro do consumo moram aqui, e não nas rotas."""
+    a checagem de saldo e o registro do consumo moram aqui, e não nas rotas.
+    `convidado` refaz aqui o mesmo teto de 90 min que `guarda_de_captura` já
+    aplicou na entrada: aquele porteiro não sabe a duração de um link antes de
+    baixar, então é aqui — com a duração de verdade na mão — que o teto do
+    convidado vale por último."""
     minutos = duracao_cobravel(segments, audio_seconds) / 60
-    saldo = await ler_saldo(user_id) if user_id else None
+    saldo = await ler_saldo(user_id, convidado=convidado) if user_id else None
     if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
         restam = saldo["minutos_limite"] - saldo["minutos_usados"]
         raise HTTPException(
@@ -1717,6 +1754,7 @@ async def save_upload(file: UploadFile, dest_path: str) -> str:
 
 @app.post("/transcribe", response_model=TranscriptionResult)
 async def transcribe(
+    request: Request,
     file: UploadFile = File(...),
     mode: str = Form(MODO_COMPLETA),
     language: str = Form(IDIOMA_AUTO),
@@ -1725,6 +1763,7 @@ async def transcribe(
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
 
+    convidado = bool(getattr(request.state, "convidado", False))
     modo = await modo_do_plano(normalizar_modo(mode), user_id)
     idioma = normalizar_idioma(language)
     filename = file.filename or "audio.m4a"
@@ -1746,7 +1785,7 @@ async def transcribe(
 
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
-                user_id=user_id, idioma=idioma,
+                user_id=user_id, idioma=idioma, convidado=convidado,
             )
         finally:
             # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
@@ -1773,6 +1812,7 @@ async def transcribe(
 
 @app.post("/process-url", response_model=TranscriptionResult)
 async def process_url(
+    request: Request,
     url: str = Form(...),
     mode: str = Form(MODO_COMPLETA),
     language: str = Form(IDIOMA_AUTO),
@@ -1783,12 +1823,13 @@ async def process_url(
     if not is_safe_public_url(url):
         raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
+    convidado = bool(getattr(request.state, "convidado", False))
     modo = await modo_do_plano(normalizar_modo(mode), user_id)
     idioma = normalizar_idioma(language)
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
     key = capture_key("url", url.strip(), modo, idioma)
-    return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma))
+    return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma, convidado))
 
 
 class DuracaoLinkRequest(BaseModel):
@@ -1844,7 +1885,7 @@ def supadata_segments(content) -> list[dict]:
 
 async def build_url_result(
     url: str, modo: str = MODO_COMPLETA, user_id: str | None = None,
-    idioma: str = IDIOMA_AUTO,
+    idioma: str = IDIOMA_AUTO, convidado: bool = False,
 ) -> TranscriptionResult:
     if is_video_url(url):
         if is_youtube_url(url):
@@ -1990,6 +2031,7 @@ async def build_url_result(
         title_override=title,
         user_id=user_id,
         idioma=idioma,
+        convidado=convidado,
     )
 
 
@@ -2195,7 +2237,7 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
         )
     if not identidade:
         raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para assinar.")
-    user_id, email = identidade
+    user_id, email, _ = identidade
 
     price_id = PRICE_POR_PLANO.get((body.plano, body.ciclo))
     if not price_id:
@@ -2248,7 +2290,8 @@ async def create_checkout_session(body: CheckoutRequest, request: Request):
         )
     except stripe.StripeError as exc:
         logger.exception("Stripe recusou a criação da sessão de checkout")
-        raise HTTPException(status_code=502, detail="Não foi possível iniciar o pagamento.") from exc
+        mensagem = getattr(exc, "user_message", None) or "Não foi possível iniciar o pagamento."
+        raise HTTPException(status_code=502, detail=mensagem) from exc
 
     return CheckoutResponse(url=session.url)
 
@@ -2275,7 +2318,7 @@ async def criar_sessao_portal(request: Request):
         )
     if not identidade:
         raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para gerenciar a assinatura.")
-    user_id, _ = identidade
+    user_id, _, _ = identidade
 
     assinaturas = await supabase_service_get(
         "subscriptions",
@@ -2293,9 +2336,13 @@ async def criar_sessao_portal(request: Request):
         )
     except stripe.StripeError as exc:
         logger.exception("Stripe recusou a criação da sessão do portal")
-        raise HTTPException(
-            status_code=502, detail="Não foi possível abrir o gerenciamento da assinatura."
-        ) from exc
+        # `user_message` é o texto que o próprio Stripe marca como seguro pra
+        # mostrar — é ele que vai dizer, por exemplo, que falta salvar a
+        # configuração do Portal em modo Live (o erro mais comum logo depois
+        # de configurar: a tela de configurações abre em modo de teste por
+        # padrão, mas quem cobra de verdade é a chave live).
+        mensagem = getattr(exc, "user_message", None) or "Não foi possível abrir o gerenciamento da assinatura."
+        raise HTTPException(status_code=502, detail=mensagem) from exc
 
     return CheckoutResponse(url=session.url)
 

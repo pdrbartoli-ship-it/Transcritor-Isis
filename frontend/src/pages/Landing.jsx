@@ -7,6 +7,7 @@ import {
 import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
+import { supabase } from '../lib/supabase'
 
 import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
 
@@ -163,6 +164,28 @@ export default function Landing() {
   const [instalando, setInstalando] = useState(false)
   const instalar = () => setInstalando(true)
 
+  // Sem conta, sem senha, sem chave de criptografia possível — é o
+  // `signInAnonymously` do Supabase: nasce um usuário de verdade (o resto do
+  // app nem sabe que ele é convidado), só que sem e-mail. O backend é quem
+  // aplica o teto de uma captura por essa identidade (main.py: `convidado`).
+  // Precisa estar ligado no painel do Supabase (Authentication > Sign In /
+  // Providers > Anonymous) — se não estiver, cai no `catch` abaixo.
+  const [entrandoConvidado, setEntrandoConvidado] = useState(false)
+  const [falhouConvidado, setFalhouConvidado] = useState(false)
+  async function usarSemConta() {
+    setEntrandoConvidado(true)
+    setFalhouConvidado(false)
+    try {
+      const { error } = await supabase.auth.signInAnonymously()
+      if (error) throw error
+      // Não precisa navegar: o RootRoute já troca a landing pelo app sozinho
+      // assim que a sessão nasce, porque os dois escutam o mesmo contexto.
+    } catch {
+      setFalhouConvidado(true)
+      setEntrandoConvidado(false)
+    }
+  }
+
   // O plano escolhido na landing viaja com a pessoa até depois do login: o
   // Layout lê isto assim que a sessão existe e já abre o "Meu plano" com o
   // checkout pronto para o plano escolhido aqui.
@@ -181,7 +204,17 @@ export default function Landing() {
           <button type="button" onClick={() => irPara('precos')}>Preços</button>
         </nav>
         <div className="lp-nav-acoes">
-          <button className="lp-nav-login" onClick={entrar}>Entrar</button>
+          {/* Quem já tem conta continua chegando ao login por "Instalar
+              grátis" → "usar no navegador", que abre a tela com as duas abas
+              (Criar conta / Acessar). Este lugar na barra virou a porta de
+              entrada mais rápida: gravar sem decidir nada antes. */}
+          <button
+            className="lp-nav-login"
+            onClick={usarSemConta}
+            disabled={entrandoConvidado}
+          >
+            {entrandoConvidado ? 'Entrando…' : falhouConvidado ? 'Tentar de novo' : 'Usar o Dito'}
+          </button>
           <button className="btn-primary lp-nav-btn" onClick={instalar}>Instalar grátis</button>
         </div>
       </header>
