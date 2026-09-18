@@ -1217,6 +1217,19 @@ def read_usage(payload) -> tuple[int, int]:
     return int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
 
 
+def read_cache_usage(payload) -> tuple[int, int]:
+    """Tokens de leitura e escrita de cache da mesma resposta. Separado de
+    `read_usage` para não mexer nos outros chamadores dele (ex.: o título do
+    chat, que não precisa dessa medição)."""
+    usage = getattr(payload, "usage", None)
+    if usage is None:
+        return 0, 0
+    return (
+        int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+    )
+
+
 # Acima disto a transcrição inteira numa chamada só fica cara e o modelo perde
 # o fio; aí vale o map-reduce sobre os blocos que o áudio já foi partido.
 MAX_SINGLE_PASS_CHARS = 160_000
@@ -1306,23 +1319,23 @@ async def call_insights(
             status_code=502,
             detail=f"A análise da conversa voltou num formato inesperado (stop_reason={response.stop_reason}).",
         )
-    return data, *read_usage(response)
+    return data, *read_usage(response), *read_cache_usage(response)
 
 
 async def extract_insights(
     transcript: str, segments: list[dict], effort: str | None = None,
     idioma: str = IDIOMA_AUTO,
-) -> tuple[dict, int, int]:
+) -> tuple[dict, int, int, int, int]:
     """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
     chamada só, sobre a transcrição com marcadores de tempo."""
     body = format_timed_transcript(segments) or transcript
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
-        insights, tin, tout = await call_insights(
+        insights, tin, tout, cache_read, cache_write = await call_insights(
             instrucoes_insights(idioma), f"Transcrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
-        return normalize_insights(insights, segments), tin, tout
+        return normalize_insights(insights, segments), tin, tout, cache_read, cache_write
 
     return await extract_insights_long(body, segments, idioma)
 
@@ -1356,13 +1369,13 @@ def instrucoes_resumo_simples(idioma: str | None) -> str:
 SIMPLE_SUMMARY_MAX_TOKENS = 2000
 
 
-async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int]:
+async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int]:
     """Título + resumo curto, numa chamada só ao Haiku.
 
     Sem map-reduce de propósito: mesmo o teto de upload (1 GB, ~8h de fala)
     rende uma transcrição bem dentro da janela de 200 mil tokens do Haiku, e
     fatiar aqui pagaria duas chamadas para produzir o mesmo parágrafo."""
-    data, in_tokens, out_tokens = await call_insights(
+    return await call_insights(
         instrucoes_resumo_simples(idioma), f"Transcrição:\n{transcript}",
         SIMPLE_SUMMARY_SCHEMA,
         max_tokens=SIMPLE_SUMMARY_MAX_TOKENS,
@@ -1370,7 +1383,6 @@ async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[di
         effort=None,
         model=SUMMARY_MODEL,
     )
-    return data, in_tokens, out_tokens
 
 
 # Só o que o passo de consolidação precisa ver — mandar as transcrições
@@ -1399,7 +1411,7 @@ PART_SCHEMA = {
 }
 
 
-async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int]:
+async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int]:
     """Transcrição longa: cada parte gera seus capítulos e tarefas em paralelo,
     e uma segunda chamada pequena — alimentada só pelos títulos de capítulo —
     consolida título, resumo e os 4 tópicos."""
@@ -1420,21 +1432,23 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
     ])
 
     speakers, turns, todos, chapters = [], [], [], []
-    in_tokens = out_tokens = 0
-    for data, tin, tout in results:
+    in_tokens = out_tokens = cache_read_tokens = cache_write_tokens = 0
+    for data, tin, tout, cread, cwrite in results:
         speakers.extend(data.get("speakers") or [])
         turns.extend(data.get("speaker_turns") or [])
         todos.extend(data.get("todos") or [])
         chapters.extend(data.get("chapters") or [])
         in_tokens += tin
         out_tokens += tout
+        cache_read_tokens += cread
+        cache_write_tokens += cwrite
 
     outline = "\n".join(
         f"[{format_timestamp(c.get('start', 0))}] {c.get('title', '')}: "
         + " ".join(c.get("bullets") or [])
         for c in chapters
     )
-    reduced, tin, tout = await call_insights(
+    reduced, tin, tout, cread, cwrite = await call_insights(
         instrucoes_insights(idioma),
         "Abaixo está o roteiro de uma conversa longa, seção por seção. "
         "Com base nele, produza apenas title, summary_bullets e os 4 topics da conversa inteira. "
@@ -1445,6 +1459,8 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
     )
     in_tokens += tin
     out_tokens += tout
+    cache_read_tokens += cread
+    cache_write_tokens += cwrite
 
     merged = {
         **reduced,
@@ -1453,7 +1469,7 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         "todos": todos,
         "chapters": chapters,
     }
-    return normalize_insights(merged, segments), in_tokens, out_tokens
+    return normalize_insights(merged, segments), in_tokens, out_tokens, cache_read_tokens, cache_write_tokens
 
 
 def dedupe_speakers(speakers: list[dict]) -> list[dict]:
@@ -1758,7 +1774,7 @@ async def analisar_transcricao(
         )
 
     if modo == MODO_SIMPLES:
-        resumo, in_tokens, out_tokens = await simple_summary(full_transcript, idioma)
+        resumo, in_tokens, out_tokens, cache_read, cache_write = await simple_summary(full_transcript, idioma)
         await _cobrar_do_saldo(user_id, minutos, saldo)
         # Sem insights, a duração vem do último segmento (ou do próprio áudio):
         # é ela que a lista de conversas mostra ao lado do título.
@@ -1773,10 +1789,13 @@ async def analisar_transcricao(
             insights=None,
             duration_s=round(duracao),
             mode=MODO_SIMPLES,
-            usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+            usage=Usage(
+                input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds,
+                cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+            ),
         )
 
-    insights, in_tokens, out_tokens = await extract_insights(full_transcript, segments, idioma=idioma)
+    insights, in_tokens, out_tokens, cache_read, cache_write = await extract_insights(full_transcript, segments, idioma=idioma)
     await _cobrar_do_saldo(user_id, minutos, saldo)
     return TranscriptionResult(
         transcript=full_transcript,
@@ -1788,7 +1807,10 @@ async def analisar_transcricao(
         insights=insights,
         duration_s=insights.get("duration_s") or round(audio_seconds),
         mode=MODO_COMPLETA,
-        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds),
+        usage=Usage(
+            input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds,
+            cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+        ),
     )
 
 
@@ -2178,13 +2200,16 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
             ),
         )
 
-    data, in_tokens, out_tokens = await extract_insights(
+    data, in_tokens, out_tokens, cache_read, cache_write = await extract_insights(
         request.transcript, request.segments, idioma=normalizar_idioma(request.language),
     )
     return InsightsResponse(
         insights=data,
         summary=summary_markdown(data),
-        usage=Usage(input_tokens=in_tokens, output_tokens=out_tokens),
+        usage=Usage(
+            input_tokens=in_tokens, output_tokens=out_tokens,
+            cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+        ),
     )
 
 
