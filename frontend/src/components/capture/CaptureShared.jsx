@@ -155,12 +155,19 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
 // A linha discreta debaixo do botão: quanto do mês sobra depois desta captura.
 // Quando a captura não cabe, ela avisa ANTES do envio — descobrir isso só
 // depois de esperar o upload e a transcrição era o pior jeito de saber.
-export function LinhaConsumo({ duracaoSec }) {
+export function LinhaConsumo({ duracaoSec, calculando }) {
   const { saldo, abrirPlano } = useOutletContext() || {}
   if (!saldo) return null
 
   const restam = Math.max(0, Math.round(saldo.limite - saldo.usados))
   const minutos = minutosDaCaptura(duracaoSec)
+
+  // A busca da duração de um link passa por uma API externa e pode levar
+  // alguns segundos. Sem isto a linha ficava calada nesse intervalo — parecia
+  // que nada tinha acontecido, quando na verdade o cálculo estava em curso.
+  if (calculando) {
+    return <p className="linha-consumo">Calculando a duração do vídeo…</p>
+  }
 
   if (minutos && minutos > restam) {
     return (
@@ -249,31 +256,44 @@ export function FileReview({ pendingFile, onSubmit, onReset, loading }) {
   )
 }
 
-// Espera a pessoa parar de digitar (ou terminar de colar) antes de perguntar:
-// cada consulta custa um crédito do Supadata, e um link digitado letra a letra
-// dispararia uma por tecla.
+// Espera a pessoa parar de digitar antes de perguntar: cada consulta custa um
+// crédito do Supadata, e um link digitado letra a letra dispararia uma por
+// tecla. Colar não tem essa dúvida — a URL inteira chega pronta num só golpe
+// — então PULA esta espera (ver `aoColar` abaixo). É o caminho mais comum de
+// preencher este campo, e era quem menos precisava do debounce e mais sentia
+// o atraso dele.
 const ESPERA_DURACAO_MS = 600
 
 function useDuracaoDoLink(url) {
   const [duracao, setDuracao] = useState(null)
+  const [calculando, setCalculando] = useState(false)
+  const semEsperaRef = useRef(false)
 
   useEffect(() => {
     setDuracao(null)
     const limpo = url.trim()
-    if (!/^https?:\/\/\S+\.\S+/.test(limpo)) return
+    if (!/^https?:\/\/\S+\.\S+/.test(limpo)) {
+      setCalculando(false)
+      return
+    }
     let ativo = true
-    const espera = setTimeout(async () => {
+    const espera = semEsperaRef.current ? 0 : ESPERA_DURACAO_MS
+    semEsperaRef.current = false
+    setCalculando(true)
+    const timer = setTimeout(async () => {
       const segundos = await duracaoDoLink(limpo)
-      if (ativo) setDuracao(segundos)
-    }, ESPERA_DURACAO_MS)
-    return () => { ativo = false; clearTimeout(espera) }
+      if (ativo) { setDuracao(segundos); setCalculando(false) }
+    }, espera)
+    return () => { ativo = false; clearTimeout(timer) }
   }, [url])
 
-  return duracao
+  const aoColar = () => { semEsperaRef.current = true }
+
+  return { duracao, calculando, aoColar }
 }
 
 export function UrlForm({ url, setUrl, onSubmit, loading }) {
-  const duracaoSec = useDuracaoDoLink(url)
+  const { duracao: duracaoSec, calculando, aoColar } = useDuracaoDoLink(url)
   return (
     <>
       <div className="url-form">
@@ -281,6 +301,7 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
           type="url"
           value={url}
           onChange={e => setUrl(e.target.value)}
+          onPaste={aoColar}
           placeholder="Cole um link do YouTube"
           disabled={loading}
           onKeyDown={e => {
@@ -298,7 +319,7 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
           disabled={!url.trim()}
         />
       </div>
-      {url.trim() && <LinhaConsumo duracaoSec={duracaoSec} />}
+      {url.trim() && <LinhaConsumo duracaoSec={duracaoSec} calculando={calculando} />}
     </>
   )
 }

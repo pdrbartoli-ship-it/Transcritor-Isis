@@ -1907,6 +1907,30 @@ class DuracaoLinkRequest(BaseModel):
     url: str = Field(..., max_length=2_000)
 
 
+# A duração de um vídeo não muda depois de publicado, e o mesmo link chega
+# repetido: de uma pessoa editando a URL e voltando ao que já tinha, ou de
+# várias colando o mesmo vídeo em alta. Sem isto cada uma pagava sua própria
+# ida à Supadata — o teste de carga mostrou pedidos concorrentes pelo MESMO
+# link levando o triplo do tempo de um cache-hit, e a maioria voltando com
+# duracao_s nulo (a Supadata não lida bem com o mesmo link em rajada).
+_duracao_cache: dict[str, tuple[float, float | None]] = {}
+DURACAO_CACHE_S = 6 * 3600
+
+
+async def _duracao_via_supadata(url: str) -> float | None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.supadata.ai/v1/metadata",
+            headers={"x-api-key": SUPADATA_API_KEY},
+            params={"url": url},
+            timeout=15.0,
+        )
+    if resp.status_code != 200:
+        return None
+    duracao = (resp.json().get("media") or {}).get("duration")
+    return float(duracao) if duracao else None
+
+
 @app.post("/duracao-link", dependencies=[Depends(guarda_de_uso)])
 async def duracao_link(body: DuracaoLinkRequest):
     """Quanto dura o vídeo de um link, sem baixar nada — para a tela dizer
@@ -1914,26 +1938,30 @@ async def duracao_link(body: DuracaoLinkRequest):
 
     Devolve {"duracao_s": null} sempre que não der para saber (artigo, rede sem
     metadado, Supadata fora do ar): a estimativa é informação, e a falta dela
-    nunca pode impedir a transcrição. O porteiro fica porque cada consulta
-    custa um crédito do Supadata."""
+    nunca pode impedir a transcrição. O porteiro fica porque cada consulta sem
+    cache custa um crédito do Supadata."""
     url = body.url.strip()
     if not SUPADATA_API_KEY or not is_video_url(url) or not is_safe_public_url(url):
         return {"duracao_s": None}
+
+    chave = capture_key("duracao", url)
+    agora = time()
+    em_cache = _duracao_cache.get(chave)
+    if em_cache and em_cache[0] > agora:
+        return {"duracao_s": em_cache[1]}
+
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://api.supadata.ai/v1/metadata",
-                headers={"x-api-key": SUPADATA_API_KEY},
-                params={"url": url},
-                timeout=15.0,
-            )
-        if resp.status_code != 200:
-            return {"duracao_s": None}
-        duracao = (resp.json().get("media") or {}).get("duration")
-        return {"duracao_s": float(duracao) if duracao else None}
+        # run_once: pedidos concorrentes pelo mesmo link (várias pessoas
+        # colando o mesmo vídeo ao mesmo tempo) esperam a MESMA chamada à
+        # Supadata em vez de disparar uma cada — é o que corrige o nulo em
+        # rajada visto no teste de carga.
+        duracao_s = await run_once(chave, lambda: _duracao_via_supadata(url))
     except Exception:
         logger.warning("Supadata não respondeu à duração do link")
         return {"duracao_s": None}
+
+    _duracao_cache[chave] = (agora + DURACAO_CACHE_S, duracao_s)
+    return {"duracao_s": duracao_s}
 
 
 def supadata_segments(content) -> list[dict]:
