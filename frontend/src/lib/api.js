@@ -159,8 +159,27 @@ async function assertReadable(file) {
 
 // Uma falha de rede num upload longo costuma ser transitória (troca de Wi-Fi
 // para dados, servidor acordando). Uma segunda tentativa resolve a maioria.
-async function postWithRetry(path, body, { retries = 1 } = {}) {
-  return comRenovacao(path, authHeaders, body, retries)
+async function postWithRetry(path, body, { retries = 1, signal } = {}) {
+  return comRenovacao(path, authHeaders, body, retries, signal)
+}
+
+// Teto genérico para qualquer chamada que possa ficar presa numa conexão
+// morta: sem ele, `fetch` nunca desiste sozinho, e a tela some numa
+// carga/envio infinito, sem erro e sem saída (era assim que o botão de
+// cobrança prendia em "Abrindo…" antes deste mesmo cuidado).
+async function comTeto(chamar, ms, mensagemTeto) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    return await chamar(controller.signal)
+  } catch (err) {
+    // `abort` rejeita com AbortError, que não é erro de rede nem resposta do
+    // servidor: sem este caso a tela mostraria o texto cru do DOMException.
+    if (err?.name === 'AbortError') throw new Error(mensagemTeto)
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // Mesma proteção de rede das capturas, para as rotas que mandam JSON.
@@ -186,6 +205,14 @@ const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 // preferência global, e são cinco caminhos de captura (gravação, arquivo,
 // link, compartilhamento de outro app, reanálise) que teriam de lembrar de
 // repassá-la. Ler no ponto do envio garante que nenhum deles escape.
+//
+// Uma reunião de horas legitimamente demora minutos para transcrever — o teto
+// precisa ser generoso o bastante para não interromper um envio que só está
+// lento, e mesmo assim finito, para não prender a tela para sempre numa
+// conexão que morreu no meio do caminho.
+const CAPTURA_TIMEOUT_MS = 15 * 60 * 1000
+const CAPTURA_TIMEOUT_MSG = 'O envio demorou demais e foi interrompido. Verifique sua conexão e tente de novo.'
+
 export async function transcribeFile(file, mode = MODO_COMPLETA) {
   await assertReadable(file)
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -199,7 +226,11 @@ export async function transcribeFile(file, mode = MODO_COMPLETA) {
   formData.append('file', file)
   formData.append('mode', mode)
   formData.append('language', getIdioma())
-  return handleResponse(await postWithRetry('/transcribe', formData))
+  return comTeto(
+    signal => postWithRetry('/transcribe', formData, { signal }).then(handleResponse),
+    CAPTURA_TIMEOUT_MS,
+    CAPTURA_TIMEOUT_MSG,
+  )
 }
 
 export async function processUrl(url, mode = MODO_COMPLETA) {
@@ -207,7 +238,11 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   formData.append('url', url)
   formData.append('mode', mode)
   formData.append('language', getIdioma())
-  return handleResponse(await postWithRetry('/process-url', formData))
+  return comTeto(
+    signal => postWithRetry('/process-url', formData, { signal }).then(handleResponse),
+    CAPTURA_TIMEOUT_MS,
+    CAPTURA_TIMEOUT_MSG,
+  )
 }
 
 // Duração do vídeo de um link, sem baixá-lo — para o botão dizer quantos
@@ -256,18 +291,11 @@ export async function lerSaldo(userId) {
 const BILLING_TIMEOUT_MS = 45000
 
 async function postJsonComTeto(path, payload, mensagemTeto) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), BILLING_TIMEOUT_MS)
-  try {
-    return await postJson(path, payload, { signal: controller.signal })
-  } catch (err) {
-    // `abort` rejeita com AbortError, que não é erro de rede nem resposta do
-    // servidor: sem este caso a tela mostraria o texto cru do DOMException.
-    if (err?.name === 'AbortError') throw new Error(mensagemTeto)
-    throw err
-  } finally {
-    clearTimeout(timer)
-  }
+  return comTeto(
+    signal => postJson(path, payload, { signal }),
+    BILLING_TIMEOUT_MS,
+    mensagemTeto,
+  )
 }
 
 // Só a versão web assina por aqui — o app Android é distribuído pela Play
