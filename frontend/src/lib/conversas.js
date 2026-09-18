@@ -103,7 +103,7 @@ export function displayTitle(conversation) {
   return labelForLink(title.trim(), conversation.created_at) || title
 }
 
-export async function createConversation(userId, result, sourceType, fallbackName) {
+export async function createConversation(userId, result, sourceType, fallbackName, { cifrar = true } = {}) {
   const clientId = await ensureInbox(userId)
   const title =
     result.title?.trim() ||
@@ -130,13 +130,18 @@ export async function createConversation(userId, result, sourceType, fallbackNam
   // A conversa nasce cifrada. Se não houver chave neste aparelho, cifrarLinha
   // falha — e falhar é o certo: gravar em texto puro achando que cifrou seria
   // o pior desfecho possível, porque ninguém ficaria sabendo.
-  const cifrada = await cifrarLinha(enriched)
+  //
+  // Exceção: o convidado (signInAnonymously, sem senha) nunca tem chave
+  // possível — não é um esquecimento, é a mesma conta sem cofre nenhum. Para
+  // ele a conversa nasce em texto puro (enc_version null), o mesmo formato
+  // "legado" que o app já sabe ler.
+  const cifrada = cifrar ? await cifrarLinha(enriched) : enriched
 
   // Mesma proteção da listagem: sem a migração, gravar só o que já existia é
   // muito melhor do que perder a transcrição que acabou de custar tempo e API.
   let { data, error } = await supabase.from('sessions').insert(cifrada).select(LIST_FIELDS).single()
   if (error?.code === MISSING_COLUMN) {
-    const base = await cifrarLinha(row)
+    const base = cifrar ? await cifrarLinha(row) : row
     ;({ data, error } = await supabase.from('sessions').insert(base).select(LIST_FIELDS_BASE).single())
   }
   if (error) throw error
@@ -151,7 +156,7 @@ export async function createConversation(userId, result, sourceType, fallbackNam
 // Best-effort de propósito: a conversa já está salva, e falhar aqui não pode
 // engolir a transcrição que acabou de custar tempo e API — no pior caso o chat
 // abre vazio e o resumo continua na tela de visão geral.
-export async function seedChatWithSummary(userId, sessionId, texto) {
+export async function seedChatWithSummary(userId, sessionId, texto, { cifrar = true } = {}) {
   const conteudo = (texto || '').trim()
   if (!conteudo) return
   try {
@@ -159,7 +164,7 @@ export async function seedChatWithSummary(userId, sessionId, texto) {
       .insert({ session_id: sessionId, user_id: userId })
       .select('id').single()
     if (error) throw error
-    const mensagem = await cifrarMensagem(conteudo)
+    const mensagem = cifrar ? await cifrarMensagem(conteudo) : { content: conteudo }
     await supabase.from('chat_messages')
       .insert({ chat_id: chat.id, user_id: userId, role: 'assistant', ...mensagem })
   } catch {}

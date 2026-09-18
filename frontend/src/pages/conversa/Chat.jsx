@@ -192,8 +192,13 @@ export default function Chat() {
       // A pergunta e a resposta são conteúdo do usuário como qualquer outro:
       // guardá-las em claro deixaria pela porta dos fundos justamente o resumo
       // do que foi dito na conversa.
-      const pergunta = await cifrarMensagem(text)
-      const resposta = await cifrarMensagem(result.answer)
+      //
+      // Exceção: o convidado (signInAnonymously) não tem senha, então não tem
+      // chave possível — cifrarMensagem lançaria SemChaveError toda vez e o
+      // `catch` deste best-effort engoliria a mensagem em silêncio.
+      const cifrar = !user.is_anonymous
+      const pergunta = cifrar ? await cifrarMensagem(text) : { content: text }
+      const resposta = cifrar ? await cifrarMensagem(result.answer) : { content: result.answer }
       await supabase.from('chat_messages').insert([
         { chat_id: id, user_id: user.id, role: 'user', ...pergunta },
         { chat_id: id, user_id: user.id, role: 'assistant', ...resposta },
