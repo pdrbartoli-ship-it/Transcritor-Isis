@@ -1,6 +1,7 @@
 // Modo convidado: tema claro ao entrar (mesmo com o escuro guardado no
-// navegador), convite "Entrar" no rodapé da barra lateral e o botão levando
-// ao login sem jogar o convidado de volta para o app.
+// navegador), contador em gravações (0/1) e não em minutos, convite "Entrar"
+// no rodapé da barra lateral e o botão levando ao login sem jogar o convidado
+// de volta para o app.
 //
 // Uso: node e2e-convidado.mjs [url]   (padrão: dev server local)
 import { chromium } from 'playwright'
@@ -31,6 +32,9 @@ for (const [nome, viewport] of [['desktop', { width: 1280, height: 800 }], ['cel
 
   const tema = await page.evaluate(() => document.documentElement.getAttribute('data-theme'))
   confere(tema === 'light', `[${nome}] convidado entra no tema claro (veio: ${tema})`)
+
+  const contador = (await page.locator('.contador-minutos').innerText()).trim()
+  confere(contador === '0/1 gravação', `[${nome}] contador mostra a gravação do convidado (veio: ${contador})`)
 
   if (nome === 'celular') {
     await page.click('.hamburger')

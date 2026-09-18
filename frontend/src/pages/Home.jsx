@@ -19,7 +19,7 @@ const CAPTURE_MODES = [
 export default function Home({ mode = 'record' }) {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { refreshConversations, abrirPlano, saldo } = useOutletContext()
+  const { refreshConversations, abrirPlano, saldo, convidado } = useOutletContext()
   const location = useLocation()
 
   const [saving, setSaving] = useState(false)
@@ -65,7 +65,7 @@ export default function Home({ mode = 'record' }) {
       {/* O lugar do relógio existe antes de o saldo chegar: sem ele, o título
           desceria alguns pixels sozinho quando o contador aparecesse. */}
       <div className="home-topo">
-        {saldo && <ContadorMinutos usados={saldo.usados} limite={saldo.limite} />}
+        {saldo && <ContadorMinutos usados={saldo.usados} limite={saldo.limite} convidado={convidado} />}
       </div>
 
       <div className="home-capture">
