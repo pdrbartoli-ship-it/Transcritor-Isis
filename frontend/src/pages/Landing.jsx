@@ -7,6 +7,7 @@ import {
 import InstalarModal from '../components/InstalarModal'
 import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
+import { setTheme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
 
 import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
@@ -175,6 +176,11 @@ export default function Landing() {
   async function usarSemConta() {
     setEntrandoConvidado(true)
     setFalhouConvidado(false)
+    // O convidado começa no tom da landing. O tema guardado neste navegador é
+    // de quem já usou o Dito com conta aqui, e sem isto o convidado entrava no
+    // escuro escolhido por outra pessoa. Vem antes do login porque, assim que
+    // a sessão nasce, o Layout monta e aplica o tema guardado.
+    setTheme('light')
     try {
       const { error } = await supabase.auth.signInAnonymously()
       if (error) throw error

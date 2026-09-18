@@ -40,7 +40,9 @@ function PublicRoute({ children }) {
   const { user, loading, holdRedirect } = useAuth()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   // holdRedirect: a tela de cadastro está exibindo a confirmação de conta criada.
-  return user && !holdRedirect ? <Navigate to="/" replace /> : children
+  // O convidado passa: é pelo "Entrar" da barra lateral que ele chega aqui, e
+  // mandá-lo de volta para o app faria o botão não fazer nada.
+  return user && !user.is_anonymous && !holdRedirect ? <Navigate to="/" replace /> : children
 }
 
 // Precisa ficar dentro do HashRouter para poder navegar; por isso é um

@@ -46,6 +46,8 @@ export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  // Quem entrou pelo "Usar o Dito" da landing, sem conta (signInAnonymously).
+  const convidado = !!user?.is_anonymous
 
   // A vitrine (landing, entrar, confirmar) é sempre clara, e o tema é um
   // atributo do documento inteiro. É aqui, ao entrar no app, que a preferência
@@ -322,11 +324,24 @@ export default function Layout() {
           <button className="nav-item" onClick={() => setShowPlan(true)}>
             <IconCard /> Meu plano
           </button>
-          <div className="foot-user">
-            <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
-            <span className="email">{user?.email}</span>
-            <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
-          </div>
+          {convidado ? (
+            // O convidado não tem e-mail para mostrar, e "Sair" seria perder a
+            // única captura dele sem aviso. No lugar, o convite para entrar —
+            // é o ponto em que ele decide criar a conta.
+            <div className="foot-convite">
+              <p className="foot-convite-titulo">Guarde suas conversas</p>
+              <p className="foot-convite-texto">
+                Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
+              </p>
+              <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
+            </div>
+          ) : (
+            <div className="foot-user">
+              <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
+              <span className="email">{user?.email}</span>
+              <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
+            </div>
+          )}
           {/* Qual build está rodando. O instalador do Windows tem nome e URL
               fixos, então uma cópia velha no cache do navegador se instala sem
               nenhum aviso — sem isto, "atualizou?" não tinha resposta. */}
