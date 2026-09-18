@@ -1,13 +1,21 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Permissões das janelas do Dito. A página vem do site publicado (e não da cópia dentro do instalador), para que todo deploy chegue ao app sem reinstalar — daí o `remote`: sem ele o Tauri recusa qualquer comando vindo de fora do app.",
   "windows": [
     "main",
     "mini"
   ],
+  "remote": {
+    "urls": [
+      "https://dito.albiecloud.com/*"
+    ]
+  },
   "permissions": [
     "core:default",
+    "allow-start-recording",
+    "allow-stop-recording",
+    "allow-set-recording-paused",
     "core:window:allow-set-theme",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",

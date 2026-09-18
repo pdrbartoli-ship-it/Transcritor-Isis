@@ -42,7 +42,10 @@ export async function openMiniWindow() {
 
   const position = await bottomRightPosition()
   const mini = new WebviewWindow(MINI_LABEL, {
-    url: 'index.html#/mini',
+    // Um caminho relativo abriria a cópia do site que vai dentro do instalador,
+    // congelada no dia do build. A janelinha tem de vir de onde veio a janela
+    // principal — o site publicado —, senão as duas rodam versões diferentes.
+    url: window.location.protocol === 'https:' ? `${window.location.origin}/#/mini` : 'index.html#/mini',
     title: 'Dito — gravando',
     width: MINI_W,
     height: MINI_H,
