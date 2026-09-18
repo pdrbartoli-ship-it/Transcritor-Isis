@@ -1254,7 +1254,7 @@ INSIGHTS_EFFORT = "low"
 
 
 async def call_insights(
-    prompt: str, schema: dict,
+    instructions: str, user_content: str, schema: dict,
     max_tokens: int = INSIGHTS_MAX_TOKENS, effort: str | None = INSIGHTS_EFFORT,
     model: str = INSIGHTS_MODEL,
 ) -> tuple[dict, int, int]:
@@ -1265,11 +1265,23 @@ async def call_insights(
     output_config = {"format": {"type": "json_schema", "schema": schema}}
     if effort:
         output_config["effort"] = effort
+
+    # `instructions` + o schema são o mesmo texto em toda chamada deste tipo
+    # (mesmo idioma, mesmo schema) — só a transcrição em `user_content` muda
+    # de uma captura para outra. Cachear esse prefixo é o que faz a segunda
+    # chamada em diante pagar 0,1x o preço nele, em vez do preço cheio toda
+    # vez. O schema entra como texto (e não só via `output_config`) porque as
+    # instruções sozinhas (~770 tokens) ficam abaixo do mínimo cacheável do
+    # Sonnet 5 (1.024) — com o schema no mesmo bloco ele passa de 2.400 e
+    # cacheia. Ver `cache_read_tokens` em `events.props.usage` para conferir
+    # se pegou.
+    system_text = f"{instructions}\n\nFormato esperado (schema JSON):\n{json.dumps(schema, ensure_ascii=False)}"
     try:
         response = await client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
+            system=[{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_content}],
             output_config=output_config,
         )
     except anthropic.APIError as e:
@@ -1307,7 +1319,7 @@ async def extract_insights(
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
         insights, tin, tout = await call_insights(
-            f"{instrucoes_insights(idioma)}\n\nTranscrição:\n{body}", INSIGHTS_SCHEMA,
+            instrucoes_insights(idioma), f"Transcrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
         return normalize_insights(insights, segments), tin, tout
@@ -1351,7 +1363,7 @@ async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[di
     rende uma transcrição bem dentro da janela de 200 mil tokens do Haiku, e
     fatiar aqui pagaria duas chamadas para produzir o mesmo parágrafo."""
     data, in_tokens, out_tokens = await call_insights(
-        f"{instrucoes_resumo_simples(idioma)}\n\nTranscrição:\n{transcript}",
+        instrucoes_resumo_simples(idioma), f"Transcrição:\n{transcript}",
         SIMPLE_SUMMARY_SCHEMA,
         max_tokens=SIMPLE_SUMMARY_MAX_TOKENS,
         # O Haiku 4.5 não aceita `effort` — ver call_insights.
@@ -1397,7 +1409,8 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
 
     results = await asyncio.gather(*[
         call_insights(
-            f"{instrucoes_insights(idioma)}\n\nEsta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
+            instrucoes_insights(idioma),
+            f"Esta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
             "Extraia apenas locutores, tarefas e capítulos DESTA parte. Os tempos já são absolutos "
             "em relação à conversa inteira — use-os como estão.\n\n"
             f"Transcrição (parte {i + 1}):\n{part}",
@@ -1422,7 +1435,8 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         for c in chapters
     )
     reduced, tin, tout = await call_insights(
-        f"{instrucoes_insights(idioma)}\n\nAbaixo está o roteiro de uma conversa longa, seção por seção. "
+        instrucoes_insights(idioma),
+        "Abaixo está o roteiro de uma conversa longa, seção por seção. "
         "Com base nele, produza apenas title, summary_bullets e os 4 topics da conversa inteira. "
         "Os time_refs devem usar os tempos das seções.\n\n"
         f"Roteiro:\n{outline}",
