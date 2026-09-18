@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Auth from './pages/Auth'
 import ConfirmEmail from './pages/ConfirmEmail'
@@ -26,10 +26,17 @@ function ProtectedRoute({ children }) {
 
 // Quem não está logado vê a landing (caixa de instalar/entrar) na raiz, em vez
 // de ser jogado direto para o formulário de login.
+//
+// A landing e o app moram no mesmo endereço, então entrar como convidado não
+// deixava rastro no histórico e o voltar do navegador saía do Dito. A landing
+// que o convidado deixou para trás fica numa entrada própria, marcada com
+// `vitrine` (ver Landing.usarSemConta): é ela que o voltar encontra. Sem a
+// marca, o convidado cai no app, como quem tem conta.
 function RootRoute() {
   const { user, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
-  if (user) return <Layout />
+  if (user && !(user.is_anonymous && location.state?.vitrine)) return <Layout />
   // Dentro do app instalado (PWA ou nativo Windows) não existe "instalar de
   // novo" — vai direto pro login.
   if (isStandalonePwa() || isTauriApp()) return <Navigate to="/auth" replace />

@@ -9,6 +9,7 @@ import { INSTALLER_URL } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 import { setTheme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
 
@@ -157,6 +158,7 @@ function irPara(id) {
 export default function Landing() {
   useTemaClaro()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const entrar = () => navigate('/auth')
 
   // "Entrar" e "Instalar grátis" são duas promessas diferentes, e por muito
@@ -174,18 +176,28 @@ export default function Landing() {
   const [entrandoConvidado, setEntrandoConvidado] = useState(false)
   const [falhouConvidado, setFalhouConvidado] = useState(false)
   async function usarSemConta() {
+    // Já existe sessão: é o convidado que voltou à landing. Ele entra de novo
+    // na mesma — um signInAnonymously aqui criaria outro convidado e jogaria
+    // fora a gravação dele (e, para quem tem conta, a própria conta).
+    if (user) {
+      navigate('/')
+      return
+    }
     setEntrandoConvidado(true)
     setFalhouConvidado(false)
+    // Marca esta entrada do histórico como a landing, e o app entra por cima
+    // dela depois do login: é o que faz o voltar do navegador trazer a landing
+    // de volta. Vem antes do login porque, sem a marca, a sessão nascendo já
+    // trocaria a landing pelo app neste mesmo endereço (ver RootRoute).
+    navigate('/', { replace: true, state: { vitrine: true } })
     // O convidado começa no tom da landing. O tema guardado neste navegador é
     // de quem já usou o Dito com conta aqui, e sem isto o convidado entrava no
-    // escuro escolhido por outra pessoa. Vem antes do login porque, assim que
-    // a sessão nasce, o Layout monta e aplica o tema guardado.
+    // escuro escolhido por outra pessoa.
     setTheme('light')
     try {
       const { error } = await supabase.auth.signInAnonymously()
       if (error) throw error
-      // Não precisa navegar: o RootRoute já troca a landing pelo app sozinho
-      // assim que a sessão nasce, porque os dois escutam o mesmo contexto.
+      navigate('/')
     } catch {
       setFalhouConvidado(true)
       setEntrandoConvidado(false)

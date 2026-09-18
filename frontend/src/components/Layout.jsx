@@ -334,6 +334,12 @@ export default function Layout() {
                 Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
               </p>
               <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
+              {/* Mesma entrada marcada que o voltar do navegador encontra (ver
+                  RootRoute): a sessão de convidado continua, e o "Usar o Dito"
+                  da landing traz de volta para ela. */}
+              <button className="foot-convite-site" onClick={() => navigate('/', { state: { vitrine: true } })}>
+                Voltar para o site
+              </button>
             </div>
           ) : (
             <div className="foot-user">

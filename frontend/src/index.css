@@ -772,6 +772,8 @@ input::placeholder { color: var(--text-muted); }
 .foot-convite-titulo { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .foot-convite-texto { margin: 4px 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
 .foot-convite .btn-secondary { width: 100%; padding: 9px 14px; font-weight: 500; }
+.foot-convite-site { display: block; width: 100%; margin-top: 6px; padding: 6px; background: transparent; font-size: 12.5px; color: var(--text-muted); }
+.foot-convite-site:hover { color: var(--text); text-decoration: underline; }
 .foot-version { display: block; padding: 0 10px 4px; font-size: 10.5px; color: var(--text-muted); opacity: .55; font-variant-numeric: tabular-nums; }
 
 /* ── Content ────────────────────────────────────────────── */
