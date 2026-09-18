@@ -1918,16 +1918,23 @@ DURACAO_CACHE_S = 6 * 3600
 
 
 async def _duracao_via_supadata(url: str) -> float | None:
+    # O YouTube tem endpoint dedicado (`/youtube/video`) além do genérico
+    # `/metadata` que cobre qualquer plataforma. Mesmo crédito, mas a doc da
+    # Supadata menciona cache de ~10 min do lado deles para este endpoint — o
+    # genérico não tem essa promessa. Como quase todo link que chega aqui é do
+    # YouTube, é ali que a lentidão do primeiro pedido (vídeo nunca visto) mais
+    # aparece. O genérico continua servindo Instagram/TikTok/Vimeo/X.
+    if is_youtube_url(url):
+        endpoint, params, campo = "https://api.supadata.ai/v1/youtube/video", {"id": url}, None
+    else:
+        endpoint, params, campo = "https://api.supadata.ai/v1/metadata", {"url": url}, "media"
+
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            "https://api.supadata.ai/v1/metadata",
-            headers={"x-api-key": SUPADATA_API_KEY},
-            params={"url": url},
-            timeout=15.0,
-        )
+        resp = await client.get(endpoint, headers={"x-api-key": SUPADATA_API_KEY}, params=params, timeout=15.0)
     if resp.status_code != 200:
         return None
-    duracao = (resp.json().get("media") or {}).get("duration")
+    corpo = resp.json()
+    duracao = (corpo.get(campo) or {}).get("duration") if campo else corpo.get("duration")
     return float(duracao) if duracao else None
 
 
