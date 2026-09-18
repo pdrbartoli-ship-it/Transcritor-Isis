@@ -250,8 +250,10 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
 
 
 # ── Régua dos planos ──────────────────────────────────────────────────────
-# A tela desenha os mesmos números a partir de frontend/src/lib/planos.js:
-# mudou um lá, muda aqui. Quem barra de verdade é este lado.
+# Fonte única, servida à tela por GET /planos. O frontend tem uma cópia destes
+# números em frontend/src/lib/planos.js, mas só como desenho inicial enquanto
+# esta resposta não chega — quem vale é aqui. Antes era o contrário, e um
+# reajuste de preço só chegava ao app de Windows recompilando o instalador.
 LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
 
 # O convidado (signInAnonymously, sem senha, sem chave de criptografia) tem
@@ -270,6 +272,66 @@ PERGUNTAS_POR_TRANSCRICAO = {"gratuito": 2, "iniciante": 10, "avancado": None}
 PLANOS_COM_COMPLETA = {"avancado"}
 
 NOMES_PLANO = {"gratuito": "Grátis", "iniciante": "Iniciante", "avancado": "Avançado"}
+
+# Preço em reais. O anual é o total do ano, não a mensalidade — a tela divide
+# por 12 para a manchete, e derivar em vez de escrever os dois evita a manchete
+# divergir do que o Stripe cobra. Precisam bater com os price IDs das env vars.
+PRECOS_PLANO = {
+    "gratuito": {"mensal": 0, "anual": None},
+    "iniciante": {"mensal": 20, "anual": 216},
+    "avancado": {"mensal": 40, "anual": 432},
+}
+
+# O que muda de plano para plano fora dos números, e por isso não dá para
+# derivar: a promessa de cada um e o texto do botão.
+VITRINE_PLANO = {
+    "gratuito": {
+        "resumo": "Para experimentar sem compromisso.",
+        "cta": "Começar grátis",
+        "destaque": False,
+    },
+    "iniciante": {
+        "resumo": "Para quem grava toda semana.",
+        "cta": "Assinar Iniciante",
+        "destaque": True,
+    },
+    "avancado": {
+        "resumo": "Para quem vive dentro de conversas.",
+        "cta": "Assinar Avançado",
+        "destaque": False,
+    },
+}
+
+
+def _itens_do_plano(plano: str) -> list[str]:
+    """A lista de marcadores do cartão, montada a partir dos mesmos limites que
+    barram de verdade — assim ela não pode prometer o que o código não cumpre."""
+    perguntas = PERGUNTAS_POR_TRANSCRICAO[plano]
+    return [
+        f"{LIMITES_PLANO[plano]} minutos por mês",
+        "Transcrição simples e completa" if plano in PLANOS_COM_COMPLETA else "Transcrição simples",
+        f"Limite de {perguntas} perguntas por transcrição"
+        if perguntas is not None
+        else "Perguntas ilimitadas por transcrição",
+        "Criptografia de ponta a ponta",
+    ]
+
+
+def montar_planos() -> list[dict]:
+    return [
+        {
+            "id": plano,
+            "nome": NOMES_PLANO[plano],
+            "minutos": LIMITES_PLANO[plano],
+            "perguntas": PERGUNTAS_POR_TRANSCRICAO[plano],
+            "completa": plano in PLANOS_COM_COMPLETA,
+            "mensal": PRECOS_PLANO[plano]["mensal"],
+            "anual": PRECOS_PLANO[plano]["anual"],
+            "itens": _itens_do_plano(plano),
+            **VITRINE_PLANO[plano],
+        }
+        for plano in ("gratuito", "iniciante", "avancado")
+    ]
 
 
 async def supabase_service_get(table: str, params: dict) -> list[dict]:
@@ -1719,6 +1781,15 @@ async def analisar_transcricao(
 @app.get("/")
 async def health():
     return {"status": "ok", "service": "Dito"}
+
+
+# Sem autenticação de propósito: é a mesma vitrine que a landing mostra a quem
+# nem tem conta. Serve para o app instalado (o de Windows empacota o frontend
+# no executável e não se atualiza sozinho) não ficar preso nos preços do dia
+# em que foi compilado.
+@app.get("/planos")
+async def planos():
+    return {"planos": montar_planos()}
 
 
 async def save_upload(file: UploadFile, dest_path: str) -> str:

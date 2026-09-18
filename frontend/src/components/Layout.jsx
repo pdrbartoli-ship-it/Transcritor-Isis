@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { esquecerDoAparelho } from '../lib/chaves'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, rastroAuth } from '../contexts/AuthContext'
 import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
@@ -330,7 +330,10 @@ export default function Layout() {
           {/* Qual build está rodando. O instalador do Windows tem nome e URL
               fixos, então uma cópia velha no cache do navegador se instala sem
               nenhum aviso — sem isto, "atualizou?" não tinha resposta. */}
-          <span className="foot-version" title={`Versão ${__APP_VERSION__}, commit ${__BUILD_SHA__}`}>
+          <span
+            className="foot-version"
+            title={`Versão ${__APP_VERSION__}, commit ${__BUILD_SHA__}\nÚltimos eventos de login: ${rastroAuth() || 'nenhum'}`}
+          >
             v{__APP_VERSION__} · {__BUILD_SHA__}
           </span>
         </div>

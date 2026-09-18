@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import { MODO_COMPLETA } from '../components/capture/modos'
 import { getIdioma } from './prefs'
 
-const API_URL = 'https://transcritor-backend.onrender.com'
+export const API_URL = 'https://transcritor-backend.onrender.com'
 
 // Um token que ainda vale no instante do envio pode já ter vencido quando o
 // backend o confere: o Render hiberna e a requisição espera a instância subir,
@@ -10,6 +10,26 @@ const API_URL = 'https://transcritor-backend.onrender.com'
 // na sua conta" para quem estava logado. Renovar o que está perto de vencer
 // ANTES de enviar fecha essa janela.
 const RENOVAR_SE_FALTAR_S = 60
+
+// Renovar é rotativo: cada renovação aposenta o token anterior. Duas chamadas
+// simultâneas viravam duas rotações, e bastava o app fechar antes de a segunda
+// ser gravada em disco para o token guardado já estar queimado — e a próxima
+// abertura cair no login. Quem pedir no meio de uma renovação espera a mesma,
+// e quem pedir logo depois de uma reaproveita o resultado em vez de rotacionar
+// de novo.
+const JANELA_DE_REAPROVEITAMENTO_MS = 10000
+let renovacaoEmVoo = null
+let ultimaRenovacaoMs = 0
+
+function renovarSessao() {
+  if (!renovacaoEmVoo) {
+    renovacaoEmVoo = supabase.auth.refreshSession().finally(() => {
+      renovacaoEmVoo = null
+      ultimaRenovacaoMs = Date.now()
+    })
+  }
+  return renovacaoEmVoo
+}
 
 // O backend precisa saber quem está chamando: as rotas que gastam crédito de
 // IA são fechadas para quem não tem conta. O token é o mesmo que o Supabase já
@@ -28,10 +48,17 @@ async function authHeaders({ forcar = false } = {}) {
       return { Authorization: `Bearer ${session.access_token}` }
     }
 
+    // Acabou de renovar: o token que o getSession devolveu já é o novo, e
+    // rotacionar outra vez só criaria mais uma chance de perder a gravação.
+    // Se mesmo assim vier 401, o problema não é o token estar velho.
+    if (Date.now() - ultimaRenovacaoMs < JANELA_DE_REAPROVEITAMENTO_MS) {
+      return { Authorization: `Bearer ${session.access_token}` }
+    }
+
     // Se a renovação falhar (rede caída, por exemplo), mandar o token velho
     // ainda é melhor do que mandar nada: ele pode continuar valendo, e o
     // backend é quem decide.
-    const { data } = await supabase.auth.refreshSession()
+    const { data } = await renovarSessao()
     const token = data?.session?.access_token || session.access_token
     return { Authorization: `Bearer ${token}` }
   } catch {

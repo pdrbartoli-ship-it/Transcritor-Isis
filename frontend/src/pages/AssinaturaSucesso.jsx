@@ -13,6 +13,10 @@ export default function AssinaturaSucesso() {
   const navigate = useNavigate()
   const [plano, setPlano] = useState(null)
   const [tentando, setTentando] = useState(true)
+  // null enquanto não sabemos: até lá o botão fica no texto neutro, porque
+  // convidar alguém a "gravar a primeira" quem já gravou dez seria pior do que
+  // não convidar nada.
+  const [temConversa, setTemConversa] = useState(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -39,6 +43,28 @@ export default function AssinaturaSucesso() {
     return () => { cancelado = true }
   }, [user?.id])
 
+  // Só o suficiente para saber se existe alguma: nada é decifrado aqui.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelado = false
+    supabase
+      .from('sessions')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .then(({ data }) => {
+        if (!cancelado) setTemConversa((data?.length ?? 0) > 0)
+      })
+    return () => { cancelado = true }
+  }, [user?.id])
+
+  // O instante seguinte ao pagamento é o de maior disposição do funil, e um
+  // "Voltar para o Dito" genérico desperdiçava ele. Quem ainda não gravou é
+  // convidado a gravar; quem já gravou vai para o que já tem.
+  const acao = temConversa === null
+    ? 'Voltar para o Dito'
+    : temConversa ? 'Ver minhas conversas' : 'Gravar minha primeira conversa'
+
   return (
     <div className="auth-page">
       <div className="auth-card auth-created">
@@ -63,7 +89,7 @@ export default function AssinaturaSucesso() {
           </>
         )}
         <button className="btn-primary btn-full" style={{ marginTop: 14 }} onClick={() => navigate('/')}>
-          Voltar para o Dito
+          {acao}
         </button>
       </div>
     </div>

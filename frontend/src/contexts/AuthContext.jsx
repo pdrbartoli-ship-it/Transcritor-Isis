@@ -3,6 +3,32 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+// Quando o app cai sozinho no login, a pergunta que importa é por quê — e o
+// recarregamento levava junto qualquer rastro. Guardar os últimos eventos de
+// autenticação em disco deixa o próprio app responder isso depois, em vez de
+// dependermos de reproduzir o problema.
+const CHAVE_RASTRO = 'dito-rastro-auth'
+const MAX_RASTRO = 5
+
+function registrarEvento(evento) {
+  try {
+    const antes = JSON.parse(localStorage.getItem(CHAVE_RASTRO) || '[]')
+    const agora = `${evento} ${new Date().toLocaleString('pt-BR')}`
+    localStorage.setItem(CHAVE_RASTRO, JSON.stringify([...antes, agora].slice(-MAX_RASTRO)))
+  } catch {
+    // Sem localStorage (janela privada) só perdemos o diagnóstico; o login
+    // não pode quebrar por causa disso.
+  }
+}
+
+export function rastroAuth() {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_RASTRO) || '[]').join(' · ')
+  } catch {
+    return ''
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -17,7 +43,8 @@ export function AuthProvider({ children }) {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((evento, session) => {
+      registrarEvento(evento)
       setUser(session?.user ?? null)
     })
 

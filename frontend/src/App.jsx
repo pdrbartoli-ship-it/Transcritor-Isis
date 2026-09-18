@@ -16,6 +16,7 @@ import Mini from './pages/Mini'
 import AssinaturaSucesso from './pages/AssinaturaSucesso'
 import AssinaturaCancelada from './pages/AssinaturaCancelada'
 import { isStandalonePwa, isTauriApp } from './lib/platform'
+import { useReguaDePlanos } from './lib/planos'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -56,6 +57,14 @@ export default function App() {
   // supabase-js na mesma origem, disputando a renovação do mesmo token com a
   // janela principal — risco gratuito numa janela que não lê nada do banco.
   if (window.location.hash.startsWith('#/mini')) return <Mini />
+
+  return <AppPrincipal />
+}
+
+// Separado do App só para o hook não ficar depois do return da janelinha —
+// hook em caminho condicional é erro de React.
+function AppPrincipal() {
+  useReguaDePlanos()
 
   return (
     <AuthProvider>
