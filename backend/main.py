@@ -252,7 +252,7 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
 # ── Régua dos planos ──────────────────────────────────────────────────────
 # A tela desenha os mesmos números a partir de frontend/src/lib/planos.js:
 # mudou um lá, muda aqui. Quem barra de verdade é este lado.
-LIMITES_PLANO = {"gratuito": 100, "iniciante": 1000, "avancado": 2000}
+LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
 
 # O convidado (signInAnonymously, sem senha, sem chave de criptografia) tem
 # direito a UMA captura, de até 90 min — não é um teto mensal como os planos
@@ -266,8 +266,8 @@ LIMITE_CONVIDADO_MIN = 90
 PERGUNTAS_POR_TRANSCRICAO = {"gratuito": 2, "iniciante": 10, "avancado": None}
 
 # Quem tem a transcrição completa: 4 tópicos, próximos passos e resumo minuto a
-# minuto.
-PLANOS_COM_COMPLETA = {"iniciante", "avancado"}
+# minuto. Só o Avançado — é o degrau de valor entre os dois planos pagos.
+PLANOS_COM_COMPLETA = {"avancado"}
 
 NOMES_PLANO = {"gratuito": "Grátis", "iniciante": "Iniciante", "avancado": "Avançado"}
 
@@ -2051,7 +2051,7 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
         raise HTTPException(
             status_code=402,
             detail=(
-                "A transcrição completa faz parte dos planos Iniciante e Avançado. "
+                "A transcrição completa faz parte do plano Avançado. "
                 "Assine em \"Meu plano\" para ter os tópicos, os próximos passos e "
                 "o resumo minuto a minuto."
             ),
