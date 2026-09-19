@@ -218,7 +218,7 @@ export default function Chat() {
         {ready && messages.length === 0 && !sending && (
           <div className="chat-starter">
             <IconMessage width={26} height={26} />
-            <p>Pergunte o que quiser sobre esta conversa — o que ficou decidido, o que fulano disse, o que faltou.</p>
+            <p>Pergunte sobre esta conversa: o que ficou decidido, quem disse o quê, o que faltou.</p>
             {!esgotado && (
               <div className="starter-chips">
                 {SUGESTOES.map(texto => (
@@ -239,7 +239,7 @@ export default function Chat() {
         ))}
         {sending && (
           <div className="message assistant">
-            <div className="bubble"><span className="spinner spinner-sm" /> Pensando…</div>
+            <div className="bubble"><span className="spinner spinner-sm" /> Respondendo…</div>
           </div>
         )}
         <div ref={bottomRef} />

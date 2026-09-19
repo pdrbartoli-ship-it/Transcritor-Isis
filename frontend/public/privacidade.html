@@ -3,17 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Política de Privacidade — Dito</title>
+  <title>Política de Privacidade | Dito</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: Georgia, 'Times New Roman', serif; max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; color: #1c1b19; background: #faf9f5; line-height: 1.6; }
-    h1 { font-size: 28px; }
-    h2 { font-size: 19px; margin-top: 32px; color: #c96442; }
-    a { color: #c96442; }
-    .muted { color: #73716a; font-size: 14px; }
+    /* Mesmos tokens do app (frontend/src/index.css): Inter no texto, a serifa só
+       no logotipo e no título. */
+    :root {
+      --bg: #f6f8f7; --text: #141a18; --muted: #5b6763; --border: #d9e0dd; --accent: #1a5c4e;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 16px; line-height: 1.65; color: var(--text); background: var(--bg);
+      max-width: 720px; margin: 0 auto; padding: 24px 20px 80px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .brand {
+      display: inline-block; margin-bottom: 40px;
+      font-family: 'Source Serif 4', Georgia, serif; font-size: 20px; font-weight: 600;
+      color: var(--text); text-decoration: none; letter-spacing: -0.01em;
+    }
+    .brand span { color: var(--accent); }
+    h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 6px; }
+    h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 40px 0 8px; padding-top: 24px; border-top: 1px solid var(--border); }
+    h3 { font-size: 16px; font-weight: 600; margin: 24px 0 6px; }
+    p, li { margin: 0 0 12px; }
+    a { color: var(--accent); }
+    .muted { color: var(--muted); font-size: 14px; }
     ul { padding-left: 20px; }
   </style>
 </head>
 <body>
+  <a class="brand" href="/">Dito<span>.</span></a>
   <h1>Política de Privacidade do Dito</h1>
   <p class="muted">Última atualização: 19 de setembro de 2026.</p>
 
@@ -47,11 +70,11 @@
   <p>Para funcionar, o Dito utiliza provedores que processam parte dos dados em
   nosso nome:</p>
   <ul>
-    <li><strong>Supabase</strong> — armazenamento da conta e do conteúdo.</li>
-    <li><strong>Groq</strong> — transcrição de áudio (tecnologia Whisper).</li>
-    <li><strong>Google (Gemini)</strong> — geração dos resumos e da análise das conversas.</li>
-    <li><strong>OpenAI</strong> — respostas às perguntas sobre as conversas.</li>
-    <li><strong>Anthropic (Claude)</strong> — títulos das conversas de perguntas e, quando os provedores acima estão indisponíveis, resumos e respostas.</li>
+    <li><strong>Supabase:</strong> armazenamento da conta e do conteúdo.</li>
+    <li><strong>Groq:</strong> transcrição de áudio (tecnologia Whisper).</li>
+    <li><strong>Google (Gemini):</strong> geração dos resumos e da análise das conversas.</li>
+    <li><strong>OpenAI:</strong> respostas às perguntas sobre as conversas.</li>
+    <li><strong>Anthropic (Claude):</strong> títulos das conversas de perguntas e, quando os provedores acima estão indisponíveis, resumos e respostas.</li>
   </ul>
   <p>Esses provedores recebem apenas o necessário para executar essas tarefas e
   estão sujeitos às suas próprias políticas de privacidade.</p>

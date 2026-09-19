@@ -15,17 +15,17 @@ export default async function (browser) {
   await t('a home mostra as três origens de captura', async () => {
     const abas = await page.locator('.home-capture-nav a').allInnerTexts()
     certo(abas.length === 3, `abas: ${abas.join(', ')}`)
-    certo(/Grava/.test(abas[0]) && /Áudio/.test(abas[1]) && /Vídeo/.test(abas[2]), `rótulos: ${abas.join(', ')}`)
+    certo(/Gravar/.test(abas[0]) && /Arquivo/.test(abas[1]) && /Link/.test(abas[2]), `rótulos: ${abas.join(', ')}`)
   })
 
   await t('cada origem tem rota própria e painel próprio', async () => {
-    await page.locator('.home-capture-nav a', { hasText: 'Áudio' }).click()
+    await page.locator('.home-capture-nav a', { hasText: 'Arquivo' }).click()
     await page.waitForSelector('.drop-zone', { timeout: 10000 })
     certo(page.url().includes('#/audio'), `rota: ${page.url()}`)
-    await page.locator('.home-capture-nav a', { hasText: 'Vídeo' }).click()
+    await page.locator('.home-capture-nav a', { hasText: 'Link' }).click()
     await page.waitForSelector('.url-form', { timeout: 10000 })
     certo(page.url().includes('#/video'), `rota: ${page.url()}`)
-    await page.locator('.home-capture-nav a', { hasText: 'Gravação' }).click()
+    await page.locator('.home-capture-nav a', { hasText: 'Gravar' }).click()
     await page.waitForSelector('.record-btn', { timeout: 10000 })
   })
 

@@ -16,7 +16,7 @@ export function formatTimestamp(seconds) {
 }
 
 export function formatRange(start, end) {
-  return `${formatTimestamp(start)} – ${formatTimestamp(end)}`
+  return `${formatTimestamp(start)} a ${formatTimestamp(end)}`
 }
 
 // Trechos que tocam o intervalo. Uma fala que começa antes do corte e termina

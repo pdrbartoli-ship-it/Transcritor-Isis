@@ -255,7 +255,7 @@ function Faturamento({ plano, ciclo, setCiclo, assinando, demorando, onAssinar, 
         {assinando ? (
           <>
             <span className="spinner spinner-sm" />
-            {demorando ? 'Ainda abrindo — o servidor está acordando…' : 'Abrindo pagamento…'}
+            {demorando ? 'Ainda abrindo. O servidor está acordando…' : 'Abrindo pagamento…'}
           </>
         ) : 'Continuar para o pagamento'}
       </button>

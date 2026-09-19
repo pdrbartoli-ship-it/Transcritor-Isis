@@ -115,3 +115,11 @@ export const IconPopOut = (p) => (
 export const IconCaretDown = (p) => (
   <svg {...base} {...p}><polyline points="6 9 12 15 18 9" /></svg>
 )
+// Marcador de tarefa: um círculo vazio, sem tique. É uma ação combinada, não
+// um estado de "feito" que o item não tem.
+export const IconCircle = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="8" /></svg>
+)
+export const IconMenu = (p) => (
+  <svg {...base} {...p}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
+)

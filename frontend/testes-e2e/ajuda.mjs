@@ -30,6 +30,9 @@ export async function abrirNavegador() {
       // teste de gravação sai do lugar.
       '--use-fake-device-for-media-stream',
       '--use-fake-ui-for-media-stream',
+      // O /dev/shm do codespace tem 64 MB: com várias páginas abertas o
+      // Chromium estoura esse espaço e a aba cai ("Page crashed").
+      '--disable-dev-shm-usage',
       '--autoplay-policy=no-user-gesture-required',
     ],
   })
@@ -134,8 +137,9 @@ export async function entrar(page, { rota = '' } = {}) {
   await page.waitForLoadState('networkidle')
   // Já logado (contexto reaproveitado): a landing nem aparece.
   if (await page.locator('.sidebar').count()) return
-  const entrarBtn = page.getByRole('button', { name: 'Entrar', exact: true }).first()
-  if (await entrarBtn.count()) await entrarBtn.click()
+  // Desde o modo convidado a landing não tem mais um "Entrar": a barra dela
+  // oferece "Usar o Dito" (sem conta). O login com conta mora em #/auth.
+  if (!(await page.locator('input[type="email"]').count())) await page.goto(BASE + '#/auth')
   await page.waitForSelector('input[type="email"]', { timeout: 15000 })
   // A tela abre na aba "Criar conta": sem este clique o submit tenta cadastrar.
   await page.getByRole('button', { name: 'Acessar', exact: true }).click()
@@ -143,6 +147,10 @@ export async function entrar(page, { rota = '' } = {}) {
   await page.fill('input[type="password"]', creds.password)
   await page.click('button[type="submit"]')
   await page.waitForSelector('.sidebar', { timeout: 40000 })
+  if (rota && !page.url().endsWith(rota)) {
+    await page.goto(BASE + rota)
+    await page.waitForSelector('.sidebar', { timeout: 20000 })
+  }
 }
 
 // ── Faxina ───────────────────────────────────────────────────

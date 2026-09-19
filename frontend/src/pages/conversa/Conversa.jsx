@@ -3,7 +3,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
 import { planoPorId } from '../../lib/planos'
-import { IconChevron, IconDownload } from '../../components/Icons'
+import { IconChevron, IconDownload, IconCircle } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { track } from '../../lib/analytics'
@@ -143,7 +143,7 @@ export default function Conversa() {
         </section>
 
         <section className="conversa-block">
-          <h2>Lista de to do's</h2>
+          <h2>Tarefas</h2>
           {todos.length === 0 ? (
             <p className="text-muted text-sm">Nenhuma ação ficou combinada nesta conversa.</p>
           ) : (
@@ -153,7 +153,7 @@ export default function Conversa() {
                 {todos.slice(0, 4).map((t, i) => (
                   <li key={i}>
                     <Card onOpen={() => open('todos', 'todo_aberto', { state: { focus: i } })} className="todo-card">
-                      <span className="todo-check" aria-hidden="true">—</span>
+                      <span className="todo-check" aria-hidden="true"><IconCircle width={14} height={14} /></span>
                       <span className="todo-main">
                         <span className="todo-task">{t.task}</span>
                         {(t.owners?.length > 0 || t.due) && (
@@ -195,7 +195,7 @@ export default function Conversa() {
                   aria-selected={i === chapter}
                   className={`timeline-slot ${i === chapter ? 'on' : ''}`}
                   style={{ flexGrow: width }}
-                  title={`${formatRange(c.start, c.end)} — ${c.title}`}
+                  title={`${c.title} (${formatRange(c.start, c.end)})`}
                   onClick={() => (i === chapter ? open('timeline', 'timeline_aberta', { state: { focus: i } }) : setChapter(i))}
                 />
               )

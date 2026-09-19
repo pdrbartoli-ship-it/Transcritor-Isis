@@ -77,7 +77,7 @@ export default function AssinaturaSucesso() {
         ) : tentando ? (
           <>
             <h3>Pagamento recebido</h3>
-            <p className="text-muted">Estamos ativando seu plano — isso leva só um instante…</p>
+            <p className="text-muted">Ativando seu plano. Leva só um instante…</p>
             <div className="spinner" style={{ margin: '18px auto 0' }} />
           </>
         ) : (

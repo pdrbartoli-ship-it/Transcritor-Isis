@@ -16,7 +16,7 @@ export const MODOS = {
   },
   [MODO_COMPLETA]: {
     label: 'Transcrição completa',
-    hint: '4 tópicos, lista de próximos passos e resumo minuto a minuto.',
+    hint: '4 tópicos, tarefas e resumo minuto a minuto.',
   },
 }
 

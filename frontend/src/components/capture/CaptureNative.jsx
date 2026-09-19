@@ -46,9 +46,9 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
               </button>
               <p className="record-label">
                 {isRecording
-                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} — {formatTime(recordingTime)}</>
+                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} · {formatTime(recordingTime)}</>
                   : isFinalizing
-                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação — {formatTime(recordingTime)}</>
+                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação · {formatTime(recordingTime)}</>
                     : 'Toque para gravar'}
               </p>
               {isRecording && !isFinalizing && (
@@ -102,7 +102,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
                 Escolher áudio ou vídeo
               </button>
               <p className="text-muted text-sm pick-file-hint">
-                Serve áudio do WhatsApp, gravação de reunião, vídeo salvo — MP3, M4A, OGG, OPUS, MP4 e outros.
+                Áudio do WhatsApp, gravação de reunião ou vídeo salvo: MP3, M4A, OGG, OPUS, MP4 e outros.
               </p>
             </>
           )}

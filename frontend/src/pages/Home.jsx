@@ -9,11 +9,12 @@ import { IconMic, IconLink, IconFile } from '../components/Icons'
 
 // As três origens de captura. Viviam pequenas na barra lateral; centralizadas
 // e maiores aqui, é a primeira coisa que a home mostra — não uma nav perdida
-// ao lado do resto da navegação.
+// ao lado do resto da navegação. Os rótulos dizem o que se faz em cada uma:
+// "Áudio" aceitava vídeo e "Vídeo" era, na verdade, colar um link.
 const CAPTURE_MODES = [
-  { to: '/', label: 'Gravação', Icon: IconMic },
-  { to: '/audio', label: 'Áudio', Icon: IconFile },
-  { to: '/video', label: 'Vídeo', Icon: IconLink },
+  { to: '/', label: 'Gravar', Icon: IconMic },
+  { to: '/audio', label: 'Arquivo', Icon: IconFile },
+  { to: '/video', label: 'Link', Icon: IconLink },
 ]
 
 export default function Home({ mode = 'record' }) {
@@ -72,9 +73,10 @@ export default function Home({ mode = 'record' }) {
       </div>
 
       <div className="home-capture">
+        {/* Nomeia a tarefa, sem cumprimento de chatbot. O subtítulo que repetia
+            "grave, envie ou cole" saiu: as abas logo abaixo já dizem isso. */}
         <div className="home-greeting">
-          <h1>O que vamos registrar hoje?</h1>
-          <p className="text-muted">Grave, envie um arquivo ou cole um link — a gente transcreve e organiza.</p>
+          <h1>Nova conversa</h1>
         </div>
 
         <nav className="capture-nav home-capture-nav" aria-label="O que você quer transcrever">

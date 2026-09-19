@@ -46,7 +46,7 @@ export async function openMiniWindow() {
     // congelada no dia do build. A janelinha tem de vir de onde veio a janela
     // principal — o site publicado —, senão as duas rodam versões diferentes.
     url: window.location.protocol === 'https:' ? `${window.location.origin}/#/mini` : 'index.html#/mini',
-    title: 'Dito — gravando',
+    title: 'Dito · gravando',
     width: MINI_W,
     height: MINI_H,
     resizable: false,

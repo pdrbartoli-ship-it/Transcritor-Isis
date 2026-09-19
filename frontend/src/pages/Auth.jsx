@@ -213,7 +213,7 @@ export default function Auth() {
             onClick={resendConfirmation}
             disabled={loading || resent}
           >
-            {loading ? 'Enviando...' : 'Reenviar e-mail'}
+            {loading ? 'Enviando…' : 'Reenviar e-mail'}
           </button>
           <button
             className="btn-ghost btn-full"
@@ -232,8 +232,8 @@ export default function Auth() {
       <div className="auth-page">
         <div className="auth-card auth-created">
           <div className="feedback-check"><IconCheck width={26} height={26} /></div>
-          <h3>Conta criada! 🎉</h3>
-          <p className="text-muted">Tudo certo, {email}. Estamos te levando para o Dito…</p>
+          <h3>Conta criada</h3>
+          <p className="text-muted">Abrindo o Dito…</p>
           <div className="spinner" style={{ margin: '18px auto 0' }} />
         </div>
       </div>
@@ -245,7 +245,7 @@ export default function Auth() {
       <div className="auth-card">
         <div className="auth-logo">
           <span className="brand">Dito<span className="dot">.</span></span>
-          <p>Capture, transcreva e organize suas conversas</p>
+          <p>Transcreve e resume qualquer conversa</p>
         </div>
 
         <div className="auth-tabs">
@@ -293,7 +293,7 @@ export default function Auth() {
           {message && <div className="alert alert-success">{message}</div>}
 
           <button type="submit" className="btn-primary btn-full" disabled={!canSubmit}>
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            {loading ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>
 
           {mode === 'login' && (

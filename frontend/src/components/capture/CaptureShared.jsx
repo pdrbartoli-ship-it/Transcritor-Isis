@@ -212,7 +212,7 @@ export function RecordingControls({ paused, onPause, onResume, mini }) {
 export function RecordingReview({ recordingTime, onSubmit, onReset, loading }) {
   return (
     <>
-      <p className="record-label">Gravação concluída — {formatTime(recordingTime)}</p>
+      <p className="record-label">Gravação concluída · {formatTime(recordingTime)}</p>
       <div className="record-actions">
         <TranscribeButton
           recomendado={modoRecomendado({ origem: 'record', durationSec: recordingTime })}

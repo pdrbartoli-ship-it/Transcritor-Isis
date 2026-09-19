@@ -34,7 +34,7 @@ const navegador = await chromium.launch()
   checar('Landing fica clara mesmo com tema escuro salvo', tema === 'light', `data-theme="${tema}"`)
 
   const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-  checar('Fundo da landing é o claro (#faf9f5)', fundo === 'rgb(250, 249, 245)', fundo)
+  checar('Fundo da landing é o claro (#f6f8f7)', fundo === 'rgb(246, 248, 247)', fundo)
 
   // A preferência do usuário não pode ter sido apagada pela visita à landing.
   const salvo = await page.evaluate(() => localStorage.getItem('dito-theme'))

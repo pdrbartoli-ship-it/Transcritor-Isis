@@ -1,10 +1,15 @@
-// Renderizador mínimo: negrito, régua, listas e parágrafos. Basta para o que o
-// modelo devolve e evita carregar uma biblioteca de markdown inteira no bundle.
+// Renderizador mínimo: negrito, régua, listas, citações, títulos e parágrafos.
+// Basta para o que o modelo devolve e evita carregar uma biblioteca de markdown
+// inteira no bundle.
 
 // Um "- " no começo da linha é lista, não travessão. Sem isto o resumo saía com
 // o hífen literal em cada linha, que é exatamente a aparência de markdown que
 // ninguém renderizou.
 const BULLET = /^\s*[-*]\s+/
+// O chat cita a fala da transcrição com "> " e às vezes abre seção com "## ".
+// Sem tratar, o sinal saía literal no meio da resposta.
+const CITACAO = /^\s*>\s?/
+const TITULO = /^\s*#{1,6}\s+/
 
 export default function MarkdownText({ text }) {
   return <div className="md">{blocos(text.split('\n'))}</div>
@@ -30,6 +35,8 @@ function blocos(lines) {
     }
     fecharLista()
     if (line === '---') saida.push(<hr key={i} />)
+    else if (CITACAO.test(line)) saida.push(<blockquote key={i}>{inline(line.replace(CITACAO, ''))}</blockquote>)
+    else if (TITULO.test(line)) saida.push(<p key={i}><strong>{inline(line.replace(TITULO, '').replace(/\*\*/g, ''))}</strong></p>)
     else if (line === '') saida.push(<br key={i} />)
     else if (line.startsWith('**') && line.endsWith('**') && line.length > 4) {
       saida.push(<p key={i}><strong>{line.slice(2, -2)}</strong></p>)

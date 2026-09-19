@@ -16,7 +16,7 @@ import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin, IconMenu,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -362,7 +362,7 @@ export default function Layout() {
 
       <div className="content-wrap">
         <div className="topbar-mobile">
-          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Abrir menu">☰</button>
+          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Abrir menu"><IconMenu width={20} height={20} /></button>
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
         </div>
         <div className="content">

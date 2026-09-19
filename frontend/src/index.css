@@ -1,34 +1,45 @@
 /* ── Design tokens ──────────────────────────────────────── */
+/* Verde-pinho sobre neutros levemente esverdeados. A paleta anterior (creme,
+   terracota e serifa em tudo) era a do Claude.ai, e quem conhece o Claude lia
+   o Dito como uma cópia dele. O verde também separa a marca do vermelho de
+   gravação: com o terracota, o "gravando" e o botão principal eram quase a
+   mesma cor. Todos os pares de texto passam de 4,5:1 nos dois temas (o branco
+   sobre o terracota ficava em 3,9:1).
+
+   Escala de fonte: 11 (só rótulo em caixa alta), 12, 13, 14, 16, 20 e 28.
+   Fora dela só o logotipo e os títulos de vitrine da landing (clamp). */
 :root, [data-theme="light"] {
-  --bg: #faf9f5;
+  --bg: #f6f8f7;
   --surface: #ffffff;
-  --sidebar-bg: #f4f2ea;
-  --surface-2: #efece2;
-  --border: #e7e3d8;
-  --text: #1c1b19;
-  --text-muted: #73716a;
-  --accent: #c96442;
-  --accent-hover: #b5533a;
+  --sidebar-bg: #eef2f0;
+  --surface-2: #e7ecea;
+  --border: #d9e0dd;
+  --text: #141a18;
+  --text-muted: #5b6763;
+  --accent: #1a5c4e;
+  --accent-hover: #134a3f;
   --accent-text: #ffffff;
-  --accent-soft: rgba(201, 100, 66, 0.10);
-  --hover: rgba(0, 0, 0, 0.045);
+  --accent-soft: rgba(26, 92, 78, 0.09);
+  --hover: rgba(20, 40, 34, 0.05);
   /* Seletor de segmentos: o trilho afunda em relação ao fundo e o segmento
      ativo sobe. Nos dois temas é a mesma leitura — o que muda é que no claro
      "subir" é ficar branco e no escuro é clarear. */
-  --track: rgba(0, 0, 0, 0.05);
+  --track: rgba(20, 40, 34, 0.06);
   --seg-on: #ffffff;
   --record: #c0392b;
+  --record-soft: rgba(192, 57, 43, 0.08);
   --success-bg: rgba(22, 130, 74, 0.10);
   --success-text: #15803d;
   --danger: #c0392b;
   --danger-bg: rgba(192, 57, 43, 0.08);
-  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
-  --scrollbar-thumb: #c9c4b4;
-  --scrollbar-thumb-hover: #a8a294;
+  --shadow: 0 1px 2px rgba(16, 28, 24, 0.05), 0 8px 24px rgba(16, 28, 24, 0.07);
+  --scrollbar-thumb: #c3cbc8;
+  --scrollbar-thumb-hover: #a1aca8;
   /* Sem uma sans própria o app saía em Segoe no Windows, Roboto no Android e
-     SF no iOS — três larguras, três alturas de x, e todo espaçamento ajustado
-     numa delas quebrando nas outras. Inter é a substituta documentada da
-     StyreneB; a pilha do sistema fica só como rede de segurança offline. */
+     SF no iOS: três larguras, três alturas de x, e todo espaçamento ajustado
+     numa delas quebrando nas outras. A pilha do sistema fica só como rede de
+     segurança offline. A serifa é só do logotipo e dos títulos grandes da
+     landing; no app, misturada ao Inter em corpos parecidos, lia como erro. */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --radius: 12px;
@@ -38,29 +49,30 @@
 }
 
 [data-theme="dark"] {
-  --bg: #262624;
-  --surface: #30302d;
-  --sidebar-bg: #1f1e1d;
-  --surface-2: #35332f;
-  --border: #3c3a35;
-  --text: #f5f4ee;
-  --text-muted: #a6a39b;
-  --accent: #d97757;
-  --accent-hover: #e08a6d;
-  --accent-text: #1f1e1d;
-  --accent-soft: rgba(217, 119, 87, 0.16);
+  --bg: #151a18;
+  --surface: #1c2220;
+  --sidebar-bg: #101413;
+  --surface-2: #242b28;
+  --border: #2f3834;
+  --text: #e7ecea;
+  --text-muted: #9aa6a1;
+  --accent: #6cbea5;
+  --accent-hover: #86ccb6;
+  --accent-text: #0e1412;
+  --accent-soft: rgba(108, 190, 165, 0.14);
   --hover: rgba(255, 255, 255, 0.06);
-  --track: rgba(0, 0, 0, 0.24);
-  --seg-on: #3a3834;
-  --record: #e5705a;
+  --track: rgba(0, 0, 0, 0.28);
+  --seg-on: #2b3330;
+  --record: #f07a6c;
+  --record-soft: rgba(240, 122, 108, 0.14);
   --success-bg: rgba(52, 199, 120, 0.14);
   --success-text: #5fd089;
-  --danger: #e5705a;
-  --danger-bg: rgba(229, 112, 90, 0.14);
+  --danger: #f07a6c;
+  --danger-bg: rgba(240, 122, 108, 0.14);
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.45);
   /* No tema escuro o contraste vem de clarear, não de escurecer. */
-  --scrollbar-thumb: #55524b;
-  --scrollbar-thumb-hover: #6e6a61;
+  --scrollbar-thumb: #3d4744;
+  --scrollbar-thumb-hover: #55615c;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -106,7 +118,7 @@ body {
 /* ── Brand ─────────────────────────────────────────────── */
 .brand {
   font-family: var(--font-serif);
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -226,10 +238,10 @@ input::placeholder { color: var(--text-muted); }
 .auth-tabs button { flex: 1; padding: 8px; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 13px; font-weight: 500; }
 .auth-tabs button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .auth-created { text-align: center; }
-.auth-created h3 { font-family: var(--font-serif); font-size: 21px; font-weight: 500; margin-bottom: 8px; }
+.auth-created h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px; }
 .auth-forgot {
   display: block; margin: 14px auto 0; padding: 4px;
-  background: transparent; color: var(--text-muted); font-size: 12.5px;
+  background: transparent; color: var(--text-muted); font-size: 13px;
 }
 .auth-forgot:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
 .field-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
@@ -240,7 +252,8 @@ input::placeholder { color: var(--text-muted); }
    nada aqui pode fixar altura. Usa só os tokens do app de propósito — quem
    baixa depois reencontra exatamente a mesma cara. */
 .lp { min-height: 100%; background: var(--bg); }
-.lp h1, .lp h2, .lp h3, .lp h4 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; }
+.lp h1, .lp h2 { font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; }
+.lp h3, .lp h4 { font-weight: 600; letter-spacing: -0.01em; }
 
 /* ── Barra: marca à esquerda, dois links no meio, entrar + instalar ── */
 .lp-nav {
@@ -253,7 +266,7 @@ input::placeholder { color: var(--text-muted); }
 }
 /* A borda só aparece depois que a página rola: no topo ela cortaria o hero. */
 .lp-nav { border-bottom-color: var(--border); }
-.lp-nav .brand { font-size: 22px; cursor: default; }
+.lp-nav .brand { font-size: 20px; cursor: default; }
 .lp-nav-links { display: flex; gap: 4px; margin-right: auto; margin-left: 12px; }
 .lp-nav-links button {
   border: none; background: transparent; cursor: pointer;
@@ -268,7 +281,7 @@ input::placeholder { color: var(--text-muted); }
   padding: 7px 12px; border-radius: var(--radius-sm);
 }
 .lp-nav-login:hover { background: var(--hover); }
-.lp-nav-btn { padding: 8px 16px; border-radius: 999px; font-size: 13.5px; }
+.lp-nav-btn { padding: 8px 16px; border-radius: 999px; font-size: 14px; }
 
 /* ── Hero: uma coluna centrada, punchline em cima da prova visual ── */
 .lp-hero {
@@ -284,14 +297,14 @@ input::placeholder { color: var(--text-muted); }
    frase perde o par e vira um título torto. */
 .lp-hero h1 em { display: block; font-style: italic; color: var(--accent); }
 .lp-sub {
-  font-size: 17px; color: var(--text-muted); margin: 22px auto 0; max-width: 54ch;
+  font-size: 20px; line-height: 1.5; color: var(--text-muted); margin: 22px auto 0; max-width: 46ch;
 }
 .lp-cta { margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .lp-btn-lg, a.lp-btn-lg {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 13px 26px; font-size: 15px; border-radius: 999px;
+  padding: 13px 26px; font-size: 16px; border-radius: 999px;
 }
-.lp-cta-note { font-size: 12.5px; color: var(--text-muted); }
+.lp-cta-note { font-size: 13px; color: var(--text-muted); }
 .lp-hero-shot { margin-top: 52px; }
 
 /* ── Demonstração: a interface do app desenhada em HTML ── */
@@ -312,20 +325,20 @@ input::placeholder { color: var(--text-muted); }
 }
 .lp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
 .lp-shot-url {
-  margin-left: 14px; font-size: 11.5px; color: var(--text-muted);
+  margin-left: 14px; font-size: 12px; color: var(--text-muted);
   background: var(--bg); border-radius: 999px; padding: 3px 12px;
 }
 .lp-shot-body { padding: 22px 24px 24px; }
 .lp-shot-head {
   display: flex; align-items: center; gap: 8px;
-  font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px;
+  font-size: 13px; color: var(--text-muted); margin-bottom: 16px;
 }
 .lp-timer { font-variant-numeric: tabular-nums; }
 .lp-timer.on { color: var(--record); font-weight: 600; }
 .lp-stop {
   margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font-family: inherit; font-size: 11.5px; padding: 5px 11px; border-radius: 999px;
+  font-family: inherit; font-size: 12px; padding: 5px 11px; border-radius: 999px;
   pointer-events: none; transition: transform 0.18s, background 0.18s, color 0.18s;
 }
 .lp-stop.press { background: var(--accent); color: var(--accent-text); border-color: var(--accent); transform: scale(0.94); }
@@ -359,7 +372,7 @@ input::placeholder { color: var(--text-muted); }
 .lp-card h4 { font-size: 13px; margin-bottom: 8px; }
 .lp-card ul { list-style: none; display: grid; gap: 6px; }
 .lp-card li {
-  font-size: 12.5px; color: var(--text-muted); padding-left: 14px;
+  font-size: 13px; color: var(--text-muted); padding-left: 14px;
   position: relative; line-height: 1.5; border-radius: 5px;
   transition: color 0.3s, background 0.3s;
 }
@@ -424,11 +437,11 @@ input::placeholder { color: var(--text-muted); }
   border-radius: var(--radius); padding: 32px; display: flex; flex-direction: column;
 }
 .lp-feat-tag {
-  font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--accent);
 }
-.lp-feat h3 { font-size: 22px; margin: 10px 0 10px; max-width: 640px; }
-.lp-feat > p { color: var(--text-muted); font-size: 14.5px; margin-bottom: 22px; max-width: 640px; }
+.lp-feat h3 { font-size: 20px; margin: 10px 0 10px; max-width: 640px; }
+.lp-feat > p { color: var(--text-muted); font-size: 16px; margin-bottom: 22px; max-width: 640px; }
 .lp-feat-link {
   margin-top: 20px; align-self: flex-start;
   display: inline-flex; align-items: center; gap: 7px;
@@ -457,7 +470,7 @@ input::placeholder { color: var(--text-muted); }
 }
 .lp-privacy-inner svg { color: var(--accent); margin-bottom: 18px; }
 .lp-privacy-inner h2 { font-size: clamp(24px, 3vw, 32px); margin-bottom: 16px; }
-.lp-privacy-inner p { color: var(--text-muted); max-width: 58ch; margin: 0 auto; font-size: 15px; }
+.lp-privacy-inner p { color: var(--text-muted); max-width: 58ch; margin: 0 auto; font-size: 16px; }
 .lp-privacy-foot { margin-top: 20px !important; font-size: 13px !important; }
 .lp-privacy-foot a { color: var(--accent); }
 
@@ -469,15 +482,15 @@ input::placeholder { color: var(--text-muted); }
 .lp-tag {
   display: inline-block; padding: 4px 11px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent);
-  font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
 }
 .lp-desktop h2 { font-size: clamp(23px, 2.8vw, 30px); margin: 16px 0 14px; }
-.lp-desktop p { color: var(--text-muted); font-size: 15px; margin-bottom: 26px; }
+.lp-desktop p { color: var(--text-muted); font-size: 16px; margin-bottom: 26px; }
 .lp-desktop strong { color: var(--text); font-weight: 600; }
 
 .lp-who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
-.lp-who h3 { font-size: 17px; margin-bottom: 8px; }
-.lp-who p { color: var(--text-muted); font-size: 14px; }
+.lp-who h3 { font-size: 16px; margin-bottom: 8px; }
+.lp-who p { color: var(--text-muted); font-size: 16px; }
 
 /* ── Preços: três colunas lado a lado, o do meio em destaque ── */
 .lp-planos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
@@ -496,15 +509,15 @@ input::placeholder { color: var(--text-muted); }
   font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
   padding: 4px 12px; border-radius: 999px; white-space: nowrap;
 }
-.lp-plano h3 { font-size: 19px; }
+.lp-plano h3 { font-size: 16px; }
 .lp-plano-preco { display: flex; align-items: baseline; gap: 7px; margin: 12px 0 6px; }
-.lp-plano-preco strong { font-family: var(--font-serif); font-size: 36px; font-weight: 600; letter-spacing: -0.02em; }
+.lp-plano-preco strong { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .lp-plano-preco span { font-size: 13px; color: var(--text-muted); }
-.lp-plano-resumo { font-size: 13.5px; color: var(--text-muted); margin-bottom: 20px; }
+.lp-plano-resumo { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
 .lp-plano ul { list-style: none; display: grid; gap: 10px; margin-bottom: 26px; }
 .lp-plano li {
   display: grid; grid-template-columns: 16px 1fr; gap: 8px; align-items: start;
-  font-size: 13.5px; color: var(--text-muted); line-height: 1.45;
+  font-size: 14px; color: var(--text-muted); line-height: 1.45;
 }
 .lp-plano li svg { color: var(--accent); margin-top: 3px; }
 .lp-plano-btn { margin-top: auto; width: 100%; justify-content: center; padding: 11px 18px; border-radius: 999px; font-size: 14px; }
@@ -539,6 +552,7 @@ input::placeholder { color: var(--text-muted); }
 }
 @media (max-width: 860px) {
   .lp-hero { padding-top: 40px; }
+  .lp-sub { font-size: 16px; }
   .lp-hero h1 { max-width: none; }
   .lp-nav { padding: 12px 16px; gap: 8px; }
   /* No celular a barra fica só com marca, entrar e instalar: os dois âncoras
@@ -618,7 +632,7 @@ input::placeholder { color: var(--text-muted); }
   border-radius: var(--radius-sm);
   color: var(--text);
   text-decoration: none;
-  font-size: 13.5px;
+  font-size: 13px;
   background: transparent;
   text-align: left;
 }
@@ -695,7 +709,7 @@ input::placeholder { color: var(--text-muted); }
 .session-item .row-kind-icon { opacity: 0.65; }
 .children-empty { font-size: 13px; color: var(--text-muted); opacity: 0.6; padding: 7px 10px; }
 .children-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
   color: var(--text-muted); opacity: 0.75;
   padding: 8px 10px 3px;
 }
@@ -724,7 +738,7 @@ input::placeholder { color: var(--text-muted); }
 .row-actions > button {
   display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
   padding: 7px 9px; border-radius: var(--radius-sm);
-  font-size: 12.5px; color: var(--text); background: transparent;
+  font-size: 12px; color: var(--text); background: transparent;
 }
 .row-actions > button:hover { background: var(--hover); }
 .row-actions > button svg { color: var(--text-muted); flex-shrink: 0; }
@@ -737,7 +751,7 @@ input::placeholder { color: var(--text-muted); }
   padding: 6px 8px; border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); background: transparent;
 }
 .move-target:hover { background: var(--hover); color: var(--text); }
-.move-empty { padding: 6px 8px; font-size: 11.5px; color: var(--text-muted); }
+.move-empty { padding: 6px 8px; font-size: 12px; color: var(--text-muted); }
 .inline-rename {
   width: 100%; font-size: 13px; padding: 8px 10px; margin: 1px 0;
   border: 1px solid var(--accent); border-radius: var(--radius-sm);
@@ -758,7 +772,7 @@ input::placeholder { color: var(--text-muted); }
 .session-row.archived .row-more { opacity: 1; }
 
 .sidebar-foot { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
-/* O coral é do CTA primário. Preencher o feedback com ele apagava a ação
+/* A cor de destaque é do CTA primário. Preencher o feedback com ele apagava a ação
    principal do produto — aqui ele volta a ser um link de rodapé. */
 .nav-feedback { margin-top: 4px; color: var(--text-muted); font-weight: 400; background: transparent; }
 .nav-feedback svg { color: var(--text-muted); }
@@ -769,12 +783,12 @@ input::placeholder { color: var(--text-muted); }
 /* No lugar da linha do usuário, para quem entrou sem conta — como o convite
    para entrar no rodapé do ChatGPT deslogado. */
 .foot-convite { margin-top: 6px; padding: 14px 10px 10px; border-top: 1px solid var(--border); }
-.foot-convite-titulo { font-size: 13.5px; font-weight: 600; color: var(--text); }
-.foot-convite-texto { margin: 4px 0 12px; font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
+.foot-convite-titulo { font-size: 13px; font-weight: 600; color: var(--text); }
+.foot-convite-texto { margin: 4px 0 12px; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
 .foot-convite .btn-secondary { width: 100%; padding: 9px 14px; font-weight: 500; }
-.foot-convite-site { display: block; width: 100%; margin-top: 6px; padding: 6px; background: transparent; font-size: 12.5px; color: var(--text-muted); }
+.foot-convite-site { display: block; width: 100%; margin-top: 6px; padding: 6px; background: transparent; font-size: 12px; color: var(--text-muted); }
 .foot-convite-site:hover { color: var(--text); text-decoration: underline; }
-.foot-version { display: block; padding: 0 10px 4px; font-size: 10.5px; color: var(--text-muted); opacity: .55; font-variant-numeric: tabular-nums; }
+.foot-version { display: block; padding: 0 10px 4px; font-size: 11px; color: var(--text-muted); opacity: .55; font-variant-numeric: tabular-nums; }
 
 /* ── Content ────────────────────────────────────────────── */
 .content-wrap { display: flex; flex-direction: column; flex: 1; height: 100%; overflow: hidden; min-width: 0; }
@@ -788,15 +802,14 @@ input::placeholder { color: var(--text-muted); }
 .home { max-width: 1140px; margin: 0 auto; padding: 7vh 28px 56px; display: flex; flex-direction: column; }
 .home-capture { width: 100%; max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
 .home-greeting { text-align: center; margin-bottom: 40px; }
-.home-greeting h1 { font-family: var(--font-serif); font-size: 30px; font-weight: 500; letter-spacing: -0.01em; }
-.home-greeting p { color: var(--text-muted); margin-top: 8px; font-size: 15px; }
+.home-greeting h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
 /* Relógio de minutos: no canto direito, fora do eixo central da home, e em tom
    apagado — é consulta, não chamada para ação. A altura mínima guarda o lugar
    dele antes de o saldo chegar, para o título não descer sozinho. */
 .home-topo { display: flex; justify-content: flex-end; min-height: 20px; margin-bottom: 8px; }
 .contador-minutos {
   display: inline-flex; align-items: center; gap: 7px;
-  font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
 .contador-trilho { fill: none; stroke: var(--border); stroke-width: 2.5; }
 .contador-arco {
@@ -807,7 +820,7 @@ input::placeholder { color: var(--text-muted); }
 .split-minutos { font-weight: 400; opacity: 0.85; }
 .linha-consumo {
   margin-top: 10px; text-align: center;
-  font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+  font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
 .linha-consumo.excede { color: var(--danger); }
 .linha-consumo button {
@@ -837,7 +850,7 @@ input::placeholder { color: var(--text-muted); }
 .record-btn:active:not(:disabled) { transform: scale(0.96); }
 .record-btn.hero { width: 132px; height: 132px; }
 .record-btn.hero svg { width: 42px; height: 42px; }
-.record-btn.recording { border-color: var(--record); background: var(--accent-soft); color: var(--record); animation: pulse-ring 1.4s ease-in-out infinite; }
+.record-btn.recording { border-color: var(--record); background: var(--record-soft); color: var(--record); animation: pulse-ring 1.4s ease-in-out infinite; }
 .record-label { font-size: 14px; color: var(--text-muted); display: flex; align-items: center; gap: 7px; min-height: 20px; }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--record); animation: blink 1s step-start infinite; }
 /* Pausado o ponto para de piscar e perde a cor de gravação: é o sinal que se lê
@@ -848,8 +861,8 @@ input::placeholder { color: var(--text-muted); }
 .record-controls .btn-ghost { display: inline-flex; align-items: center; gap: 6px; }
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse-ring {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.22); }
-  50% { box-shadow: 0 0 0 12px rgba(192,57,43,0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--record) 22%, transparent); }
+  50% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--record) 0%, transparent); }
 }
 
 .capture-divider { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 440px; margin: 34px 0 18px; color: var(--text-muted); font-size: 12px; }
@@ -866,7 +879,7 @@ input::placeholder { color: var(--text-muted); }
   gap: 14px;
 }
 .capture-mode { width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; }
-.capture-mode-title { font-family: var(--font-serif); font-size: 17px; margin-bottom: 18px; text-align: center; }
+.capture-mode-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; text-align: center; }
 .capture-mode .drop-zone, .capture-mode .url-form { width: 100%; }
 
 .drop-zone {
@@ -887,9 +900,13 @@ input::placeholder { color: var(--text-muted); }
 .md li::marker { color: var(--text-muted); }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 .md strong { font-weight: 600; }
+.md blockquote {
+  margin: 0 0 12px; padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--accent); color: var(--text-muted);
+}
 
 /* ── Avatar ─────────────────────────────────────────────── */
-.avatar { width: 40px; height: 40px; background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+.avatar { width: 40px; height: 40px; background: var(--accent-soft); color: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
 
 /* ── Empty state ────────────────────────────────────────── */
 .empty-state { text-align: center; padding: 48px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -903,14 +920,14 @@ input::placeholder { color: var(--text-muted); }
 /* Preço no card: anual por mês como manchete, as duas notas embaixo. O grátis
    leva as duas notas vazias no JSX, para os três blocos terem a mesma altura. */
 .plano-preco-bloco { display: flex; flex-direction: column; gap: 2px; }
-.plano-preco-nota { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
+.plano-preco-nota { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 
 /* Segundo tempo do "Meu plano": as duas formas de pagar o plano escolhido. */
 .faturamento {
   display: flex; flex-direction: column; gap: 12px;
   width: 100%; max-width: 460px; margin: 8px auto 0;
 }
-.faturamento-rotulo { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.faturamento-rotulo { font-size: 13px; font-weight: 600; color: var(--text-muted); }
 .faturamento-opcoes { display: flex; flex-direction: column; gap: 8px; }
 .faturamento-opcao {
   display: flex; align-items: center; gap: 12px;
@@ -924,7 +941,7 @@ input::placeholder { color: var(--text-muted); }
 .faturamento-opcao:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .faturamento-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .faturamento-texto strong { font-size: 14px; font-weight: 600; }
-.faturamento-texto span { font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.faturamento-texto span { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .faturamento-selo {
   font-size: 11px; font-weight: 600; white-space: nowrap;
   color: var(--accent); background: var(--accent-soft);
@@ -934,7 +951,7 @@ input::placeholder { color: var(--text-muted); }
   display: flex; flex-direction: column; gap: 4px;
   padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.faturamento-valor { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.faturamento-valor { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .faturamento-valor i { font-style: normal; font-size: 13px; font-weight: 400; color: var(--text-muted); }
 .faturamento-renova { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .faturamento-btn { width: 100%; justify-content: center; padding: 11px 14px; }
@@ -954,9 +971,9 @@ input::placeholder { color: var(--text-muted); }
   transition: border-color 0.15s, background 0.15s;
 }
 .plano.on { border-color: var(--accent); background: var(--accent-soft); }
-.plano-nome { font-family: var(--font-serif); font-size: 16px; font-weight: 600; }
+.plano-nome { font-size: 16px; font-weight: 600; }
 .plano-preco { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
-.plano-preco i { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+.plano-preco i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--text-muted); }
 /* align-content: start — a lista ocupa a sobra do card (flex: 1) para o botão
    ficar no rodapé, e sem isto a grade esticava as próprias linhas para
    preencher essa sobra, espaçando os benefícios do card mais curto. */
@@ -974,7 +991,7 @@ input::placeholder { color: var(--text-muted); }
    coluna estreita a frase corrida quebrava em três linhas e o pulo voltava. */
 .plano-saldo {
   display: block;
-  font-size: 11.5px; color: var(--text-muted); line-height: 1.35;
+  font-size: 12px; color: var(--text-muted); line-height: 1.35;
   min-height: 2.7em;
 }
 .plano-saldo > span { display: block; }
@@ -982,7 +999,7 @@ input::placeholder { color: var(--text-muted); }
 @keyframes modal-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-.modal-header h3 { font-family: var(--font-serif); font-size: 18px; font-weight: 500; }
+.modal-header h3 { font-size: 16px; font-weight: 600; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 
 /* ── Settings ───────────────────────────────────────────── */
@@ -1020,7 +1037,7 @@ input::placeholder { color: var(--text-muted); }
 .welcome-modal .welcome-lead strong { color: var(--text); }
 
 .feedback-done { text-align: center; padding: 8px 4px; }
-.feedback-done h3 { font-family: var(--font-serif); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
+.feedback-done h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
 .feedback-check {
   width: 52px; height: 52px; border-radius: 50%;
   background: var(--success-bg); color: var(--success-text);
@@ -1034,7 +1051,7 @@ input::placeholder { color: var(--text-muted); }
   display: flex; align-items: center; justify-content: center; gap: 10px;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 16px; font-size: 15px; font-weight: 500;
+  padding: 16px; font-size: 16px; font-weight: 500;
   box-shadow: var(--shadow);
 }
 .pick-file:disabled { opacity: 0.5; }
@@ -1077,9 +1094,9 @@ input::placeholder { color: var(--text-muted); }
 .split-menu button:hover { background: var(--hover); }
 .split-menu button.on { background: var(--accent-soft); }
 .split-menu-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.split-menu-label { font-size: 13.5px; font-weight: 500; }
+.split-menu-label { font-size: 14px; font-weight: 500; }
 .split-badge {
-  font-size: 10.5px; font-weight: 600;
+  font-size: 11px; font-weight: 600;
   color: var(--accent); background: var(--accent-soft);
   border-radius: 999px; padding: 2px 7px;
 }
@@ -1130,7 +1147,7 @@ input::placeholder { color: var(--text-muted); }
   border: 1.5px solid var(--accent);
   animation: processing-breathe 2s ease-out infinite;
 }
-.processing-title { font-weight: 600; font-size: 14.5px; color: var(--text); }
+.processing-title { font-weight: 600; font-size: 14px; color: var(--text); }
 @keyframes processing-breathe {
   0% { transform: scale(0.94); opacity: 0.5; }
   70%, 100% { transform: scale(1.18); opacity: 0; }
@@ -1173,9 +1190,9 @@ input::placeholder { color: var(--text-muted); }
   padding: 18px 20px;
   margin-bottom: 28px;
 }
-.onboarding h3 { font-family: var(--font-serif); font-size: 17px; font-weight: 500; margin-bottom: 12px; }
+.onboarding h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .onboarding ol { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 10px; }
-.onboarding li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.45; }
+.onboarding li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
 .onboarding li::before {
   content: counter(step); flex-shrink: 0;
   width: 22px; height: 22px; border-radius: 50%;
@@ -1220,7 +1237,7 @@ input::placeholder { color: var(--text-muted); }
   .topbar-mobile { display: flex; align-items: center; gap: 12px; height: var(--header-h); padding: 0 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .topbar-mobile .hamburger { background: transparent; color: var(--text); width: 36px; height: 36px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
   .home { padding: 6vh 18px 40px; }
-  .home-greeting h1 { font-size: 25px; }
+  .conversa-head h1 { font-size: 20px; }
   .message .bubble { max-width: 92%; }
   .url-form { flex-direction: column; }
   /* Empilhado, o botão de transcrever ocupa a linha inteira — meio botão
@@ -1233,7 +1250,7 @@ input::placeholder { color: var(--text-muted); }
 /* ---------- Sidebar: busca e lista plana ---------- */
 
 /* Botão de "começar algo". Contornado e discreto, não preenchido de accent: ele
-   fica visível o tempo todo, e um bloco laranja permanente competiria com o
+   fica visível o tempo todo, e um bloco colorido permanente competiria com o
    conteúdo da lista logo abaixo. O destaque vem do contorno e do hover. */
 .sidebar-novo {
   display: flex; align-items: center; gap: 9px;
@@ -1241,7 +1258,7 @@ input::placeholder { color: var(--text-muted); }
   padding: 9px 12px;
   background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
-  font-size: 13.5px; font-weight: 500; text-align: left;
+  font-size: 13px; font-weight: 500; text-align: left;
   box-shadow: var(--shadow);
 }
 .sidebar-novo:hover { background: var(--surface-2); border-color: var(--text-muted); }
@@ -1263,7 +1280,7 @@ input::placeholder { color: var(--text-muted); }
 .sidebar-item.active { background: var(--accent-soft); color: var(--accent); }
 .sidebar-item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-item.tall { flex-direction: column; align-items: flex-start; gap: 3px; padding: 9px 10px; }
-.sidebar-item-sub { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
+.sidebar-item-sub { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 .sidebar-item-sub.muted { opacity: .75; }
 
 /* ---------- Tela de conversa ---------- */
@@ -1304,13 +1321,13 @@ input::placeholder { color: var(--text-muted); }
 
 .conversa { width: 100%; max-width: 760px; margin: 0 auto; }
 .conversa-head { margin-bottom: 26px; }
-.conversa-head h1 { font-family: var(--font-serif); font-size: 24px; font-weight: 500; margin-bottom: 5px; }
+.conversa-head h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; text-wrap: balance; margin-bottom: 6px; }
 .conversa-block { margin-bottom: 30px; }
-.conversa-block h2 { font-family: var(--font-serif); font-size: 15px; font-weight: 500; margin-bottom: 10px; }
+.conversa-block h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .bullet-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
-.bullet-list li { position: relative; padding-left: 16px; font-size: 13.5px; line-height: 1.55; }
+.bullet-list li { position: relative; padding-left: 16px; font-size: 14px; line-height: 1.55; }
 .bullet-list li::before { content: ''; position: absolute; left: 3px; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
-.legacy-summary { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; margin-bottom: 14px; }
+.legacy-summary { white-space: pre-wrap; font-size: 14px; line-height: 1.6; margin-bottom: 14px; }
 .conversa-transcript { white-space: pre-wrap; font-size: 13px; line-height: 1.7; color: var(--text-muted); }
 
 /* ---------- Tela de conversa: blocos navegáveis ---------- */
@@ -1347,20 +1364,20 @@ input::placeholder { color: var(--text-muted); }
 
 .topic-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .topic-card { flex-direction: column; gap: 6px; min-height: 92px; justify-content: center; }
-.topic-label { font-family: var(--font-serif); font-size: 15px; line-height: 1.3; }
-.topic-time { font-size: 11.5px; color: var(--text-muted); }
+.topic-label { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.topic-time { font-size: 12px; color: var(--text-muted); }
 
 /* ---------- To do's ---------- */
 
 .todo-list, .todo-full, .chapter-full { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .todo-card { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
-/* Marcador, não checkbox. O quadrado coral com tique prometia um estado
+/* Marcador, não checkbox. O quadrado colorido com tique prometia um estado
    ("já feito") que o item não tem e uma interação que ele não oferece. */
 .todo-check { flex-shrink: 0; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 3px; color: var(--text-muted); opacity: .8; }
 .todo-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.todo-task { font-size: 13.5px; font-weight: 500; line-height: 1.4; }
-.todo-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
-.todo-meta { font-size: 11.5px; color: var(--text-muted); }
+.todo-task { font-size: 14px; font-weight: 500; line-height: 1.4; }
+.todo-desc { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+.todo-meta { font-size: 12px; color: var(--text-muted); }
 .todo-meta b { font-weight: 500; }
 
 .todo-row, .chapter-row {
@@ -1390,16 +1407,16 @@ input::placeholder { color: var(--text-muted); }
 
 .chapter-preview { flex-direction: column; gap: 7px; }
 .chapter-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.chapter-time { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.chapter-title { font-family: var(--font-serif); font-size: 15px; }
+.chapter-time { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.chapter-title { font-size: 14px; font-weight: 500; }
 
 /* ---------- Trechos da transcrição ---------- */
 
 .trecho { margin-bottom: 16px; }
-.trecho-range { font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
-.fala { margin-bottom: 12px; font-size: 13.5px; line-height: 1.65; }
+.trecho-range { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.fala { margin-bottom: 12px; font-size: 14px; line-height: 1.65; }
 .fala-head { display: block; margin-bottom: 2px; }
-.fala-time { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 8px; }
+.fala-time { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 8px; }
 .fala-speaker { font-size: 12px; font-weight: 500; color: var(--accent); }
 
 /* ---------- Locutores e ações ---------- */
@@ -1411,7 +1428,7 @@ input::placeholder { color: var(--text-muted); }
    lado e os dois quebravam em duas linhas; a bandeira segura o sentido. */
 @media (max-width: 600px) { .reportar-ia-extra { display: none; } }
 .empty-insights { padding: 24px; border: 1px dashed var(--border); border-radius: var(--radius); text-align: center; margin-bottom: 28px; }
-.empty-insights p { font-size: 13.5px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.55; }
+.empty-insights p { font-size: 14px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.55; }
 
 @media (max-width: 600px) {
   .topic-grid { grid-template-columns: 1fr; }
@@ -1435,8 +1452,8 @@ input::placeholder { color: var(--text-muted); }
 .chat-messages { flex: 1; display: flex; flex-direction: column; gap: 30px; padding-bottom: 16px; max-width: 740px; width: 100%; }
 .message { display: flex; }
 .message.user { justify-content: flex-end; }
-.message .bubble { font-size: 15px; line-height: 1.7; }
-/* A pergunta do usuário é uma pílula neutra — sem o laranja saturado, que
+.message .bubble { font-size: 16px; line-height: 1.65; }
+/* A pergunta do usuário é uma pílula neutra — sem a cor de destaque cheia, que
    competia com a resposta pela atenção em vez de só marcar "isto foi você". */
 .message.user .bubble { max-width: 72%; padding: 10px 16px; border-radius: var(--radius); background: var(--surface-2); color: var(--text); }
 /* A resposta não é uma caixa: é texto corrido na largura da coluna, como uma
@@ -1464,7 +1481,7 @@ input::placeholder { color: var(--text-muted); }
 /* A aparência (borda, fundo, texto, botão) é a mesma de .ask-bar — a classe
    vem junto no JSX. Antes esta regra duplicava tudo com valores levemente
    diferentes (padding uniforme em vez de mais fundo à esquerda, sem padding
-   próprio na textarea, botão cinza-claro em vez do laranja cheio), e a mesma
+   próprio na textarea, botão cinza-claro em vez do botão cheio na cor de destaque), e a mesma
    pergunta ficava com duas caras conforme a tela — dentro do chat parecia uma
    caixa mais alta e desalinhada, fora dele parecia compacta e centralizada. */
 .chat-input { position: sticky; bottom: 0; max-width: 740px; width: 100%; }
@@ -1484,7 +1501,7 @@ input::placeholder { color: var(--text-muted); }
 .ask-bar.ask-esgotado {
   align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 10px 10px 16px;
-  font-size: 13.5px; color: var(--text-muted);
+  font-size: 14px; color: var(--text-muted);
 }
 .ask-bar.ask-esgotado .btn-sm { flex-shrink: 0; }
 
@@ -1509,7 +1526,7 @@ input::placeholder { color: var(--text-muted); }
   cursor: default; user-select: none;
 }
 .mini-brand { flex-shrink: 0; }
-.mini-brand .brand { font-size: 17px; cursor: default; }
+.mini-brand .brand { font-size: 16px; cursor: default; }
 
 /* As cinco barras da onda. A altura é escrita pelo JS a cada quadro, a partir
    do áudio que está entrando. Sem `transition` de propósito: o desenho já é
@@ -1525,7 +1542,7 @@ input::placeholder { color: var(--text-muted); }
 
 .mini-status { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0; }
 .mini-time { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.mini-label { font-size: 10.5px; color: var(--text-muted); }
+.mini-label { font-size: 11px; color: var(--text-muted); }
 
 .mini-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 .mini-btn {
@@ -1561,7 +1578,7 @@ input::placeholder { color: var(--text-muted); }
 .toast-icon { flex-shrink: 0; color: var(--accent); }
 .toast-msg { min-width: 0; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toast-action {
-  flex-shrink: 0; font-size: 12.5px; font-weight: 600;
+  flex-shrink: 0; font-size: 13px; font-weight: 600;
   color: var(--accent); background: transparent; padding: 2px 2px;
 }
 .toast-action:hover { text-decoration: underline; }
@@ -1603,14 +1620,14 @@ input::placeholder { color: var(--text-muted); }
    só entre as duas ações abaixo) e o botão vermelho é o próprio aviso do
    quanto isso é definitivo. */
 .modal-confirm { max-width: 380px; }
-.modal-confirm h3 { font-family: var(--font-serif); font-size: 18px; font-weight: 500; margin-bottom: 10px; }
-.modal-confirm p { font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+.modal-confirm h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+.modal-confirm p { font-size: 14px; line-height: 1.55; color: var(--text-muted); }
 .modal-confirm strong { color: var(--text); font-weight: 600; }
 
 .btn-danger {
   background: var(--danger); color: #fff; border: none;
   border-radius: var(--radius-sm); padding: 9px 16px;
-  font-size: 13.5px; font-weight: 500; font-family: inherit; cursor: pointer;
+  font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer;
   transition: background 0.15s;
 }
 .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 85%, black); }
@@ -1628,7 +1645,7 @@ input::placeholder { color: var(--text-muted); }
 .instalar-passos {
   margin: 0 0 18px; padding-left: 20px;
   display: flex; flex-direction: column; gap: 7px;
-  font-size: 13.5px; line-height: 1.55; color: var(--text-muted);
+  font-size: 14px; line-height: 1.55; color: var(--text-muted);
 }
 .instalar-passos strong { color: var(--text); font-weight: 600; }
 .instalar-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
@@ -1637,7 +1654,7 @@ input::placeholder { color: var(--text-muted); }
 .instalar-refazer {
   display: block; width: 100%; padding: 4px 0;
   background: none; border: none; cursor: pointer;
-  font-family: inherit; font-size: 12.5px; color: var(--text-muted);
+  font-family: inherit; font-size: 13px; color: var(--text-muted);
   text-align: center; text-decoration: underline;
 }
 .instalar-refazer:hover { color: var(--text); }
@@ -1656,10 +1673,10 @@ input::placeholder { color: var(--text-muted); }
   display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 14px; padding: 8px 14px; border-radius: 999px;
   background: var(--accent-soft); border: 1px solid var(--border);
-  font-size: 12.5px; color: var(--text);
+  font-size: 13px; color: var(--text);
 }
 .aviso-saldo button {
   border: none; background: none; padding: 0; font: inherit; font-weight: 600;
   color: var(--accent); cursor: pointer; text-decoration: underline;
 }
-.alert-cta { display: block; margin-top: 10px; padding: 7px 14px; font-size: 12.5px; }
+.alert-cta { display: block; margin-top: 10px; padding: 7px 14px; font-size: 13px; }

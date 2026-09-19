@@ -17,7 +17,7 @@ export default function ConversaHeader({ conversation, title, subtitle, action }
     <>
       <div className="conversa-topbar">
         <button className="btn-ghost btn-sm btn-reportar-ia" onClick={() => setReportando(true)}>
-          <IconFlag width={14} height={14} /> <span>Reportar<span className="reportar-ia-extra"> conteúdo da IA</span></span>
+          <IconFlag width={14} height={14} /> <span>Sinalizar<span className="reportar-ia-extra"> conteúdo da IA</span></span>
         </button>
         {action}
       </div>

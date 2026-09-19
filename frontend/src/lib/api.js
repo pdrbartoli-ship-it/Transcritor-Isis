@@ -306,7 +306,7 @@ export async function criarCheckout(plano, ciclo) {
   return postJsonComTeto(
     '/billing/create-checkout-session',
     { plano, ciclo },
-    'O servidor demorou demais para responder. Nada foi cobrado — tente de novo.',
+    'O servidor demorou demais para responder. Nada foi cobrado. Tente de novo.',
   )
 }
 

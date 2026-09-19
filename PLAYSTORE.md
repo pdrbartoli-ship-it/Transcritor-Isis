@@ -10,7 +10,7 @@ Documento de acompanhamento do empacotamento do Dito como app Android (via Capac
 - O projeto Android fica em `frontend/android/`.
 - Já foi gerado e validado um **APK de teste** (`app-debug.apk`) — o app compila
   e instala. Esse arquivo é só para teste, **não serve para a Play Store**.
-- Ícone provisório do Dito (letra "D" no terracota da marca, `#C96442`).
+- Ícone do Dito ("D." na serifa do logotipo, sobre o verde-pinho da marca, `#1A5C4E`). Gerado por `frontend/scripts/make_icon.py`.
 
 ## Compartilhar de outros apps para o Dito
 

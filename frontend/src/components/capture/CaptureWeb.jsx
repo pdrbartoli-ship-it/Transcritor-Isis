@@ -45,9 +45,9 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini, on
               </button>
               <p className="record-label">
                 {isRecording
-                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} — {formatTime(recordingTime)}</>
+                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} · {formatTime(recordingTime)}</>
                   : isFinalizing
-                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação — {formatTime(recordingTime)}</>
+                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação · {formatTime(recordingTime)}</>
                     : 'Clique para gravar'}
               </p>
               {isRecording && !isFinalizing && (
@@ -99,7 +99,7 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini, on
               onDrop={e => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]) }}
             >
               <p className="text-muted">Arraste um arquivo ou clique para selecionar</p>
-              <p className="text-muted text-sm">Áudio ou vídeo — MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
+              <p className="text-muted text-sm">Áudio ou vídeo: MP3, M4A, WAV, OGG, OPUS, MP4, MOV e outros</p>
             </div>
           )}
         </div>

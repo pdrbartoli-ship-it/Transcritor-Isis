@@ -54,11 +54,11 @@ export default function FeedbackModal({ onClose, conversaId = null }) {
         {done ? (
           <div className="feedback-done">
             <div className="feedback-check"><IconCheck width={26} height={26} /></div>
-            <h3>Obrigado! 🙏</h3>
+            <h3>{reportIA ? 'Conteúdo sinalizado' : 'Mensagem enviada'}</h3>
             <p className="text-muted">
               {reportIA
-                ? 'Recebemos seu report. A equipe do Dito vai analisar esse conteúdo.'
-                : 'Recebemos sua mensagem. Ela nos ajuda a melhorar o Dito.'}
+                ? 'Vamos analisar esse conteúdo.'
+                : 'Obrigado. Sua mensagem ajuda a melhorar o Dito.'}
             </p>
             <div className="modal-actions">
               <button className="btn-primary" onClick={onClose}>Fechar</button>
@@ -67,13 +67,13 @@ export default function FeedbackModal({ onClose, conversaId = null }) {
         ) : (
           <>
             <div className="modal-header">
-              <h3>{reportIA ? 'Reportar conteúdo da IA' : 'Deixe um feedback para gente!'}</h3>
+              <h3>{reportIA ? 'Sinalizar conteúdo da IA' : 'Enviar feedback'}</h3>
               <button className="btn-icon" onClick={onClose}><IconClose /></button>
             </div>
             <p className="text-muted text-sm" style={{ marginBottom: 14 }}>
               {reportIA
-                ? 'Algo que a IA escreveu nesta conversa está errado, ofensivo ou inadequado? Conte o que foi — a gente analisa todos os reports.'
-                : 'Sugestão, problema ou reclamação — escreva e envie. A gente lê tudo.'}
+                ? 'Algo que a IA escreveu nesta conversa está errado, ofensivo ou inadequado? Conte o que foi. Analisamos todos os relatos.'
+                : 'Sugestão, problema ou reclamação? Escreva e envie. Lemos tudo.'}
             </p>
             <form onSubmit={submit}>
               {!reportIA && (
@@ -90,8 +90,8 @@ export default function FeedbackModal({ onClose, conversaId = null }) {
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 placeholder={reportIA
-                  ? 'O que está errado ou inadequado, e onde apareceu (resumo, tópico, tarefa, resposta do chat...)'
-                  : 'Escreva aqui sua sugestão, problema ou ideia...'}
+                  ? 'O que está errado ou inadequado, e onde apareceu (resumo, tópico, tarefa, resposta do chat)'
+                  : 'Sua sugestão, problema ou ideia'}
                 rows={5}
                 autoFocus
               />
@@ -99,7 +99,7 @@ export default function FeedbackModal({ onClose, conversaId = null }) {
               <div className="modal-actions">
                 <button type="button" className="btn-ghost" onClick={onClose}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={loading || !message.trim()}>
-                  {loading ? 'Enviando...' : 'Enviar'}
+                  {loading ? 'Enviando…' : 'Enviar'}
                 </button>
               </div>
             </form>

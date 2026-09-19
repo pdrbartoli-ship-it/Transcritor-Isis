@@ -22,7 +22,7 @@ export function setTheme(theme) {
 // com o `theme-color` da página, e ele estava fixo em branco: no tema escuro
 // sobrava uma faixa de cor estranha em cima do app. Tem de ser o mesmo --bg do
 // CSS, senão a barra fica perto mas não igual.
-const THEME_BG = { light: '#faf9f5', dark: '#262624' }
+const THEME_BG = { light: '#f6f8f7', dark: '#151a18' }
 
 export function syncBrowserChrome(theme) {
   const meta = document.querySelector('meta[name="theme-color"]')

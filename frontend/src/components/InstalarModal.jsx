@@ -43,8 +43,8 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
               </p>
             )}
             <p className="instalar-lead">
-              É o app de Windows — o único que grava <strong>as duas vozes</strong> da chamada,
-              com a janelinha flutuante por cima da reunião.
+              É o app de Windows, o único que grava <strong>as duas vozes</strong> da chamada,
+              com uma janela flutuante por cima da reunião.
             </p>
             {/* Os passos são o conteúdo principal desta tela: o arquivo já está
                 baixando, e o que falta a pessoa saber é o que fazer com ele. O

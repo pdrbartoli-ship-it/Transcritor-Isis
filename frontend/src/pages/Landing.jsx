@@ -245,8 +245,8 @@ export default function Landing() {
             <em>Esteja presente.</em>
           </h1>
           <p className="lp-sub">
-            O Dito escuta a reunião, a consulta ou a aula por você — e devolve a transcrição
-            e um resumo do que ficou combinado. Você só participa da conversa.
+            O Dito escuta a reunião, a consulta ou a aula por você e devolve a transcrição
+            e um resumo do que ficou combinado.
           </p>
           <div className="lp-cta">
             <button className="btn-primary lp-btn-lg" onClick={instalar}>
@@ -254,7 +254,7 @@ export default function Landing() {
               <IconArrowRight width={16} height={16} />
             </button>
             <span className="lp-cta-note">
-              Grátis. Abre no navegador, no celular e no Windows — sem cartão.
+              Grátis e sem cartão. Funciona no navegador, no celular e no Windows.
             </span>
           </div>
 
@@ -273,14 +273,14 @@ export default function Landing() {
 
         {/* ── Produto: capturar e perguntar, em prints reais do app ── */}
         <section className="lp-section" id="produto">
-          <h2>Grave qualquer coisa. Pergunte qualquer coisa.</h2>
+          <h2>Como o Dito funciona</h2>
           <div className="lp-feats">
             <article className="lp-feat">
               <span className="lp-feat-tag">Registrar</span>
-              <h3>Três jeitos de começar. Uma lista só.</h3>
+              <h3>Grave, envie um arquivo ou cole um link.</h3>
               <p>
-                Grave, envie um arquivo ou cole um link — na mesma tela. As conversas mais
-                importantes ficam fixadas no topo; as outras se organizam sozinhas por data.
+                Tudo cai na mesma lista de conversas. Fixe as importantes no topo; o resto
+                se organiza por data.
               </p>
               <div className="lp-feat-shot">
                 <img
@@ -296,10 +296,10 @@ export default function Landing() {
 
             <article className="lp-feat">
               <span className="lp-feat-tag">Perguntar</span>
-              <h3>Não é só um resumo — é uma conversa que dá para interrogar.</h3>
+              <h3>Tópicos, tarefas e um chat sobre a conversa.</h3>
               <p>
                 O Dito separa os tópicos, lista o que ficou combinado e monta um resumo
-                minuto a minuto que você navega clicando. Faltou um detalhe? É só perguntar.
+                minuto a minuto. Faltou um detalhe? Pergunte.
               </p>
               <div className="lp-feat-shot">
                 <img
@@ -319,11 +319,10 @@ export default function Landing() {
         <section className="lp-section lp-privacy">
           <div className="lp-privacy-inner">
             <IconShield width={26} height={26} />
-            <h2>O que você grava sai embaralhado daqui.</h2>
+            <h2>Suas conversas são cifradas antes de sair do seu aparelho.</h2>
             <p>
-              O conteúdo das suas conversas é cifrado dentro do seu próprio aparelho, antes de
-              subir. A chave que abre nasce e fica com você — ela nunca chega ao nosso servidor.
-              Na prática: nem nós conseguimos ler o que você guarda no Dito.
+              A chave que abre o conteúdo fica só com você e nunca chega ao nosso servidor.
+              Nem nós conseguimos ler o que você guarda no Dito.
             </p>
             <p className="lp-privacy-foot">
               Feito para quem tem sigilo a cumprir.{' '}
@@ -336,11 +335,11 @@ export default function Landing() {
         <section className="lp-section lp-desktop">
           <div>
             <span className="lp-tag">App para Windows</span>
-            <h2>Reunião por chamada? Grave as duas vozes.</h2>
+            <h2>No Windows, grave os dois lados da chamada.</h2>
             <p>
-              O navegador só escuta o seu microfone. O app do Dito para Windows grava
-              <strong> os dois lados</strong> da chamada — você e quem está do outro lado — com uma
-              janelinha flutuante que fica por cima de tudo enquanto você conversa.
+              O navegador só capta o seu microfone. O app para Windows grava
+              <strong> você e quem está do outro lado</strong>, com uma janela flutuante que
+              fica por cima de tudo durante a conversa.
             </p>
             <a className="btn-ghost lp-btn-lg" href={INSTALLER_URL}>
               <IconDownload width={16} height={16} />
@@ -351,7 +350,7 @@ export default function Landing() {
 
         {/* ── Para quem é ──────────────────────────────────── */}
         <section className="lp-section">
-          <h2>Feito para quem vive de escutar.</h2>
+          <h2>Quem usa o Dito</h2>
           <div className="lp-who">
             <div><h3>Reuniões de trabalho</h3><p>Ninguém precisa ser o secretário da sala. O combinado sai escrito para todo mundo.</p></div>
             <div><h3>Atendimentos e consultas</h3><p>O registro fica pronto sem quebrar o contato visual com quem está na sua frente.</p></div>
@@ -361,11 +360,11 @@ export default function Landing() {
 
         {/* ── Preços ───────────────────────────────────────── */}
         <section className="lp-section lp-precos" id="precos">
-          <h2>Preço simples.</h2>
+          <h2>Planos</h2>
           <div className="lp-planos">
             {PLANOS.map(p => (
               <article key={p.id} className={`lp-plano${p.destaque ? ' destaque' : ''}`}>
-                {p.destaque && <span className="lp-plano-selo">Mais escolhido</span>}
+                {p.destaque && <span className="lp-plano-selo">Recomendado</span>}
                 <h3>{p.nome}</h3>
                 {/* Mesma manchete do "Meu plano": o anual por mês na frente, o
                     mensal logo abaixo. A escolha entre os dois é feita só na hora
@@ -395,14 +394,14 @@ export default function Landing() {
             ))}
           </div>
           <p className="lp-precos-nota">
-            Cancele quando quiser, direto no seu plano. O pagamento é processado pelo Stripe —
-            o Dito nunca vê o número do seu cartão.
+            Cancele quando quiser, direto no seu plano. O pagamento é processado pelo Stripe
+            e o Dito nunca vê o número do seu cartão.
           </p>
         </section>
 
         {/* ── CTA final ────────────────────────────────────── */}
         <section className="lp-final">
-          <h2>Comece hoje.</h2>
+          <h2>Comece grátis</h2>
           <div className="lp-final-btns">
             <button className="btn-primary lp-btn-lg" onClick={instalar}>
               Instalar grátis
@@ -413,7 +412,6 @@ export default function Landing() {
               Ver funcionando
             </button>
           </div>
-          <span className="lp-cta-note">Grátis. Leva menos de um minuto.</span>
         </section>
       </main>
 
@@ -423,7 +421,7 @@ export default function Landing() {
           <button type="button" onClick={() => irPara('produto')}>Produto</button>
           <button type="button" onClick={() => irPara('precos')}>Preços</button>
           <a href="/privacidade.html">Privacidade</a>
-          <a href="mailto:pdrbartoli@gmail.com">Fale com a gente</a>
+          <a href="mailto:pdrbartoli@gmail.com">Contato</a>
         </span>
       </footer>
 

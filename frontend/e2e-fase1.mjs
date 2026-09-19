@@ -36,15 +36,15 @@ await step('botão de gravar visível', async () => {
   await page.waitForSelector('.record-btn.hero', { timeout: 5000 })
 })
 
-await step('as três origens são abas, e Gravação é a padrão', async () => {
+await step('as três origens são abas, e Gravar é a padrão', async () => {
   const abas = (await page.locator('.capture-nav a').allTextContents()).map(t => t.trim())
-  if (abas.join('|') !== 'Gravação|Áudio|Vídeo') throw new Error(`abas: ${abas}`)
+  if (abas.join('|') !== 'Gravar|Arquivo|Link') throw new Error(`abas: ${abas}`)
   const ativa = (await page.textContent('.capture-nav a.on')).trim()
-  if (ativa !== 'Gravação') throw new Error(`aba ativa: "${ativa}"`)
+  if (ativa !== 'Gravar') throw new Error(`aba ativa: "${ativa}"`)
 })
 
 await step('Áudio abre em rota própria, com o título do WhatsApp', async () => {
-  await page.click('.capture-nav a:has-text("Áudio")')
+  await page.click('.capture-nav a:has-text("Arquivo")')
   await page.waitForSelector('.drop-zone', { timeout: 3000 })
   if (!page.url().endsWith('#/audio')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
@@ -52,7 +52,7 @@ await step('Áudio abre em rota própria, com o título do WhatsApp', async () =
 })
 
 await step('Vídeo abre em rota própria, com o título certo', async () => {
-  await page.click('.capture-nav a:has-text("Vídeo")')
+  await page.click('.capture-nav a:has-text("Link")')
   await page.waitForSelector('.url-form', { timeout: 3000 })
   if (!page.url().endsWith('#/video')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
@@ -64,7 +64,7 @@ await step('Vídeo abre em rota própria, com o título certo', async () => {
     () => document.querySelectorAll('.conversation-card').length > 0,
     { timeout: 20000 },
   ).catch(() => { throw new Error('a lista de conversas sumiu fora da home') })
-  await page.click('.capture-nav a:has-text("Gravação")')
+  await page.click('.capture-nav a:has-text("Gravar")')
   await page.waitForSelector('.record-btn.hero', { timeout: 3000 })
 })
 

@@ -1,4 +1,4 @@
-// Botão "Reportar conteúdo da IA" (Microsoft Store 11.16): aparece nas telas
+// Botão "Sinalizar conteúdo da IA" (Microsoft Store 11.16): aparece nas telas
 // da conversa, abre o modal próprio e, com --enviar, grava o report na tabela
 // `feedback`. Uso: node e2e-reportar-ia.mjs [url] [--enviar]
 import { chromium } from 'playwright'
@@ -53,7 +53,7 @@ await page.screenshot({ path: `${OUT}/reportar-ia-desktop.png` })
 
 await step('abre o modal de report, sem as categorias do feedback', async () => {
   await page.click('.btn-reportar-ia')
-  await page.waitForSelector('.modal h3:has-text("Reportar conteúdo da IA")', { timeout: 3000 })
+  await page.waitForSelector('.modal h3:has-text("Sinalizar conteúdo da IA")', { timeout: 3000 })
   if (await page.locator('.modal .seg').count()) throw new Error('categorias apareceram')
   await page.waitForTimeout(600)
   await page.screenshot({ path: `${OUT}/reportar-ia-modal.png` })

@@ -124,7 +124,7 @@ export default function ConfirmEmail() {
               className="btn-primary btn-full"
               disabled={saving || password.length < MIN_PASSWORD}
             >
-              {saving ? 'Salvando...' : 'Salvar e entrar'}
+              {saving ? 'Salvando…' : 'Salvar e entrar'}
             </button>
           </form>
         </div>
@@ -138,7 +138,7 @@ export default function ConfirmEmail() {
         {status === 'ok' ? (
           <>
             <div className="feedback-check"><IconCheck width={26} height={26} /></div>
-            <h3>E-mail confirmado! 🎉</h3>
+            <h3>E-mail confirmado</h3>
             <p className="text-muted">
               Sua conta está ativa. <strong>Volte para o app Dito</strong> e
               entre com seu e-mail e senha.
@@ -154,7 +154,7 @@ export default function ConfirmEmail() {
         ) : status === 'erro' ? (
           <>
             <div className="feedback-check"><IconMail width={26} height={26} /></div>
-            <h3>Não deu para confirmar</h3>
+            <h3>Não foi possível confirmar</h3>
             <p className="text-muted">{error}</p>
             <button
               className="btn-primary btn-full"
