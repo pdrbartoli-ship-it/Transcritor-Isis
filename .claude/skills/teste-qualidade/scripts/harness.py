@@ -2,22 +2,27 @@
 de um mesmo material em vários modelos, usando o prompt, o schema e a função de
 produção do backend do Dito (importados de verdade, nunca recriados à mão).
 
+O material testado pode ser QUALQUER coisa que o Dito aceita: um link (YouTube
+e outros sites, via /process-url) ou um arquivo local de áudio/vídeo — gravação,
+áudio de WhatsApp, aula baixada, o que for — via /transcribe, a mesma rota que
+o app usa quando alguém grava ou envia um arquivo.
+
 Cada teste vive em casos/<slug>/:
-  url.txt              — link do YouTube testado (uma linha)
+  origem.txt             — o link ou caminho do arquivo testado (uma linha)
   transcricao_backend.json  — a transcrição que veio do backend (gerada por `buscar`)
   precos.json           — preço por milhão de tokens de cada modelo candidato, conferido
                            na página oficial no dia do teste (ver SKILL.md)
-  referencia.py         — GT_TURNOS/GT_SECOES/DUR, escrito à mão lendo o vídeo (ver score.py)
+  referencia.py         — GT_TURNOS/GT_SECOES/DUR, escrito à mão lendo o material (ver score.py)
   perguntas.json         — (opcional) perguntas de chat com resposta conhecida
   out/                  — resultado de cada modelo (criado pelos comandos abaixo)
 
 Uso:
-  python3 harness.py buscar   <slug> <url> [completa|simples]
+  python3 harness.py buscar   <slug> <url-ou-caminho-de-arquivo> [completa|simples]
   python3 harness.py extrair  <slug> <modelo> [modelo...]
   python3 harness.py curto    <slug> <segundos> <modelo> [modelo...]
   python3 harness.py chat     <slug> <modelo> [modelo...]
 """
-import asyncio, json, os, sys, time
+import asyncio, json, mimetypes, os, sys, time
 import httpx
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,16 +70,33 @@ def custo(precos, modelo, tin, tout, cache_read=0, cache_write=0):
 
 
 # ---------- buscar: pega a transcrição de verdade pelo backend do Dito ----------
-def buscar(slug, url, modo="simples"):
-    """modo='completa' só funciona com a conta de teste no plano Avançado (ver SKILL.md)."""
+def eh_url(origem):
+    return origem.startswith("http://") or origem.startswith("https://")
+
+
+def buscar(slug, origem, modo="simples"):
+    """`origem` é um link (YouTube e outros — vai por /process-url, a mesma rota
+    de "colar um link" no app) ou o caminho de um arquivo de áudio/vídeo local
+    (grava, WhatsApp, aula baixada — vai por /transcribe, a mesma rota de gravar
+    ou enviar um arquivo no app). modo='completa' só funciona com a conta de
+    teste no plano Avançado (ver SKILL.md)."""
     _, _, H = login()
     t0 = time.time()
-    r = httpx.post(B + "/process-url", headers=H, data={"url": url, "mode": modo, "language": "auto"}, timeout=900)
+    d = caso_dir(slug)
+    if eh_url(origem):
+        r = httpx.post(B + "/process-url", headers=H, data={"url": origem, "mode": modo, "language": "auto"}, timeout=900)
+        open(os.path.join(d, "origem.txt"), "w").write(f"url: {origem}\n")
+    else:
+        if not os.path.isfile(origem):
+            raise FileNotFoundError(f"{origem!r} não é uma URL (não começa com http) nem um arquivo que existe")
+        nome = os.path.basename(origem)
+        mime = mimetypes.guess_type(nome)[0] or "application/octet-stream"
+        with open(origem, "rb") as f:
+            r = httpx.post(B + "/transcribe", headers=H, files={"file": (nome, f, mime)}, data={"mode": modo, "language": "auto"}, timeout=900)
+        open(os.path.join(d, "origem.txt"), "w").write(f"arquivo: {origem}\n")
     j = r.json()
     if r.status_code != 200:
         raise RuntimeError(f"{r.status_code} {j}")
-    d = caso_dir(slug)
-    open(os.path.join(d, "url.txt"), "w").write(url + "\n")
     json.dump(j, open(os.path.join(d, "transcricao_backend.json"), "w"), ensure_ascii=False, indent=1)
     print(f"ok em {time.time()-t0:.1f}s | modo={j.get('mode')} | duracao_s={j.get('duration_s')} | "
           f"{len(j['segments'])} trechos | {len(j['transcript'])} chars | titulo: {j.get('title')}")

@@ -1,15 +1,18 @@
 ---
 name: teste-qualidade
-description: Compara a qualidade da extração de insights (tópicos, tarefas, capítulos, locutores) e do chat do Dito entre diferentes modelos de IA — Claude, GPT, Gemini — usando o prompt e o schema reais de produção contra uma referência lida à mão. Use quando o usuário quiser testar/comparar modelos de IA para o Dito, decidir se dá pra trocar ou baratear o modelo sem perder qualidade, ou pedir "teste de qualidade" dos modelos.
+description: Compara a qualidade da extração de insights (tópicos, tarefas, capítulos, locutores) e do chat do Dito entre diferentes modelos de IA — Claude, GPT, Gemini — usando o prompt e o schema reais de produção contra uma referência lida à mão. O material testado pode ser qualquer coisa que o Dito aceita: link de vídeo, gravação ou arquivo de áudio. Use quando o usuário quiser testar/comparar modelos de IA para o Dito, decidir se dá pra trocar ou baratear o modelo sem perder qualidade, ou pedir "teste de qualidade" dos modelos.
 ---
 
 Testa se um modelo de IA mais barato entrega a mesma qualidade que o Claude
 Sonnet 5 (hoje, na extração completa) ou o Haiku 4.5 (hoje, no resumo simples
 e no chat) — com o prompt, o schema e as funções de produção reais, não uma
 aproximação. Já foi rodado uma vez, em 2026-09-18/19, contra uma teleconferência
-de resultados; `casos/slc-2t26/` guarda a referência, as perguntas e os preços
-daquele teste como exemplo preenchido (a transcrição em si não foi versionada —
-rode `buscar` de novo se quiser reproduzir). Ver [[dito-troca-de-modelo]] na
+de resultados (um link de YouTube); `casos/slc-2t26/` guarda a referência, as
+perguntas e os preços daquele teste como exemplo preenchido (a transcrição em
+si não foi versionada — rode `buscar` de novo se quiser reproduzir). O mesmo
+processo vale pra qualquer material: um link, uma gravação, um áudio de
+WhatsApp — o que importa é cobrir o tipo de conteúdo que o Dito realmente
+recebe, não só vídeo do YouTube. Ver [[dito-troca-de-modelo]] na
 memória para o resultado.
 
 **Por que não dá pra confiar num teste aproximado:** um prompt "parecido" ou um
@@ -22,10 +25,10 @@ recebem exatamente o mesmo texto de sistema e de usuário que o Claude recebeu.
 
 ## Antes de começar
 
-1. **Confirme o escopo com o usuário**: quantos vídeos (o ideal é cobrir o mix
-   real do Dito — um áudio curto tipo WhatsApp, uma reunião informal, um vídeo
-   de YouTube longo, não só um tipo de conteúdo), quais modelos, e se o chat
-   também entra no teste.
+1. **Confirme o escopo com o usuário**: quantos materiais e de que tipo (o
+   ideal é cobrir o mix real do Dito — um áudio curto tipo WhatsApp, uma
+   gravação de reunião informal, um vídeo de YouTube longo, não só um tipo de
+   conteúdo), quais modelos, e se o chat também entra no teste.
 2. **Peça as chaves de API** dos fornecedores que faltam (ver `dito-troca-de-modelo`
    e a conversa em que isso foi pedido pela primeira vez para o texto exato de
    como orientar o usuário a criar uma chave curta, restrita e com teto de gasto):
@@ -37,8 +40,9 @@ recebem exatamente o mesmo texto de sistema e de usuário que o Claude recebeu.
    linha) — **nunca** no `.env` do projeto, nunca commitado (o `.gitignore` da
    skill já cobre `casos/*/keys.env`).
 3. **Confira o saldo da conta de teste.** `buscar` (abaixo) passa pela rota real
-   `/process-url` do Dito, que desconta minutos do plano de verdade do usuário
-   — ver [[e2e-test-harness]]. Antes de rodar vários vídeos, confira quanto
+   `/process-url` ou `/transcribe` do Dito (a mesma que o app usa), que desconta
+   minutos do plano de verdade do usuário
+   — ver [[e2e-test-harness]]. Antes de rodar vários materiais, confira quanto
    sobra:
    ```python
    import sys; sys.path.insert(0, ".claude/skills/teste-qualidade/scripts")
@@ -48,7 +52,7 @@ recebem exatamente o mesmo texto de sistema e de usuário que o Claude recebeu.
    print(httpx.get(f"{url}/rest/v1/uso_mensal?select=minutos_usados,periodo_fim", headers={"apikey": key, **H}).json())
    print(httpx.get(f"{url}/rest/v1/subscriptions?select=plano", headers={"apikey": key, **H}).json())
    ```
-   Se não sobrar minutos pros vídeos planejados, peça ao usuário para rodar o
+   Se não sobrar minutos pros materiais planejados, peça ao usuário para rodar o
    SQL que restaura `uso_mensal.minutos_usados` (ver
    [[dito-supabase-acesso]] para o padrão de "imprimir o SQL e pedir para
    colar"), ou topar gastar o saldo de verdade.
@@ -62,14 +66,20 @@ jeito que os `gpt-*` e `gemini-*`. O plano só importa se você quiser também
 conferir a saída de `/process-url` em modo completo como checagem cruzada — ver
 `buscar` abaixo.
 
-## Passo 1 — buscar a transcrição de cada vídeo
+## Passo 1 — buscar a transcrição de cada material
 
 ```bash
 cd /workspaces/Transcritor-Isis
-python3 .claude/skills/teste-qualidade/scripts/harness.py buscar <slug> <url-do-youtube>
+# um link (YouTube e outros — mesma rota de "colar um link" no app):
+python3 .claude/skills/teste-qualidade/scripts/harness.py buscar <slug> <url>
+# um arquivo local de áudio/vídeo (gravação, WhatsApp, o que for — mesma rota
+# de gravar ou enviar um arquivo no app):
+python3 .claude/skills/teste-qualidade/scripts/harness.py buscar <slug> <caminho/do/arquivo.m4a>
 ```
 
-Isso cria `casos/<slug>/` com `url.txt` e `transcricao_backend.json` (a
+`buscar` detecta sozinho se a origem é um link (`http...`) ou um caminho de
+arquivo, e chama a rota certa do backend (`/process-url` ou `/transcribe`).
+Isso cria `casos/<slug>/` com `origem.txt` e `transcricao_backend.json` (a
 transcrição real, com segmentos e tempo, do jeito que o Dito recebe). Use um
 `slug` curto e descritivo (`reuniao-equipe`, `aula-financas`, `zap-cliente`).
 Por padrão roda em `mode=simples` (mais barato — só gasta um Haiku pequeno
@@ -81,11 +91,11 @@ o plano Avançado na conta de teste.
 
 Copie `referencia.exemplo.py` para `casos/<slug>/referencia.py` e preencha
 **lendo a transcrição inteira** (`transcricao_backend.json` → `transcript`, ou
-assista ao vídeo se o áudio for difícil de seguir só em texto). São duas
+assista ou ouça o material se for difícil de seguir só em texto). São duas
 listas:
 
 - `GT_TURNOS`: quem fala, a cada troca de locutor — não a cada frase.
-- `GT_SECOES`: qual assunto está em discussão a cada trecho, cobrindo o vídeo
+- `GT_SECOES`: qual assunto está em discussão a cada trecho, cobrindo o material
   inteiro sem buraco, com palavras-chave (sem acento) que um capítulo certo
   citaria.
 
@@ -164,7 +174,7 @@ topo, placar em tabela com barra de progresso por métrica, um cartão por
 modelo com os erros reais encontrados na leitura manual (não só a nota),
 gráfico de custo por hora, tabela do chat com a resposta certa ao lado de
 quantos acertaram, e uma seção "como foi feito" com o material testado, os
-preços conferidos e as limitações honestas (quantos vídeos, quantas rodadas).
+preços conferidos e as limitações honestas (quantos materiais, quantas rodadas).
 
 ## Depois do teste
 
