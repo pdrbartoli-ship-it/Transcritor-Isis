@@ -28,6 +28,12 @@ function blocos(lines) {
   }
 
   lines.forEach((line, i) => {
+    // Linha em branco entre dois itens da mesma lista: o modelo às vezes
+    // espaça assim, e fechar a lista ali deixava um vão grande entre os itens.
+    if (line.trim() === '' && lista) {
+      const proxima = lines.slice(i + 1).find(l => l.trim() !== '')
+      if (proxima && BULLET.test(proxima)) return
+    }
     if (BULLET.test(line)) {
       lista ??= []
       lista.push(<li key={i}>{inline(line.replace(BULLET, ''))}</li>)
