@@ -5,12 +5,21 @@ import { IconClose, IconCheck } from './Icons'
 
 const CATEGORIES = ['Ideia', 'Problema', 'Outro']
 
+// Categoria dos reports feitos pelo botão da conversa. As lojas (Microsoft
+// Store 11.16, Google Play) exigem que o usuário consiga denunciar conteúdo
+// impróprio gerado pela IA; o report cai na mesma tabela, filtrável por isto.
+const CATEGORIA_IA = 'Conteúdo da IA'
+
 // Lets users send improvement suggestions. Stored in the Supabase `feedback`
 // table (see SQL in repo). Captures lightweight context automatically.
-export default function FeedbackModal({ onClose }) {
+// Com `conversaId`, vira o report de conteúdo da IA daquela conversa. O texto
+// da conversa não vai junto: ele é cifrado, e copiá-lo em claro para a tabela
+// de feedback furaria essa proteção — o usuário descreve o problema.
+export default function FeedbackModal({ onClose, conversaId = null }) {
   const { user } = useAuth()
+  const reportIA = !!conversaId
   const [message, setMessage] = useState('')
-  const [category, setCategory] = useState('Ideia')
+  const [category, setCategory] = useState(reportIA ? CATEGORIA_IA : 'Ideia')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [done, setDone] = useState(false)
@@ -25,7 +34,11 @@ export default function FeedbackModal({ onClose }) {
       email: user?.email,
       message: message.trim(),
       category,
-      context: { route: window.location.hash || '/', ua: navigator.userAgent },
+      context: {
+        route: window.location.hash || '/',
+        ua: navigator.userAgent,
+        ...(conversaId && { conversa: conversaId }),
+      },
     })
     setLoading(false)
     if (error) {
@@ -42,7 +55,11 @@ export default function FeedbackModal({ onClose }) {
           <div className="feedback-done">
             <div className="feedback-check"><IconCheck width={26} height={26} /></div>
             <h3>Obrigado! 🙏</h3>
-            <p className="text-muted">Recebemos sua mensagem. Ela nos ajuda a melhorar o Dito.</p>
+            <p className="text-muted">
+              {reportIA
+                ? 'Recebemos seu report. A equipe do Dito vai analisar esse conteúdo.'
+                : 'Recebemos sua mensagem. Ela nos ajuda a melhorar o Dito.'}
+            </p>
             <div className="modal-actions">
               <button className="btn-primary" onClick={onClose}>Fechar</button>
             </div>
@@ -50,25 +67,31 @@ export default function FeedbackModal({ onClose }) {
         ) : (
           <>
             <div className="modal-header">
-              <h3>Deixe um feedback para gente!</h3>
+              <h3>{reportIA ? 'Reportar conteúdo da IA' : 'Deixe um feedback para gente!'}</h3>
               <button className="btn-icon" onClick={onClose}><IconClose /></button>
             </div>
             <p className="text-muted text-sm" style={{ marginBottom: 14 }}>
-              Sugestão, problema ou reclamação — escreva e envie. A gente lê tudo.
+              {reportIA
+                ? 'Algo que a IA escreveu nesta conversa está errado, ofensivo ou inadequado? Conte o que foi — a gente analisa todos os reports.'
+                : 'Sugestão, problema ou reclamação — escreva e envie. A gente lê tudo.'}
             </p>
             <form onSubmit={submit}>
-              <div className="settings-group">
-                <div className="seg">
-                  {CATEGORIES.map(c => (
-                    <button type="button" key={c} className={category === c ? 'on' : ''} onClick={() => setCategory(c)}>{c}</button>
-                  ))}
+              {!reportIA && (
+                <div className="settings-group">
+                  <div className="seg">
+                    {CATEGORIES.map(c => (
+                      <button type="button" key={c} className={category === c ? 'on' : ''} onClick={() => setCategory(c)}>{c}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
               <textarea
                 className="feedback-textarea"
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                placeholder="Escreva aqui sua sugestão, problema ou ideia..."
+                placeholder={reportIA
+                  ? 'O que está errado ou inadequado, e onde apareceu (resumo, tópico, tarefa, resposta do chat...)'
+                  : 'Escreva aqui sua sugestão, problema ou ideia...'}
                 rows={5}
                 autoFocus
               />

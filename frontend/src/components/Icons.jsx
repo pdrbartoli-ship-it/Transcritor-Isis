@@ -73,6 +73,9 @@ export const IconCheck = (p) => (
 export const IconPin = (p) => (
   <svg {...base} {...p}><line x1="12" y1="17" x2="12" y2="22" /><path d="M9 2h6l-1 7 3 3v2H7v-2l3-3-1-7z" /></svg>
 )
+export const IconFlag = (p) => (
+  <svg {...base} {...p}><path d="M5 21V4" /><path d="M5 4h11l-2 4 2 4H5" /></svg>
+)
 export const IconArchive = (p) => (
   <svg {...base} {...p}><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><line x1="10" y1="12" x2="14" y2="12" /></svg>
 )
