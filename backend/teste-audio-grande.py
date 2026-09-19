@@ -69,8 +69,8 @@ def main_test():
         offset = i * main.CHUNK_SECONDS
         return (f"bloco {i}", [{"start": offset, "end": offset + 5, "text": f"bloco {i}"}])
 
-    async def insights_fake(transcript, segments):
-        return ({"title": "Reunião longa", "duration_s": 0}, 10, 10)
+    async def insights_fake(transcript, segments, **kwargs):
+        return ({"title": "Reunião longa", "duration_s": 0}, 10, 10, 0, 0, "gemini-3.8-flash")
 
     main.send_chunk = send_chunk_fake
     main.extract_insights = insights_fake

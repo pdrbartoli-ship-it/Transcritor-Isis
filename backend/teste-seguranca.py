@@ -48,7 +48,8 @@ async def _transcricao_falsa(*args, **kwargs):
 
 
 async def _insights_falsos(*args, **kwargs):
-    return ({"title": "Título de teste"}, 10, 5)
+    # (insights, entrada, saída, cache lido, cache escrito, modelo que respondeu)
+    return ({"title": "Título de teste"}, 10, 5, 0, 0, "gemini-3.8-flash")
 
 
 main.process_audio_bytes = _transcricao_falsa
@@ -70,6 +71,7 @@ UID = "11111111-2222-3333-4444-555555555555"
 
 # Guardada antes de qualquer dublê: o último bloco testa a função de verdade.
 validar_token_real = main.validar_token
+validar_token_completo_real = main.validar_token_completo
 
 
 def fingir_supabase(validos):
@@ -77,7 +79,14 @@ def fingir_supabase(validos):
     testes não dependerem da rede nem de uma conta de verdade."""
     async def falso(token):
         return validos.get(token)
+
+    # O porteiro chama a versão completa (id, e-mail, convidado) desde o modo
+    # convidado; trocar só a curta deixava os testes falando com a rede.
+    async def falso_completo(token):
+        uid = validos.get(token)
+        return (uid, "", False) if uid else None
     main.validar_token = falso
+    main.validar_token_completo = falso_completo
 
 
 # ─────────────────────────────────────────────────────────────
@@ -236,6 +245,7 @@ print("\n== cache de token: não martela o Supabase ==")
 # rede — é o cache que está sob teste, e ele vive dentro dela.
 limpar_estado()
 main.validar_token = validar_token_real
+main.validar_token_completo = validar_token_completo_real
 
 idas = {"n": 0}
 
@@ -276,7 +286,7 @@ check("token diferente força uma consulta nova", idas["n"] == 2)
 # continuaria valendo para sempre.
 import hashlib as _h
 import time as _t
-main._token_cache[_h.sha256(TOKEN_BOM.encode()).hexdigest()] = (_t.time() - 1, UID)
+main._token_cache[_h.sha256(TOKEN_BOM.encode()).hexdigest()] = (_t.time() - 1, UID, "", False)
 asyncio.run(main.validar_token(TOKEN_BOM))
 check("entrada vencida no cache é reconsultada", idas["n"] == 3)
 

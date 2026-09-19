@@ -6,6 +6,7 @@ import socket
 import logging
 import hashlib
 import asyncio
+import contextvars
 import datetime
 import httpx
 import anthropic
@@ -102,6 +103,12 @@ REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "").strip().lower() in ("1", "true
 _token_cache: dict[str, tuple[float, str, str, bool]] = {}
 TOKEN_CACHE_S = 300
 
+# Quem fez o pedido em andamento, para o registro de fallback da IA saber a
+# quem pertence a linha em `events` sem o user_id ter de descer por cada
+# função da análise até lá. Setada em `guarda_de_uso`, que toda rota de IA
+# passa.
+_usuario_atual: contextvars.ContextVar[str | None] = contextvars.ContextVar("usuario_atual", default=None)
+
 
 class LoginIndisponivel(Exception):
     """O Supabase não respondeu. Diferente de token inválido: aqui não dá para
@@ -177,6 +184,7 @@ async def guarda_de_uso(request: Request) -> str | None:
             detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
         )
     user_id = identidade[0] if identidade else None
+    _usuario_atual.set(user_id)
     # Guardado no request para `guarda_de_captura` ler sem validar o token de
     # novo — o cache de `validar_token_completo` até tornaria barato repetir,
     # mas duas fontes de verdade para a mesma pergunta é como elas divergem.
@@ -195,6 +203,10 @@ async def guarda_de_uso(request: Request) -> str | None:
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+# Os modelos principais desde 2026-09-19 (ver "Modelo principal e reserva").
+# Chave vazia é o interruptor: sem ela, aquele uso vai direto ao Claude.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
 
@@ -246,7 +258,7 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
             timeout=10.0,
         )
     if resp.status_code >= 300:
-        logger.error("Falha ao gravar assinatura no Supabase: %s %s", resp.status_code, resp.text)
+        logger.error("Falha ao gravar em %s no Supabase: %s %s", table, resp.status_code, resp.text)
 
 
 # ── Régua dos planos ──────────────────────────────────────────────────────
@@ -748,7 +760,7 @@ def regra_idioma(idioma: str | None) -> str:
 
 class Usage(BaseModel):
     """Consumo de uma operação, para o app registrar quanto cada usuário gasta.
-    Tokens cobrem as chamadas de texto (Claude); audio_seconds cobre a
+    Tokens cobrem as chamadas de texto (Gemini, GPT ou Claude); audio_seconds cobre a
     transcrição (Whisper), que é cobrada por duração e não por token — medir só
     tokens esconderia justamente a parte mais cara."""
     input_tokens: int = 0
@@ -758,6 +770,9 @@ class Usage(BaseModel):
     # simplesmente voltam a ser cobrados como entrada normal.
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # Quem respondeu: o principal ou a reserva. O app guarda o `usage` inteiro
+    # em `events.props`, então é isto que separa o custo por modelo depois.
+    modelo: str | None = None
 
 
 class TranscriptionResult(BaseModel):
@@ -1234,15 +1249,17 @@ def read_cache_usage(payload) -> tuple[int, int]:
 # o fio; aí vale o map-reduce sobre os blocos que o áudio já foi partido.
 MAX_SINGLE_PASS_CHARS = 160_000
 
+# Os três Claude abaixo são a RESERVA desde 2026-09-19: o principal de cada
+# uso é o Gemini ou o Luna (ver "Modelo principal e reserva"), e o Claude só
+# responde quando ele falha ou quando a chave dele não está no Render.
 INSIGHTS_MODEL = "claude-sonnet-5"
 
 # Perguntas curtas sobre um contexto que já vem pronto — não precisa do modelo
-# que faz a extração.
+# que faz a extração. Também gera o título do chat, que não tem principal.
 CHAT_MODEL = "claude-haiku-4-5"
 
 # A transcrição simples pede um parágrafo, não uma leitura estruturada da
-# reunião inteira: resumir um texto que já chega pronto é exatamente o tipo de
-# tarefa em que o Haiku empata com os modelos grandes e custa uma fração.
+# reunião inteira.
 SUMMARY_MODEL = "claude-haiku-4-5"
 
 
@@ -1322,20 +1339,179 @@ async def call_insights(
     return data, *read_usage(response), *read_cache_usage(response)
 
 
+# ── Modelo principal e reserva ────────────────────────────────────────────
+# Desde 2026-09-19 as transcrições (simples e avançada) vão primeiro ao Gemini
+# 3.8 Flash e o chat ao GPT-5.6 Luna: os dois ficaram acima do Claude de hoje
+# no teste de qualidade (.claude/skills/teste-qualidade) custando uma fração.
+# O Claude continua atrás deles como reserva: qualquer falha do principal —
+# fora do ar, erro, demora, resposta cortada ou bloqueada — vira o mesmo
+# pedido ao Claude, com o prompt de sempre, e fica registrada como
+# `ia_fallback` em `events` (ver /ia/fallbacks). O principal não é chamado de
+# novo: a reserva É a nova tentativa.
+#
+# A chave no Render é o interruptor: sem GEMINI_API_KEY as transcrições vão
+# direto ao Claude; sem OPENAI_API_KEY o chat vai direto ao Haiku.
+GEMINI_MODEL = "gemini-3.8-flash"
+LUNA_MODEL = "gpt-5.6-luna"
+
+# O Gemini fez a reunião de 72 min do teste em 11 s. Dois minutos é folga
+# larga; passar disso já é problema do lado dele, e a reserva sai mais rápido
+# do que continuar esperando.
+GEMINI_TIMEOUT_S = 120.0
+# No chat tem gente olhando a tela: o Luna respondeu em poucos segundos no
+# teste, e 30 s já é o limite do aceitável antes de pedir ao Haiku.
+LUNA_TIMEOUT_S = 30.0
+
+
+class FalhaDoPrincipal(Exception):
+    """O modelo principal não entregou. A mensagem é o motivo que vai para o
+    registro do fallback: só status e código de erro, nunca texto da conversa
+    nem a mensagem crua do fornecedor — a da OpenAI, por exemplo, repete um
+    pedaço da chave quando ela é recusada."""
+
+
+def _codigo_do_erro(resp: httpx.Response) -> str:
+    """O código de erro que Google e OpenAI devolvem no corpo (RESOURCE_EXHAUSTED,
+    invalid_api_key...), sem a mensagem que o acompanha."""
+    try:
+        erro = (resp.json() or {}).get("error") or {}
+    except ValueError:
+        return ""
+    if not isinstance(erro, dict):
+        return ""
+    codigo = erro.get("status") or erro.get("code") or erro.get("type") or ""
+    return str(codigo)[:60]
+
+
+def motivo_da_falha(e: Exception) -> str:
+    if isinstance(e, FalhaDoPrincipal):
+        return str(e)
+    if isinstance(e, (asyncio.TimeoutError, httpx.TimeoutException)):
+        return "demorou demais"
+    if isinstance(e, httpx.HTTPError):
+        return f"sem conexão ({type(e).__name__})"
+    # Um bug nosso também cai aqui (ex.: o fornecedor mudou o formato da
+    # resposta). Só o tipo: a mensagem pode carregar pedaço da conversa.
+    return f"erro inesperado ({type(e).__name__})"
+
+
+async def registrar_fallback(uso: str, falhou: str, assumiu: str, motivo: str) -> None:
+    """Uma linha no log do Render e outra em `events`. Nunca levanta: quem está
+    usando já vai receber a resposta da reserva, e registrar é secundário."""
+    logger.warning("FALLBACK %s: %s falhou (%s), %s assumiu", uso, falhou, motivo, assumiu)
+    user_id = _usuario_atual.get()
+    if not (user_id and SUPABASE_SERVICE_ROLE_KEY):
+        return
+    try:
+        await supabase_service_upsert("events", {
+            "user_id": user_id,
+            "name": "ia_fallback",
+            "props": {"uso": uso, "falhou": falhou, "assumiu": assumiu, "motivo": motivo[:200]},
+        })
+    except Exception:
+        logger.exception("Não consegui gravar o fallback em events")
+
+
+async def call_gemini(
+    instructions: str, user_content: str, schema: dict, max_tokens: int,
+) -> tuple[dict, int, int, int, int]:
+    """O mesmo pedido que `call_insights` faz ao Claude — mesmas instruções,
+    schema no texto e na saída estruturada, raciocínio no nível baixo —, do
+    jeito exato que venceu o teste de qualidade. Levanta FalhaDoPrincipal (ou
+    erro de rede) em qualquer resposta que não seja um JSON inteiro."""
+    system_text = f"{instructions}\n\nFormato esperado (schema JSON):\n{json.dumps(schema, ensure_ascii=False)}"
+    async with httpx.AsyncClient() as client:
+        # wait_for em vez do timeout do httpx: aquele conta por etapa (conectar,
+        # ler...), e o que importa aqui é o tempo total de espera.
+        resp = await asyncio.wait_for(client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+            headers={"x-goog-api-key": GEMINI_API_KEY},
+            json={
+                "systemInstruction": {"parts": [{"text": system_text}]},
+                "contents": [{"role": "user", "parts": [{"text": user_content}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseJsonSchema": schema,
+                    # No Gemini o raciocínio conta dentro deste teto.
+                    "maxOutputTokens": max_tokens,
+                    "thinkingConfig": {"thinkingLevel": "low"},
+                },
+            },
+            timeout=GEMINI_TIMEOUT_S + 10,
+        ), GEMINI_TIMEOUT_S)
+
+    if resp.status_code != 200:
+        raise FalhaDoPrincipal(f"HTTP {resp.status_code} {_codigo_do_erro(resp)}".strip())
+    j = resp.json()
+    candidatos = j.get("candidates") or []
+    if not candidatos:
+        # Pedido barrado pelo filtro antes de gerar qualquer coisa.
+        bloqueio = (j.get("promptFeedback") or {}).get("blockReason") or "sem candidato"
+        raise FalhaDoPrincipal(f"bloqueado ({bloqueio})")
+    cand = candidatos[0]
+    # SAFETY, PROHIBITED_CONTENT, MAX_TOKENS (JSON cortado)... tudo que não for
+    # STOP é resposta que não dá para usar.
+    if cand.get("finishReason") != "STOP":
+        raise FalhaDoPrincipal(f"finishReason={cand.get('finishReason')}")
+    partes = (cand.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in partes if not p.get("thought"))
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        raise FalhaDoPrincipal("JSON inválido")
+    if not isinstance(data, dict):
+        raise FalhaDoPrincipal("JSON inválido")
+
+    # Mesma convenção do Claude em `Usage`: input_tokens é só a entrada que NÃO
+    # veio do cache. O Gemini conta o cache dentro do promptTokenCount, e o
+    # raciocínio fora do candidatesTokenCount (mas cobra os dois como saída).
+    u = j.get("usageMetadata") or {}
+    cache = int(u.get("cachedContentTokenCount") or 0)
+    entrada = int(u.get("promptTokenCount") or 0) - cache
+    saida = int(u.get("candidatesTokenCount") or 0) + int(u.get("thoughtsTokenCount") or 0)
+    return data, entrada, saida, cache, 0
+
+
+async def call_insights_com_reserva(
+    uso: str, instructions: str, user_content: str, schema: dict,
+    max_tokens: int = INSIGHTS_MAX_TOKENS, effort: str | None = INSIGHTS_EFFORT,
+    model: str = INSIGHTS_MODEL,
+) -> tuple[dict, int, int, int, int, str]:
+    """`call_insights` com o Gemini na frente. `model` e `effort` são os da
+    reserva — o Claude que atendia este pedido antes do Gemini. Devolve também
+    o modelo que respondeu, para `usage.modelo`.
+
+    `call_insights` continua falando só com o Claude: é o que a skill
+    teste-qualidade chama para medir o Claude sozinho."""
+    if GEMINI_API_KEY:
+        try:
+            return *(await call_gemini(instructions, user_content, schema, max_tokens)), GEMINI_MODEL
+        except Exception as e:
+            await registrar_fallback(uso, GEMINI_MODEL, model, motivo_da_falha(e))
+    return *(await call_insights(instructions, user_content, schema, max_tokens=max_tokens, effort=effort, model=model)), model
+
+
+def modelos_usados(modelos: list[str]) -> str:
+    """Numa transcrição longa cada parte pode ter sido atendida por um modelo
+    diferente; `usage.modelo` lista todos, na ordem em que apareceram."""
+    return "+".join(dict.fromkeys(modelos))
+
+
 async def extract_insights(
     transcript: str, segments: list[dict], effort: str | None = None,
     idioma: str = IDIOMA_AUTO,
-) -> tuple[dict, int, int, int, int]:
+) -> tuple[dict, int, int, int, int, str]:
     """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
     chamada só, sobre a transcrição com marcadores de tempo."""
     body = format_timed_transcript(segments) or transcript
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
-        insights, tin, tout, cache_read, cache_write = await call_insights(
+        insights, tin, tout, cache_read, cache_write, modelo = await call_insights_com_reserva(
+            "transcricao_avancada",
             instrucoes_insights(idioma), f"Transcrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
-        return normalize_insights(insights, segments), tin, tout, cache_read, cache_write
+        return normalize_insights(insights, segments), tin, tout, cache_read, cache_write, modelo
 
     return await extract_insights_long(body, segments, idioma)
 
@@ -1369,13 +1545,14 @@ def instrucoes_resumo_simples(idioma: str | None) -> str:
 SIMPLE_SUMMARY_MAX_TOKENS = 2000
 
 
-async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int]:
-    """Título + resumo curto, numa chamada só ao Haiku.
+async def simple_summary(transcript: str, idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int, str]:
+    """Título + resumo curto, numa chamada só (Gemini, ou o Haiku de reserva).
 
     Sem map-reduce de propósito: mesmo o teto de upload (1 GB, ~8h de fala)
     rende uma transcrição bem dentro da janela de 200 mil tokens do Haiku, e
     fatiar aqui pagaria duas chamadas para produzir o mesmo parágrafo."""
-    return await call_insights(
+    return await call_insights_com_reserva(
+        "transcricao_simples",
         instrucoes_resumo_simples(idioma), f"Transcrição:\n{transcript}",
         SIMPLE_SUMMARY_SCHEMA,
         max_tokens=SIMPLE_SUMMARY_MAX_TOKENS,
@@ -1411,7 +1588,7 @@ PART_SCHEMA = {
 }
 
 
-async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int]:
+async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int, str]:
     """Transcrição longa: cada parte gera seus capítulos e tarefas em paralelo,
     e uma segunda chamada pequena — alimentada só pelos títulos de capítulo —
     consolida título, resumo e os 4 tópicos."""
@@ -1420,7 +1597,8 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
     parts = ["\n".join(lines[i:i + per_part]) for i in range(0, len(lines), per_part)]
 
     results = await asyncio.gather(*[
-        call_insights(
+        call_insights_com_reserva(
+            "transcricao_avancada",
             instrucoes_insights(idioma),
             f"Esta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
             "Extraia apenas locutores, tarefas e capítulos DESTA parte. Os tempos já são absolutos "
@@ -1431,9 +1609,10 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         for i, part in enumerate(parts)
     ])
 
-    speakers, turns, todos, chapters = [], [], [], []
+    speakers, turns, todos, chapters, modelos = [], [], [], [], []
     in_tokens = out_tokens = cache_read_tokens = cache_write_tokens = 0
-    for data, tin, tout, cread, cwrite in results:
+    for data, tin, tout, cread, cwrite, modelo in results:
+        modelos.append(modelo)
         speakers.extend(data.get("speakers") or [])
         turns.extend(data.get("speaker_turns") or [])
         todos.extend(data.get("todos") or [])
@@ -1448,7 +1627,8 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         + " ".join(c.get("bullets") or [])
         for c in chapters
     )
-    reduced, tin, tout, cread, cwrite = await call_insights(
+    reduced, tin, tout, cread, cwrite, modelo = await call_insights_com_reserva(
+        "transcricao_avancada",
         instrucoes_insights(idioma),
         "Abaixo está o roteiro de uma conversa longa, seção por seção. "
         "Com base nele, produza apenas title, summary_bullets e os 4 topics da conversa inteira. "
@@ -1457,6 +1637,7 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         REDUCE_SCHEMA,
         max_tokens=8000,
     )
+    modelos.append(modelo)
     in_tokens += tin
     out_tokens += tout
     cache_read_tokens += cread
@@ -1469,7 +1650,10 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         "todos": todos,
         "chapters": chapters,
     }
-    return normalize_insights(merged, segments), in_tokens, out_tokens, cache_read_tokens, cache_write_tokens
+    return (
+        normalize_insights(merged, segments), in_tokens, out_tokens,
+        cache_read_tokens, cache_write_tokens, modelos_usados(modelos),
+    )
 
 
 def dedupe_speakers(speakers: list[dict]) -> list[dict]:
@@ -1689,8 +1873,8 @@ def capture_key(*parts: str) -> str:
 
 
 # As duas profundidades de análise que o app oferece. "completa" é a de sempre
-# — 4 tópicos, tarefas, capítulos e locutores, no modelo grande. "simples" é um
-# resumo curto no Haiku, para quem só quer saber do que se tratou e perguntar o
+# — 4 tópicos, tarefas, capítulos e locutores. "simples" é um
+# resumo curto, para quem só quer saber do que se tratou e perguntar o
 # resto no chat.
 MODO_SIMPLES = "simples"
 MODO_COMPLETA = "completa"
@@ -1774,7 +1958,7 @@ async def analisar_transcricao(
         )
 
     if modo == MODO_SIMPLES:
-        resumo, in_tokens, out_tokens, cache_read, cache_write = await simple_summary(full_transcript, idioma)
+        resumo, in_tokens, out_tokens, cache_read, cache_write, modelo = await simple_summary(full_transcript, idioma)
         await _cobrar_do_saldo(user_id, minutos, saldo)
         # Sem insights, a duração vem do último segmento (ou do próprio áudio):
         # é ela que a lista de conversas mostra ao lado do título.
@@ -1791,11 +1975,11 @@ async def analisar_transcricao(
             mode=MODO_SIMPLES,
             usage=Usage(
                 input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds,
-                cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+                cache_read_tokens=cache_read, cache_write_tokens=cache_write, modelo=modelo,
             ),
         )
 
-    insights, in_tokens, out_tokens, cache_read, cache_write = await extract_insights(full_transcript, segments, idioma=idioma)
+    insights, in_tokens, out_tokens, cache_read, cache_write, modelo = await extract_insights(full_transcript, segments, idioma=idioma)
     await _cobrar_do_saldo(user_id, minutos, saldo)
     return TranscriptionResult(
         transcript=full_transcript,
@@ -1809,7 +1993,7 @@ async def analisar_transcricao(
         mode=MODO_COMPLETA,
         usage=Usage(
             input_tokens=in_tokens, output_tokens=out_tokens, audio_seconds=audio_seconds,
-            cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+            cache_read_tokens=cache_read, cache_write_tokens=cache_write, modelo=modelo,
         ),
     )
 
@@ -2200,7 +2384,7 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
             ),
         )
 
-    data, in_tokens, out_tokens, cache_read, cache_write = await extract_insights(
+    data, in_tokens, out_tokens, cache_read, cache_write, modelo = await extract_insights(
         request.transcript, request.segments, idioma=normalizar_idioma(request.language),
     )
     return InsightsResponse(
@@ -2208,7 +2392,7 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
         summary=summary_markdown(data),
         usage=Usage(
             input_tokens=in_tokens, output_tokens=out_tokens,
-            cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+            cache_read_tokens=cache_read, cache_write_tokens=cache_write, modelo=modelo,
         ),
     )
 
@@ -2276,23 +2460,39 @@ REGRAS OBRIGATÓRIAS:
                 # que não manda a conversa — e que pergunta sem contar.
                 logger.info("Pergunta sem session_id de %s (versão antiga do app)", user_id)
 
-    client = anthropic_client()
-    try:
-        response = await client.messages.create(
-            model=CHAT_MODEL,
-            max_tokens=2048,
-            system=system,
-            messages=messages,
-        )
-    except Exception as e:
-        if contou:
-            await devolver_pergunta(user_id, request.session_id)
-        if isinstance(e, anthropic.APIError):
-            raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
-        raise
+    answer = None
+    if OPENAI_API_KEY:
+        try:
+            # O mesmo texto que o Claude recebe, num bloco só: o cache da
+            # OpenAI é automático e acerta sozinho no prefixo repetido.
+            answer, in_tokens, out_tokens, cache_read = await chat_luna(
+                "\n\n".join(b["text"] for b in system), messages,
+            )
+            cache_write = 0
+            modelo = LUNA_MODEL
+        except Exception as e:
+            await registrar_fallback("chat", LUNA_MODEL, CHAT_MODEL, motivo_da_falha(e))
 
-    answer = next((b.text for b in response.content if b.type == "text"), "")
-    in_tokens, out_tokens = read_usage(response)
+    if answer is None:
+        client = anthropic_client()
+        try:
+            response = await client.messages.create(
+                model=CHAT_MODEL,
+                max_tokens=2048,
+                system=system,
+                messages=messages,
+            )
+        except Exception as e:
+            if contou:
+                await devolver_pergunta(user_id, request.session_id)
+            if isinstance(e, anthropic.APIError):
+                raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
+            raise
+
+        answer = next((b.text for b in response.content if b.type == "text"), "")
+        in_tokens, out_tokens = read_usage(response)
+        cache_read, cache_write = read_cache_usage(response)
+        modelo = CHAT_MODEL
 
     # On the first turn, generate a short title for the conversation list.
     title = None
@@ -2310,10 +2510,104 @@ REGRAS OBRIGATÓRIAS:
         usage=Usage(
             input_tokens=in_tokens,
             output_tokens=out_tokens,
-            cache_read_tokens=int(getattr(response.usage, "cache_read_input_tokens", 0) or 0),
-            cache_write_tokens=int(getattr(response.usage, "cache_creation_input_tokens", 0) or 0),
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            modelo=modelo,
         ),
     )
+
+
+async def chat_luna(system_text: str, messages: list[dict]) -> tuple[str, int, int, int]:
+    """A resposta do chat pelo GPT-5.6 Luna, com os parâmetros do teste de
+    qualidade (raciocínio baixo). Devolve (resposta, entrada sem cache, saída,
+    cache lido); levanta FalhaDoPrincipal (ou erro de rede) em qualquer coisa
+    que não seja uma resposta inteira."""
+    async with httpx.AsyncClient() as client:
+        resp = await asyncio.wait_for(client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            json={
+                "model": LUNA_MODEL,
+                "reasoning_effort": "low",
+                # O raciocínio conta dentro deste teto; o Haiku tem 2048 só de
+                # resposta.
+                "max_completion_tokens": 4096,
+                "messages": [{"role": "system", "content": system_text}, *messages],
+            },
+            timeout=LUNA_TIMEOUT_S + 10,
+        ), LUNA_TIMEOUT_S)
+
+    if resp.status_code != 200:
+        raise FalhaDoPrincipal(f"HTTP {resp.status_code} {_codigo_do_erro(resp)}".strip())
+    j = resp.json()
+    escolha = (j.get("choices") or [{}])[0]
+    # "length" é resposta cortada; "content_filter", bloqueada.
+    if escolha.get("finish_reason") != "stop":
+        raise FalhaDoPrincipal(f"finish_reason={escolha.get('finish_reason')}")
+    mensagem = escolha.get("message") or {}
+    if mensagem.get("refusal"):
+        raise FalhaDoPrincipal("recusou responder")
+    answer = (mensagem.get("content") or "").strip()
+    if not answer:
+        raise FalhaDoPrincipal("resposta vazia")
+
+    # Mesma convenção do Claude em `Usage`: a OpenAI conta o cache dentro do
+    # prompt_tokens.
+    u = j.get("usage") or {}
+    cache = int((u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
+    return answer, int(u.get("prompt_tokens") or 0) - cache, int(u.get("completion_tokens") or 0), cache
+
+
+# Para o aviso que roda ao abrir uma sessão do Claude Code neste projeto
+# (.claude/scripts/checar-fallbacks.py): quantas vezes a reserva precisou
+# entrar. Exige login, mas não devolve nada de usuário — só quando, em qual
+# uso, quem falhou, quem assumiu e por quê.
+@app.get("/ia/fallbacks")
+async def ia_fallbacks(dias: int = 30, user_id: str | None = Depends(guarda_de_uso)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para usar este recurso.")
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=503, detail="Registro de fallbacks indisponível.")
+    dias = max(1, min(dias, 90))
+    desde = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=dias)
+    # Leitura própria em vez de `supabase_service_get`: aquela devolve lista
+    # vazia quando falha, e aqui "nenhum fallback" e "não consegui ler" não
+    # podem parecer a mesma coisa.
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/events",
+            params={
+                "select": "created_at,props",
+                "name": "eq.ia_fallback",
+                "created_at": f"gte.{desde.isoformat()}",
+                "order": "created_at.desc",
+                "limit": 500,
+            },
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            },
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        logger.error("Falha ao ler os fallbacks: %s %s", resp.status_code, resp.text)
+        raise HTTPException(status_code=502, detail="Não consegui ler os fallbacks agora.")
+
+    campos = ("uso", "falhou", "assumiu", "motivo")
+    fallbacks = [
+        {"quando": linha.get("created_at"), **{c: (linha.get("props") or {}).get(c) for c in campos}}
+        for linha in resp.json() or []
+    ]
+    return {
+        "dias": dias,
+        # Quem está ligado agora — sem a chave, aquele uso já vai direto ao Claude.
+        "principais": {
+            "transcricao": GEMINI_MODEL if GEMINI_API_KEY else None,
+            "chat": LUNA_MODEL if OPENAI_API_KEY else None,
+        },
+        "total": len(fallbacks),
+        "fallbacks": fallbacks,
+    }
 
 
 async def generate_chat_title(question: str, answer: str) -> tuple[str | None, int, int]:

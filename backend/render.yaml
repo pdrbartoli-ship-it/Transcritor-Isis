@@ -21,6 +21,13 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Modelos principais (Gemini nas transcrições, GPT-5.6 Luna no chat). A
+      # chave é o interruptor: apagá-la no painel manda aquele uso de volta ao
+      # Claude, sem deploy. Ver "Modelo principal e reserva" em main.py.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: YOUTUBE_COOKIES
         sync: false
       - key: SUPADATA_API_KEY
