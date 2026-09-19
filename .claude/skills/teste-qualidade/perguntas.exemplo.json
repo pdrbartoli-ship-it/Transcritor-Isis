@@ -1,0 +1,6 @@
+[
+  "Uma pergunta com resposta clara e verificável no material.",
+  "Uma pergunta sobre um número específico (data, valor, prazo).",
+  "Uma pergunta do tipo 'quem disse X' — testa se o modelo atribui a fala certa.",
+  "Uma pegadinha: pergunte algo que NÃO foi dito no material, pra ver se o modelo inventa uma resposta em vez de dizer que não sabe."
+]

@@ -1,0 +1,5 @@
+{
+  "_comentario": "US$ por milhão de tokens: [entrada, saída, leitura de cache]. Confira na página OFICIAL de cada fornecedor no dia do teste — preço muda com frequência — e nunca reaproveite um precos.json de um caso antigo sem reconferir.",
+  "claude-sonnet-5": [2.00, 10.00, 0.20],
+  "claude-haiku-4-5": [1.00, 5.00, 0.10]
+}
