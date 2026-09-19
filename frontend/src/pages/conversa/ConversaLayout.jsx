@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Outlet, useOutletContext, useLocation } from 'react-router-dom'
 import { getConversation } from '../../lib/conversas'
-import { supabase } from '../../lib/supabase'
-import { planoPorId } from '../../lib/planos'
 import { track } from '../../lib/analytics'
 import AskBar from './AskBar'
 
@@ -20,7 +18,6 @@ export default function ConversaLayout() {
 
   const [conversation, setConversation] = useState(null)
   const [error, setError] = useState(null)
-  const [perguntasUsadas, setPerguntasUsadas] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -39,36 +36,10 @@ export default function ConversaLayout() {
 
   useEffect(() => { track('conversa_aberta') }, [id])
 
-  // Quantas perguntas desta transcrição já foram feitas. Mora aqui, e não no
-  // chat, porque a barra de perguntar aparece em todas as abas da conversa e o
-  // número tem de ser o mesmo nelas. Sem linha no banco = nenhuma pergunta
-  // ainda; com erro de leitura, a contagem simplesmente não aparece.
-  useEffect(() => {
-    let ativo = true
-    setPerguntasUsadas(null)
-    supabase.from('perguntas_transcricao')
-      .select('perguntas_usadas')
-      .eq('session_id', id)
-      .maybeSingle()
-      .then(({ data, error: erroLeitura }) => {
-        if (ativo && !erroLeitura) setPerguntasUsadas(data?.perguntas_usadas ?? 0)
-      })
-    return () => { ativo = false }
-  }, [id])
-
-  // null = plano sem limite, ou dado ainda não lido: nos dois casos a tela não
-  // mostra contagem nenhuma.
-  const limite = outer.plano ? planoPorId(outer.plano).perguntas : null
-  const perguntasRestantes = limite == null || perguntasUsadas == null
-    ? null
-    : Math.max(0, limite - perguntasUsadas)
-
-  // O servidor é quem conta; a tela só acompanha o número que ele devolve a
-  // cada resposta, em vez de somar por conta própria e divergir dele.
-  const atualizarPerguntasRestantes = useCallback(restantes => {
-    if (limite == null || restantes == null) return
-    setPerguntasUsadas(limite - restantes)
-  }, [limite])
+  // O saldo de perguntas é do mês, e não da conversa: vem do Layout, que o lê
+  // junto com os minutos. A barra de perguntar aparece em todas as abas da
+  // conversa e o número tem de ser o mesmo nelas.
+  const { perguntasRestantes, atualizarPerguntasRestantes } = outer
 
   if (error && !conversation) return <div className="alert alert-error">{error}</div>
   if (!conversation) return <div className="loading-screen"><div className="spinner" /></div>

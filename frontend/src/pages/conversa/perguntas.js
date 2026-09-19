@@ -2,6 +2,6 @@
 // duas formas de dizê-lo leriam como dois saldos diferentes.
 export function textoPerguntasRestantes(restantes) {
   return restantes === 1
-    ? 'Resta 1 pergunta nesta transcrição'
-    : `Restam ${restantes} perguntas nesta transcrição`
+    ? 'Resta 1 pergunta este mês'
+    : `Restam ${restantes} perguntas este mês`
 }

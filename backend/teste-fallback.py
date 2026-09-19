@@ -41,8 +41,8 @@ UID = "11111111-2222-3333-4444-555555555555"
 
 # ── Dublês ────────────────────────────────────────────────────────────────
 # Cada fornecedor tem um "roteiro": "ok", ou o jeito de falhar.
-roteiro = {"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado"}
-chamadas = {"gemini": [], "openai": [], "claude": [], "events": [], "rpc": []}
+roteiro = {"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1}
+chamadas = {"gemini": [], "openai": [], "claude": [], "events": [], "rpc": [], "rpc_args": []}
 linhas_events = []
 
 INSIGHTS_OK = {
@@ -108,7 +108,7 @@ async def handler(request: httpx.Request):
     if request.url.path == "/auth/v1/user":
         return httpx.Response(200, json={"id": UID, "email": "teste@exemplo.com", "is_anonymous": False})
     if request.url.path == "/rest/v1/subscriptions":
-        return httpx.Response(200, json=[{"plano": roteiro["plano"], "status": "active", "current_period_end": None}])
+        return httpx.Response(200, json=[{"plano": roteiro["plano"], "status": "active", "current_period_end": roteiro["periodo_fim"]}])
     if request.url.path == "/rest/v1/events" and request.method == "POST":
         corpo = json.loads(request.content)
         chamadas["events"].append(corpo)
@@ -119,7 +119,15 @@ async def handler(request: httpx.Request):
     if request.url.path.startswith("/rest/v1/rpc/"):
         nome = request.url.path.rsplit("/", 1)[1]
         chamadas["rpc"].append(nome)
-        return httpx.Response(200, json=1 if nome == "consumir_pergunta" else None)
+        chamadas["rpc_args"].append(json.loads(request.content))
+        if nome == "consumir_pergunta_mes":
+            # "limite" = o banco recusando porque o saldo do mês acabou (devolve null).
+            if roteiro["saldo"] == "limite":
+                return httpx.Response(200, content=b"null", headers={"content-type": "application/json"})
+            if roteiro["saldo"] == "fora":
+                return httpx.Response(500, text="banco fora do ar")
+            return httpx.Response(200, json=roteiro["usadas"])
+        return httpx.Response(200, json=None)
     return httpx.Response(404, json={"erro": f"dublê não conhece {url}"})
 
 
@@ -162,9 +170,9 @@ main.anthropic_client = lambda: ClaudeDuble()
 
 
 def zerar(**r):
-    roteiro.update({"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado"})
+    roteiro.update({"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1})
     roteiro.update(r)
-    for k in ("gemini", "openai", "claude", "events", "rpc"):
+    for k in ("gemini", "openai", "claude", "events", "rpc", "rpc_args"):
         chamadas[k] = []
     main._rate_hits.clear()
     main._token_cache.clear()
@@ -311,7 +319,7 @@ check("system único com transcrição + regras, depois o histórico e a pergunt
       and "REGRAS OBRIGATÓRIAS" in o["messages"][0]["content"]
       and [m["role"] for m in o["messages"][1:]] == ["user", "assistant", "user"]
       and o["messages"][-1]["content"] == "Quem falou?")
-check("pergunta contada no plano", chamadas["rpc"] == ["consumir_pergunta"])
+check("pergunta contada no plano", chamadas["rpc"] == ["consumir_pergunta_mes"])
 
 zerar(plano="iniciante", openai="chave")
 main._usuario_atual.set(None)
@@ -323,7 +331,7 @@ check("usage.modelo = claude-haiku-4-5", j["usage"]["modelo"] == "claude-haiku-4
 check("fallback gravado com o usuário da rota (contextvar do guarda_de_uso)", ev.get("user_id") == UID, ev)
 check("motivo: HTTP 401 invalid_api_key", ev.get("props", {}).get("motivo") == "HTTP 401 invalid_api_key", ev)
 check("nenhum pedaço da chave no registro", "sk-" not in json.dumps(chamadas["events"]))
-check("a pergunta NÃO é devolvida (a reserva respondeu)", chamadas["rpc"] == ["consumir_pergunta"])
+check("a pergunta NÃO é devolvida (a reserva respondeu)", chamadas["rpc"] == ["consumir_pergunta_mes"])
 
 zerar(plano="iniciante", openai="lento")
 main.LUNA_TIMEOUT_S = 0.3
@@ -336,7 +344,7 @@ zerar(plano="iniciante", openai="cortado", claude="erro")
 main._usuario_atual.set(None)
 r = client.post("/chat", json=PERGUNTA, headers=AUTH)
 check("os dois caem → o mesmo 502 de hoje", r.status_code == 502 and "Erro ao consultar IA" in r.text, f"{r.status_code} {r.text[:200]}")
-check("e a pergunta volta pro saldo", chamadas["rpc"] == ["consumir_pergunta", "devolver_pergunta"], chamadas["rpc"])
+check("e a pergunta volta pro saldo", chamadas["rpc"] == ["consumir_pergunta_mes", "devolver_pergunta_mes"], chamadas["rpc"])
 check("o fallback ficou registrado mesmo assim", len(chamadas["events"]) == 1 and chamadas["events"][0]["props"]["motivo"] == "finish_reason=length")
 
 zerar(plano="iniciante")
@@ -385,6 +393,68 @@ p = chamadas["events_get"]
 check("consulta filtra ia_fallback, período e ordem", p["name"] == "eq.ia_fallback" and p["created_at"].startswith("gte.2026") and p["order"] == "created_at.desc", p)
 r = client.get("/ia/fallbacks?dias=9999", headers=AUTH)
 check("período limitado a 90 dias", r.json()["dias"] == 90)
+
+# ─────────────────────────────────────────────────────────────
+print("\n== 9. saldo mensal de perguntas (5 / 60 / sem limite) ==")
+zerar(plano="gratuito", usadas=3)
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+a = chamadas["rpc_args"][0] if chamadas["rpc_args"] else {}
+check("grátis: 3ª pergunta do mês → restam 2", r.status_code == 200 and r.json()["perguntas_restantes"] == 2, r.text[:200])
+check("grátis: manda limite 5 e o usuário (não a conversa)", a.get("p_limite") == 5 and a.get("p_user_id") == UID and "p_session_id" not in a, a)
+
+zerar(plano="iniciante", usadas=60)
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("iniciante: manda limite 60 e a 60ª ainda passa (restam 0)", r.status_code == 200 and r.json()["perguntas_restantes"] == 0
+      and chamadas["rpc_args"][0]["p_limite"] == 60, r.text[:200])
+
+zerar(plano="gratuito", saldo="limite")
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("saldo do mês acabou → 402 com convite ao Iniciante", r.status_code == 402 and "5 perguntas deste mês" in r.text and "60 perguntas por mês" in r.text, r.text[:250])
+check("402 antes da IA: nenhuma chamada de modelo e nada devolvido",
+      not chamadas["openai"] and not chamadas["claude"] and chamadas["rpc"] == ["consumir_pergunta_mes"])
+
+zerar(plano="iniciante", saldo="limite")
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("iniciante esgotado → convite ao Avançado", r.status_code == 402 and "Avançado" in r.text, r.text[:250])
+
+zerar(plano="avancado", usadas=137)
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("avançado: é contado (limite null) e a resposta não traz saldo",
+      r.status_code == 200 and r.json()["perguntas_restantes"] is None
+      and chamadas["rpc_args"][0]["p_limite"] is None, r.text[:200])
+
+zerar(plano="iniciante", periodo_fim="2026-10-05T00:00:00+00:00")
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("ciclo do Stripe repassado ao banco (mesma virada dos minutos)",
+      chamadas["rpc_args"][0]["p_periodo_fim"] == "2026-10-05T00:00:00+00:00", chamadas["rpc_args"])
+
+zerar(plano="gratuito", saldo="fora")
+main._usuario_atual.set(None)
+r = client.post("/chat", json=PERGUNTA, headers=AUTH)
+check("contador fora do ar → o chat responde mesmo assim (sem saldo na resposta)",
+      r.status_code == 200 and r.json()["perguntas_restantes"] is None, r.text[:200])
+
+zerar(plano="gratuito", usadas=1)
+main._usuario_atual.set(None)
+r = client.post("/chat", json={k: v for k, v in PERGUNTA.items() if k != "session_id"}, headers=AUTH)
+check("versão antiga do app (sem session_id) também é contada", r.status_code == 200 and chamadas["rpc"] == ["consumir_pergunta_mes"], r.text[:200])
+
+zerar(plano="iniciante")
+planos = client.get("/planos").json()["planos"]
+por_id = {p["id"]: p for p in planos}
+check("/planos: números e textos do saldo mensal",
+      [por_id[i]["perguntas"] for i in ("gratuito", "iniciante", "avancado")] == [5, 60, None]
+      and "5 perguntas por mês" in por_id["gratuito"]["itens"]
+      and "60 perguntas por mês" in por_id["iniciante"]["itens"]
+      and "Perguntas ilimitadas" in por_id["avancado"]["itens"]
+      and not any("transcrição" in i and "pergunta" in i for p in planos for i in p["itens"]),
+      [p["itens"] for p in planos])
 
 print(f"\n{'TUDO CERTO' if not falhas else 'HOUVE FALHAS'} — {ok} passaram, {falhas} falharam")
 sys.exit(1 if falhas else 0)

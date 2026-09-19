@@ -274,10 +274,12 @@ LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
 # gratuito por este quando `convidado=True`.
 LIMITE_CONVIDADO_MIN = 90
 
-# Perguntas por transcrição; None é sem limite. Não renova: cada conversa nasce
-# com o saldo dela, e é no momento de maior interesse — a pessoa querendo saber
-# mais daquela conversa — que o limite convida a assinar.
-PERGUNTAS_POR_TRANSCRICAO = {"gratuito": 2, "iniciante": 10, "avancado": None}
+# Perguntas por mês; None é sem limite. Um saldo só, que vale para o chat de
+# qualquer conversa (e para o chat geral do acervo), renovado no mesmo ciclo dos
+# minutos — o do Stripe para quem paga, o mês corrido para o gratuito. Quem não
+# tem limite também é contado: é o que deixa ligar um teto de uso justo depois
+# sem migrar nada.
+PERGUNTAS_POR_MES = {"gratuito": 5, "iniciante": 60, "avancado": None}
 
 # Quem tem a transcrição completa: 4 tópicos, próximos passos e resumo minuto a
 # minuto. Só o Avançado — é o degrau de valor entre os dois planos pagos.
@@ -318,13 +320,11 @@ VITRINE_PLANO = {
 def _itens_do_plano(plano: str) -> list[str]:
     """A lista de marcadores do cartão, montada a partir dos mesmos limites que
     barram de verdade — assim ela não pode prometer o que o código não cumpre."""
-    perguntas = PERGUNTAS_POR_TRANSCRICAO[plano]
+    perguntas = PERGUNTAS_POR_MES[plano]
     return [
         f"{LIMITES_PLANO[plano]} minutos por mês",
         "Transcrição simples e completa" if plano in PLANOS_COM_COMPLETA else "Transcrição simples",
-        f"Limite de {perguntas} perguntas por transcrição"
-        if perguntas is not None
-        else "Perguntas ilimitadas por transcrição",
+        f"{perguntas} perguntas por mês" if perguntas is not None else "Perguntas ilimitadas",
         "Criptografia de ponta a ponta",
     ]
 
@@ -335,7 +335,7 @@ def montar_planos() -> list[dict]:
             "id": plano,
             "nome": NOMES_PLANO[plano],
             "minutos": LIMITES_PLANO[plano],
-            "perguntas": PERGUNTAS_POR_TRANSCRICAO[plano],
+            "perguntas": PERGUNTAS_POR_MES[plano],
             "completa": plano in PLANOS_COM_COMPLETA,
             "mensal": PRECOS_PLANO[plano]["mensal"],
             "anual": PRECOS_PLANO[plano]["anual"],
@@ -460,26 +460,28 @@ async def _rpc_service(nome: str, args: dict) -> httpx.Response:
         )
 
 
-async def consumir_pergunta(user_id: str, session_id: str, plano: str, limite: int) -> int | None:
-    """Gasta uma pergunta desta transcrição e devolve quantas já foram usadas.
+async def consumir_pergunta(
+    user_id: str, plano: str, limite: int | None, periodo_fim: str | None,
+) -> int | None:
+    """Gasta uma pergunta do mês e devolve quantas já foram usadas, contando esta.
 
-    Recusa com 402 quando o limite do plano já foi atingido. Devolve None
-    quando não deu para contar (função ainda não criada no banco, Supabase fora
-    do ar): o contador é alavanca de venda, não trava de segurança, e travar o
-    chat inteiro por falha dele puniria justamente quem está usando o produto."""
+    Recusa com 402 quando o limite do plano já foi atingido. `limite` None é o
+    plano sem limite: só conta. Devolve None quando não deu para contar (função
+    ainda não criada no banco, Supabase fora do ar): o contador é alavanca de
+    venda, não trava de segurança, e travar o chat inteiro por falha dele
+    puniria justamente quem está usando o produto.
+
+    `periodo_fim` é o fim do ciclo do Stripe (None para quem não paga): a virada
+    do mês acontece no banco, e ela precisa do mesmo ciclo dos minutos."""
     try:
         resp = await _rpc_service(
-            "consumir_pergunta",
-            {"p_user_id": user_id, "p_session_id": session_id, "p_limite": limite},
+            "consumir_pergunta_mes",
+            {"p_user_id": user_id, "p_limite": limite, "p_periodo_fim": periodo_fim},
         )
     except Exception:
         logger.warning("Supabase não respondeu ao contar a pergunta de %s", user_id)
         return None
 
-    # 400 é o banco recusando o pedido em si: id que não é de conversa nenhuma,
-    # ou conversa de outra pessoa. Isso não é falha do contador.
-    if resp.status_code == 400:
-        raise HTTPException(status_code=403, detail="Não encontramos esta conversa na sua conta.")
     if resp.status_code != 200:
         logger.error("Falha ao contar pergunta de %s: %s %s", user_id, resp.status_code, resp.text)
         return None
@@ -487,25 +489,25 @@ async def consumir_pergunta(user_id: str, session_id: str, plano: str, limite: i
     usadas = resp.json()
     if usadas is None:
         proximo = (
-            f"o Iniciante para ter {PERGUNTAS_POR_TRANSCRICAO['iniciante']} perguntas por transcrição"
+            f"o Iniciante para ter {PERGUNTAS_POR_MES['iniciante']} perguntas por mês"
             if plano == "gratuito"
             else "o Avançado para perguntar sem limite"
         )
         raise HTTPException(
             status_code=402,
             detail=(
-                f"Você já fez as {limite} perguntas desta transcrição no plano "
+                f"Você já fez as {limite} perguntas deste mês no plano "
                 f"{NOMES_PLANO.get(plano, plano)}. Assine {proximo} em \"Meu plano\"."
             ),
         )
     return int(usadas)
 
 
-async def devolver_pergunta(user_id: str, session_id: str) -> None:
+async def devolver_pergunta(user_id: str) -> None:
     """A IA falhou depois de a pergunta ser contada: quem recebeu um erro não
     pode sair dele com uma pergunta a menos."""
     try:
-        resp = await _rpc_service("devolver_pergunta", {"p_session_id": session_id})
+        resp = await _rpc_service("devolver_pergunta_mes", {"p_user_id": user_id})
         if resp.status_code >= 300:
             logger.error("Falha ao devolver pergunta de %s: %s %s", user_id, resp.status_code, resp.text)
     except Exception:
@@ -832,9 +834,10 @@ class ChatRequest(BaseModel):
     summary: str | None = None
     history: list[ChatTurn] = []
     make_title: bool = False
-    # A transcrição de que se está falando, para o limite de perguntas do plano.
-    # Opcional porque as versões antigas do app não mandam: a elas o chat
-    # continua respondendo, só sem contar.
+    # A conversa de que se está falando. O saldo de perguntas agora é do mês e
+    # do usuário, então ela não conta mais nada; segue no contrato só porque as
+    # versões do app já instaladas (o Windows não se atualiza sozinho) ainda a
+    # mandam.
     session_id: str | None = Field(None, max_length=64)
 
 
@@ -2445,21 +2448,17 @@ REGRAS OBRIGATÓRIAS:
     # A pergunta é contada ANTES da IA: conferir e somar numa instrução só, no
     # banco, é o que impede duas perguntas simultâneas de passarem juntas do
     # limite — e recusar aqui não gasta um token. Se a IA falhar, ela volta.
+    # O saldo é do mês e do usuário, não da conversa: `session_id` não entra.
     restantes = None
     contou = False
     if user_id:
-        plano = await ler_plano(user_id)
-        limite = PERGUNTAS_POR_TRANSCRICAO.get(plano, PERGUNTAS_POR_TRANSCRICAO["gratuito"])
-        if limite is not None:
-            if request.session_id:
-                usadas = await consumir_pergunta(user_id, request.session_id, plano, limite)
-                if usadas is not None:
-                    contou = True
-                    restantes = max(0, limite - usadas)
-            else:
-                # Enquanto esta linha aparecer, ainda há gente numa versão do app
-                # que não manda a conversa — e que pergunta sem contar.
-                logger.info("Pergunta sem session_id de %s (versão antiga do app)", user_id)
+        plano, assinatura = await ler_plano_e_assinatura(user_id)
+        limite = PERGUNTAS_POR_MES.get(plano, PERGUNTAS_POR_MES["gratuito"])
+        usadas = await consumir_pergunta(user_id, plano, limite, assinatura.get("current_period_end"))
+        if usadas is not None:
+            contou = True
+            if limite is not None:
+                restantes = max(0, limite - usadas)
 
     answer = None
     if OPENAI_API_KEY:
@@ -2485,7 +2484,7 @@ REGRAS OBRIGATÓRIAS:
             )
         except Exception as e:
             if contou:
-                await devolver_pergunta(user_id, request.session_id)
+                await devolver_pergunta(user_id)
             if isinstance(e, anthropic.APIError):
                 raise HTTPException(status_code=502, detail=f"Erro ao consultar IA: {e}")
             raise

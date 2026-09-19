@@ -119,11 +119,29 @@ export default function Layout() {
         // O plano vai junto do saldo porque as telas de dentro precisam dele
         // para desenhar o que está liberado — o cadeado da transcrição completa.
         const plano = data?.plano || 'gratuito'
-        setSaldo({ usados: uso.minutosUsados, limite: planoPorId(plano).minutos, plano })
+        setSaldo({
+          usados: uso.minutosUsados, limite: planoPorId(plano).minutos, plano,
+          perguntasUsadas: uso.perguntasUsadas,
+        })
       })
       .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
     return () => { ativo = false }
   }, [user?.id, conversations.length])
+
+  // Perguntas que ainda cabem no mês, para o chat de qualquer conversa. null =
+  // plano sem limite, ou dado ainda não lido: nos dois casos a tela não mostra
+  // contagem nenhuma.
+  const limitePerguntas = saldo ? planoPorId(saldo.plano).perguntas : null
+  const perguntasRestantes = limitePerguntas == null || saldo?.perguntasUsadas == null
+    ? null
+    : Math.max(0, limitePerguntas - saldo.perguntasUsadas)
+
+  // O servidor é quem conta; a tela só acompanha o número que ele devolve a
+  // cada resposta, em vez de somar por conta própria e divergir dele.
+  const atualizarPerguntasRestantes = useCallback(restantes => {
+    if (limitePerguntas == null || restantes == null) return
+    setSaldo(s => (s ? { ...s, perguntasUsadas: limitePerguntas - restantes } : s))
+  }, [limitePerguntas])
 
   // Quem escolheu um plano pago na landing antes de logar chega aqui direto
   // no "Meu plano", já pronto para clicar em Assinar — sem isso a escolha
@@ -377,7 +395,7 @@ export default function Layout() {
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, convidado, abrirPlano: () => setShowPlan(true) }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, abrirPlano: () => setShowPlan(true) }} />
         </div>
       </div>
 
