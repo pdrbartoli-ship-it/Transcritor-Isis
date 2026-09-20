@@ -41,7 +41,7 @@ UID = "11111111-2222-3333-4444-555555555555"
 
 # ── Dublês ────────────────────────────────────────────────────────────────
 # Cada fornecedor tem um "roteiro": "ok", ou o jeito de falhar.
-roteiro = {"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1}
+roteiro = {"gemini": "ok", "openai": "ok", "claude": "ok", "embed": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1}
 chamadas = {"gemini": [], "openai": [], "claude": [], "events": [], "rpc": [], "rpc_args": []}
 linhas_events = []
 
@@ -51,6 +51,8 @@ INSIGHTS_OK = {
     "chapters": [{"start": 0, "end": 30, "title": "Abertura", "bullets": ["oi"]}],
 }
 RESUMO_OK = {"title": "Áudio de teste", "summary": "- Um fato"}
+PLANO_OK = {"palavras": ["sprint", "usabilidade"], "conversas": ["c-1"], "recencia": 2,
+            "desde": None, "ate": None, "pergunta": "o que foi dito sobre a UX nas últimas 2 sprints?"}
 
 
 def resposta_gemini(corpo):
@@ -77,8 +79,29 @@ def resposta_gemini(corpo):
     })
 
 
+def resposta_embed(corpo):
+    r = roteiro["embed"]
+    if r == "http429":
+        return httpx.Response(429, json={"error": {"status": "RESOURCE_EXHAUSTED", "message": "quota da chave AIzaSyABC"}})
+    if r == "curto":
+        return httpx.Response(200, json={"embeddings": [{"values": [0.0] * 768}]})
+    n = len(corpo["requests"])
+    return httpx.Response(200, json={"embeddings": [{"values": [0.1] * 768} for _ in range(n)]})
+
+
 def resposta_openai(corpo):
     r = roteiro["openai"]
+    # O planner pede JSON; o chat, texto.
+    if corpo.get("response_format", {}).get("type") == "json_object":
+        if r == "planner_lixo":
+            return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": "não é json"}}],
+                                             "usage": {"prompt_tokens": 900, "completion_tokens": 40}})
+        if r == "chave":
+            return httpx.Response(401, json={"error": {"message": "Incorrect API key provided: sk-abc***xyz", "code": "invalid_api_key"}})
+        return httpx.Response(200, json={
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(PLANO_OK)}}],
+            "usage": {"prompt_tokens": 900, "completion_tokens": 40, "prompt_tokens_details": {"cached_tokens": 0}},
+        })
     if r == "chave":
         # A OpenAI de verdade repete um pedaço da chave na mensagem.
         return httpx.Response(401, json={"error": {"message": "Incorrect API key provided: sk-abc***xyz", "type": "invalid_request_error", "code": "invalid_api_key"}})
@@ -96,6 +119,8 @@ async def handler(request: httpx.Request):
     if host == "generativelanguage.googleapis.com":
         corpo = json.loads(request.content)
         chamadas["gemini"].append({"url": url, "corpo": corpo, "chave": request.headers.get("x-goog-api-key")})
+        if "batchEmbedContents" in url:
+            return resposta_embed(corpo)
         if roteiro["gemini"] == "lento":
             await asyncio.sleep(5)
         return resposta_gemini(corpo)
@@ -156,7 +181,10 @@ class ClaudeDuble:
             texto = "Título do chat"
         elif "output_config" in kw:
             schema = kw["output_config"]["format"]["schema"]
-            texto = json.dumps(RESUMO_OK if "summary" in schema["properties"] else INSIGHTS_OK)
+            if "palavras" in schema["properties"]:
+                texto = json.dumps(PLANO_OK)
+            else:
+                texto = json.dumps(RESUMO_OK if "summary" in schema["properties"] else INSIGHTS_OK)
         else:
             texto = "Resposta do Haiku"
         return SimpleNamespace(
@@ -170,7 +198,7 @@ main.anthropic_client = lambda: ClaudeDuble()
 
 
 def zerar(**r):
-    roteiro.update({"gemini": "ok", "openai": "ok", "claude": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1})
+    roteiro.update({"gemini": "ok", "openai": "ok", "claude": "ok", "embed": "ok", "plano": "avancado", "saldo": "ok", "periodo_fim": None, "usadas": 1})
     roteiro.update(r)
     for k in ("gemini", "openai", "claude", "events", "rpc", "rpc_args"):
         chamadas[k] = []
@@ -455,6 +483,201 @@ check("/planos: números e textos do saldo mensal",
       and "Perguntas ilimitadas" in por_id["avancado"]["itens"]
       and not any("transcrição" in i and "pergunta" in i for p in planos for i in p["itens"]),
       [p["itens"] for p in planos])
+
+
+# ─────────────────────────────────────────────────────────────
+print("\n== 10. /embeddar: converte e não guarda ==")
+zerar()
+r = client.post("/embeddar", json={"textos": ["trecho um", "trecho dois"]})
+check("sem login → 401", r.status_code == 401, r.text[:120])
+
+zerar()
+r = client.post("/embeddar", json={"textos": ["trecho um", "trecho dois"]}, headers=AUTH)
+j = r.json()
+check("200 com um vetor por trecho", r.status_code == 200 and len(j["vetores"]) == 2, r.text[:200])
+check("768 dimensões, modelo do teste de recall", j["dimensoes"] == 768 and j["modelo"] == "gemini-embedding-2" and len(j["vetores"][0]) == 768)
+g = chamadas["gemini"][0]
+check("endpoint batchEmbedContents do Gemini Embedding 2", g["url"].endswith("/models/gemini-embedding-2:batchEmbedContents"), g["url"])
+check("chave no cabeçalho, não na URL", g["chave"] == "chave-gemini-de-teste" and "chave-gemini" not in g["url"])
+req = g["corpo"]["requests"]
+check("prefixo de DOCUMENTO e 768 dims por trecho",
+      req[0]["content"]["parts"][0]["text"] == "title: none | text: trecho um"
+      and req[0]["output_dimensionality"] == 768 and len(req) == 2, req[0])
+
+zerar()
+r = client.post("/embeddar", json={"textos": ["quanto custou?"], "tipo": "pergunta"}, headers=AUTH)
+t = chamadas["gemini"][0]["corpo"]["requests"][0]["content"]["parts"][0]["text"]
+check("prefixo de PERGUNTA é outro (buscar com o errado piora sem dar erro)",
+      t == "task: search result | query: quanto custou?", t)
+
+zerar(embed="http429")
+r = client.post("/embeddar", json={"textos": ["x"]}, headers=AUTH)
+check("cota estourada → 503 (o app segue na busca por palavra)", r.status_code == 503 and "indexação" in r.text, r.text[:160])
+check("nenhum pedaço da chave do Google vaza na resposta", "AIzaSy" not in r.text)
+
+zerar(embed="curto")
+r = client.post("/embeddar", json={"textos": ["a", "b"]}, headers=AUTH)
+check("resposta incompleta → 502 (não grava vetor trocado)", r.status_code == 502, r.text[:160])
+
+zerar()
+main.GEMINI_API_KEY = ""
+r = client.post("/embeddar", json={"textos": ["x"]}, headers=AUTH)
+main.GEMINI_API_KEY = "chave-gemini-de-teste"
+check("sem a chave do Gemini → 503, e nada é chamado", r.status_code == 503 and not chamadas["gemini"])
+
+zerar()
+r = client.post("/embeddar", json={"textos": ["x" * 9000]}, headers=AUTH)
+t = chamadas["gemini"][0]["corpo"]["requests"][0]["content"]["parts"][0]["text"]
+check("trecho gigante é cortado antes de virar gasto", len(t) <= 8000 + 30, len(t))
+
+zerar()
+r = client.post("/embeddar", json={"textos": ["x" * 7000] * 40}, headers=AUTH)
+check("lote acima do teto de caracteres → 413 sem chamar o Gemini", r.status_code == 413 and not chamadas["gemini"], r.status_code)
+
+zerar()
+r = client.post("/embeddar", json={"textos": ["x"] * 101}, headers=AUTH)
+check("mais de 100 trechos por lote → 422 do contrato", r.status_code == 422, r.status_code)
+
+zerar()
+r = client.post("/embeddar", json={"textos": []}, headers=AUTH)
+check("lote vazio → 200 sem chamar o Gemini", r.status_code == 200 and r.json()["vetores"] == [] and not chamadas["gemini"])
+
+# ─────────────────────────────────────────────────────────────
+print("\n== 11. /entender-pergunta: só títulos saem do aparelho ==")
+ACERVO = [{"id": "c-1", "titulo": "Sprint 14", "data": "2026-09-12", "idioma": "português", "minutos": 47},
+          {"id": "c-2", "titulo": "Aula de fisiologia", "data": "2026-08-30", "idioma": "português", "minutos": 30}]
+PERG_ACERVO = {"question": "o que foi dito sobre UX nas últimas 2 sprints?", "conversas": ACERVO}
+
+zerar()
+r = client.post("/entender-pergunta", json=PERG_ACERVO)
+check("sem login → 401", r.status_code == 401)
+
+zerar()
+main._usuario_atual.set(None)
+r = client.post("/entender-pergunta", json=PERG_ACERVO, headers=AUTH)
+j = r.json()
+check("Luna devolve o plano de busca", r.status_code == 200 and j["palavras"] == ["sprint", "usabilidade"]
+      and j["conversas"] == ["c-1"] and j["recencia"] == 2, r.text[:250])
+check("pergunta reescrita volta", j["pergunta"].startswith("o que foi dito sobre a UX"))
+check("usage.modelo = gpt-5.6-luna", j["usage"]["modelo"] == "gpt-5.6-luna")
+o = chamadas["openai"][0]
+check("mesmo prompt medido no teste de recall (SYS_PLANNER)", o["messages"][0]["content"] == main.SYS_PLANNER)
+check("pede JSON e raciocínio baixo", o["response_format"] == {"type": "json_object"} and o["reasoning_effort"] == "low")
+enviado = o["messages"][1]["content"]
+check("só título, data, idioma e duração vão junto", "Sprint 14" in enviado and "2026-09-12" in enviado and "47 min" in enviado)
+check("NÃO consome pergunta do saldo (quem consome é a resposta)", not chamadas["rpc"], chamadas["rpc"])
+
+zerar()
+main._usuario_atual.set(None)
+r = client.post("/entender-pergunta", json={**PERG_ACERVO, "history": [{"role": "user", "content": "e sobre o prazo?"}]}, headers=AUTH)
+check("histórico entra para reescrever a pergunta", "e sobre o prazo?" in chamadas["openai"][0]["messages"][1]["content"])
+
+zerar(openai="chave")
+main._usuario_atual.set(None)
+r = client.post("/entender-pergunta", json=PERG_ACERVO, headers=AUTH)
+ev = chamadas["events"][0] if chamadas["events"] else {}
+check("Luna cai e o Haiku entende a pergunta", r.status_code == 200 and r.json()["usage"]["modelo"] == "claude-haiku-4-5", r.text[:200])
+check("fallback registrado como entender_pergunta", ev.get("props", {}).get("uso") == "entender_pergunta"
+      and ev["props"]["assumiu"] == "claude-haiku-4-5", ev)
+check("nenhum pedaço da chave no registro", "sk-" not in json.dumps(chamadas["events"]))
+
+zerar(openai="planner_lixo")
+main._usuario_atual.set(None)
+r = client.post("/entender-pergunta", json=PERG_ACERVO, headers=AUTH)
+check("JSON inválido do Luna também vira fallback", r.status_code == 200
+      and chamadas["events"][0]["props"]["motivo"] == "JSON inválido", r.text[:160])
+
+zerar(openai="chave", claude="erro")
+main._usuario_atual.set(None)
+r = client.post("/entender-pergunta", json=PERG_ACERVO, headers=AUTH)
+j = r.json()
+check("os dois caem → plano vazio, e não erro (a busca por palavra segue)",
+      r.status_code == 200 and j["palavras"] == [] and j["recencia"] is None, r.text[:200])
+check("a pergunta crua volta no lugar da reescrita", j["pergunta"] == PERG_ACERVO["question"])
+
+zerar()
+main._usuario_atual.set(None)
+PLANO_RUIM = {"palavras": "não é lista", "conversas": None, "recencia": "duas", "desde": "ontem", "ate": "2026-09-01", "pergunta": ""}
+_plano = main._plano_do_json(PLANO_RUIM, "pergunta original")
+check("campo com tipo errado é ignorado, não derruba a busca",
+      _plano == {"palavras": [], "conversas": [], "recencia": None, "desde": None,
+                 "ate": "2026-09-01", "pergunta": "pergunta original"}, _plano)
+
+# ─────────────────────────────────────────────────────────────
+print("\n== 12. /chat-acervo: responde só com os trechos ==")
+TRECHOS = [{"rotulo": "C1", "titulo": "Sprint 14", "data": "12/09/2026", "minuto": "14:32", "texto": "o botão de salvar ficou escondido"},
+           {"rotulo": "C2", "titulo": "Sprint 13", "data": "05/09/2026", "minuto": "03:10", "texto": "a busca demora a responder"}]
+PERG_GERAL = {"question": "o que foi dito sobre a UX?", "trechos": TRECHOS,
+              "history": [{"role": "user", "content": "antes"}, {"role": "assistant", "content": "resp"}]}
+
+zerar(plano="iniciante")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+j = r.json()
+check("Luna responde", r.status_code == 200 and j["answer"] == "Resposta do Luna", r.text[:200])
+check("usage.modelo = gpt-5.6-luna", j["usage"]["modelo"] == "gpt-5.6-luna")
+check("pergunta contada no MESMO saldo mensal do chat de conversa",
+      chamadas["rpc"] == ["consumir_pergunta_mes"] and chamadas["rpc_args"][0]["p_limite"] == 60
+      and chamadas["rpc_args"][0]["p_user_id"] == UID, chamadas["rpc_args"])
+o = chamadas["openai"][0]
+sistema = o["messages"][0]["content"]
+check("regra de responder só com os trechos e citar o rótulo",
+      "Responda SÓ com o que está nos trechos" in sistema and "[C1]" in sistema)
+ultima = o["messages"][-1]["content"]
+check("trechos rotulados com título, data e minuto", "[C1 · Sprint 14 · 12/09/2026 · 14:32]" in ultima
+      and "o botão de salvar ficou escondido" in ultima, ultima[:200])
+check("histórico antes da pergunta", [m["role"] for m in o["messages"][1:]] == ["user", "assistant", "user"])
+check("nenhuma transcrição inteira sai do aparelho (só os trechos)", len(ultima) < 1000)
+
+zerar(plano="iniciante")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json={"question": "e sobre o prazo?", "trechos": []}, headers=AUTH)
+check("busca sem resultado → o modelo é avisado disso, em vez de receber contexto vazio",
+      r.status_code == 200 and "não encontrou nenhum trecho" in chamadas["openai"][0]["messages"][-1]["content"])
+
+zerar(plano="iniciante", openai="chave")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+ev = chamadas["events"][0] if chamadas["events"] else {}
+check("Luna cai e o Haiku responde", r.status_code == 200 and r.json()["answer"] == "Resposta do Haiku")
+check("fallback registrado como chat_acervo", ev.get("props", {}).get("uso") == "chat_acervo", ev)
+check("a pergunta NÃO é devolvida (a reserva respondeu)", chamadas["rpc"] == ["consumir_pergunta_mes"])
+
+zerar(plano="iniciante", openai="cortado", claude="erro")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+check("os dois caem → 502", r.status_code == 502 and "Erro ao consultar IA" in r.text, r.text[:160])
+check("e a pergunta volta pro saldo", chamadas["rpc"] == ["consumir_pergunta_mes", "devolver_pergunta_mes"], chamadas["rpc"])
+
+zerar(plano="gratuito", saldo="limite")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+check("saldo do mês acabou → 402 antes de qualquer IA",
+      r.status_code == 402 and "5 perguntas deste mês" in r.text and not chamadas["openai"] and not chamadas["claude"], r.text[:200])
+
+zerar(plano="gratuito", usadas=4)
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+check("grátis: a 4ª pergunta do mês deixa 1", r.status_code == 200 and r.json()["perguntas_restantes"] == 1, r.text[:200])
+
+zerar(plano="avancado", usadas=300)
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+check("avançado: contado sem limite e sem saldo na resposta",
+      r.status_code == 200 and r.json()["perguntas_restantes"] is None and chamadas["rpc_args"][0]["p_limite"] is None)
+
+zerar(plano="iniciante")
+main.OPENAI_API_KEY = ""
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json=PERG_GERAL, headers=AUTH)
+main.OPENAI_API_KEY = "chave-openai-de-teste"
+check("sem a chave da OpenAI vai direto ao Haiku, sem registrar fallback",
+      r.status_code == 200 and not chamadas["openai"] and not chamadas["events"])
+
+zerar(plano="iniciante")
+main._usuario_atual.set(None)
+r = client.post("/chat-acervo", json={"question": "x", "trechos": [dict(TRECHOS[0], texto="t") for _ in range(21)]}, headers=AUTH)
+check("mais de 20 trechos por pergunta → 422 do contrato", r.status_code == 422, r.status_code)
 
 print(f"\n{'TUDO CERTO' if not falhas else 'HOUVE FALHAS'} — {ok} passaram, {falhas} falharam")
 sys.exit(1 if falhas else 0)
