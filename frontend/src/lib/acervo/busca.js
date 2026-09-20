@@ -7,9 +7,14 @@
 //   busca por palavra    63% de acerto em 1º, 88% de chance de o trecho certo
 //                        chegar à IA
 //   vetores do Gemini    93% e 100%
-// A fusão dos dois teve a melhor ordenação média, e a busca por palavra é de
-// graça — por isso as duas ficam ligadas, e por isso uma conversa ainda sem
-// vetor continua aparecendo nos resultados.
+//
+// A medição de 20/09/2026, repetida ao fim da construção, corrigiu uma coisa: a
+// fusão das duas NÃO melhora o resultado quando os vetores existem. Testando
+// pesos de 1:1 a 1:5 entre palavra e vetor, o vetor sozinho ganhou em tudo
+// (93% em 1º e MRR 0,96, contra 86% e 0,92 da fusão 1:1), e as duas levam o
+// trecho certo à IA nas mesmas 43 de 43. Então a palavra não entra para
+// melhorar a ordenação: ela entra para cobrir o trecho que ainda não tem vetor
+// — durante a indexação, ou quando ela falhou.
 
 // Acentos fora, minúsculas. "Sessão" e "sessao" têm de casar: transcrição de
 // fala erra acento o tempo todo.
@@ -139,11 +144,19 @@ export function buscar({ trechos, pergunta, plano = {}, vetorPergunta = null, bm
   // dela: foi assim que o teste mediu, e é o que resolve conteúdo em outro
   // idioma (40% → 80% de acerto em 1º lugar no vídeo em inglês).
   const consulta = tokens(`${plano.pergunta || pergunta} ${(plano.palavras || []).join(' ')}`)
-  const ordens = [ordemPor(indice.score(consulta))]
+  const porPalavra = ordemPor(indice.score(consulta))
 
-  if (vetorPergunta) {
-    ordens.push(ordemPor(trechos.map(t => (t.vetor ? similaridade(vetorPergunta, t.vetor) : 0))))
-  }
+  // Com vetor para TODOS os trechos, o vetor decide sozinho: foi o que mediu
+  // melhor. Faltando vetor em algum, as duas listas se fundem, senão os
+  // trechos ainda não indexados ficariam invisíveis.
+  const comVetor = vetorPergunta ? trechos.filter(t => t.vetor).length : 0
+  const porVetor = comVetor
+    ? ordemPor(trechos.map(t => (t.vetor ? similaridade(vetorPergunta, t.vetor) : 0)))
+    : null
+
+  const ordens = !porVetor ? [porPalavra]
+    : comVetor === trechos.length ? [porVetor]
+    : [porPalavra, porVetor]
 
   const permitidos = filtrarPorTempo(trechos, plano)
   // As conversas que a IA apontou pelo título sobem, mas não excluem as
