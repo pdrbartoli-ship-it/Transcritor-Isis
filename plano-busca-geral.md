@@ -1,19 +1,20 @@
 # Dito — Perguntar a todo o acervo (busca geral com IA)
 
-**Data:** 19/09/2026 · **Pergunta que a feature responde:** "o que foi dito nas últimas 2 reuniões de sprint sobre a UX do produto ABC?" / "o que a professora explicou sobre nematoide?"
+**Data:** 19/09/2026, atualizado em 20/09 com o resultado do teste · **Pergunta que a feature responde:** "o que foi dito nas últimas 2 reuniões de sprint sobre a UX do produto ABC?" / "o que a professora explicou sobre nematoide?"
 
 ---
 
 ## 1. Resposta curta
 
-**Dá, e custa quase nada.** Uma pergunta ao acervo inteiro custa **cerca de R$ 0,02** (pior caso R$ 0,03). Não precisa de servidor novo, de banco de vetores nem de plano pago de nenhum serviço.
+**Dá, e custa quase nada.** Uma pergunta ao acervo inteiro custa **cerca de R$ 0,02** (pior caso R$ 0,03), mais **R$ 0,012 por hora de conversa** para indexar, uma vez só. Não precisa de servidor novo, de banco de vetores nem de plano pago de nenhum serviço.
 
 **RAG é o caminho certo, mas com uma adaptação obrigatória:** a busca tem de acontecer **no aparelho do usuário**, não no servidor. O motivo é que o Dito cifra as conversas no navegador (é o diferencial da landing: "cifradas antes de sair do seu aparelho"). O servidor só guarda ruído. O RAG de manual (guardar vetores no Postgres com pgvector e buscar lá) exigiria texto ou vetores em claro no servidor e quebraria essa promessa.
 
-**Recomendação (a mais simples que funciona):**
+**Recomendação, corrigida depois do teste (Etapa 0, 19-20/09):** o MVP já nasce **com embeddings**. A ideia original era começar só com busca por palavra e somar embeddings se fosse preciso; o teste mostrou que é preciso. Busca por palavra acerta o trecho em 1º lugar em 63% das perguntas, contra **93% dos embeddings do Gemini** — e, no que de fato importa (o trecho certo estar entre os 8 que vão para a IA), a diferença é 88% contra **100%**. Indexar custa **R$ 0,012 por hora de conversa**, uma vez.
 
-1. **Fase 1 (MVP):** busca por palavra no aparelho + uma chamada barata de IA que "entende a pergunta" (sinônimos, datas, "últimas 2") + uma chamada que responde só com os trechos achados, com fontes clicáveis. Custo de indexação: **R$ 0**.
-2. **Fase 2 (só se o teste mostrar que a Fase 1 erra demais):** somar **embeddings** (busca por significado). Custo: **R$ 0,001 a R$ 0,012 por hora de conversa**, uma vez.
+1. **Índice no aparelho:** cada trecho vira um vetor (Gemini Embedding 2) e fica guardado no próprio aparelho.
+2. **Entender a pergunta:** uma chamada barata de IA resolve datas e "últimas 2", e ajuda a achar o vocabulário certo.
+3. **Buscar e responder:** a busca acontece no aparelho e só os ~8 trechos escolhidos vão para a IA, que responde com fontes clicáveis.
 
 ---
 
@@ -63,12 +64,13 @@
  5. Mostrar e salvar cifrado  ◀──────────────────────────────────────┘
 ```
 
-### Passo 1: indexar (no aparelho, grátis)
+### Passo 1: indexar (no aparelho, R$ 0,012 por hora)
 
 - Cada conversa é quebrada em **trechos de ~1,5 minuto de fala (300 a 400 tokens)**, usando os `segments` com tempo que já existem. Cada trecho guarda conversa, início e fim, e por isso a citação sabe o minuto.
 - Além disso, **cada capítulo, tópico e tarefa** dos `insights` vira um trecho extra. São resumos prontos e acertam bem perguntas do tipo "o que foi decidido sobre...".
 - O título e a data entram como campos do trecho (achar "sprint" no título ajuda).
-- Índice de palavras (BM25, biblioteca de ~10 KB) **na memória**, refeito ao abrir o acervo. Para 100 horas (~3.000 trechos) leva milissegundos.
+- Cada trecho vira um **vetor** (Gemini Embedding 2, 768 dimensões) por um `/embeddar` que só converte e não guarda nada. Os vetores ficam no aparelho (IndexedDB): ~90 KB por hora, ~9 MB para 100 horas.
+- Um índice de palavras (BM25, biblioteca de ~10 KB) entra junto, de graça, porque a combinação dos dois deu o melhor resultado no teste.
 - Conversas antigas sem tempo (legenda de YouTube sem marcação): quebram por parágrafo, sem minuto na citação.
 
 ### Passo 2: entender a pergunta (1 chamada barata)
@@ -80,11 +82,11 @@ O modelo recebe a pergunta, o histórico e **só a lista de títulos e datas** d
 - **conversas candidatas** por título ("reuniões de sprint" aponta as que têm sprint no nome);
 - **pergunta reescrita** sem depender do histórico ("e o que ele disse sobre prazo?" vira uma pergunta completa).
 
-É isso que compensa a falta de embeddings na Fase 1: o modelo faz o trabalho de "achar palavras parecidas".
+No teste, é isto que salva conteúdo em outro idioma: perguntas em português sobre um vídeo em inglês saltaram de 40% para 80% de acerto em 1º lugar só com as palavras que o modelo devolveu em inglês.
 
 ### Passo 3: buscar (no aparelho, grátis)
 
-1. Ranking dos trechos por BM25 com as palavras expandidas.
+1. Ranking por similaridade dos vetores, combinado com o BM25 das palavras expandidas.
 2. Agrupa por conversa; a nota da conversa é a do melhor trecho.
 3. Aplica o filtro de tempo/recência ("as 2 mais recentes entre as relevantes").
 4. Pega **~8 trechos, no máximo 3 por conversa** (para não responder só com uma reunião).
@@ -103,7 +105,7 @@ Resposta salva cifrada em `chats` / `chat_messages` (sem `session_id`), como qua
 |---|---|---|
 | Passo 2 | pergunta + títulos/datas | nada |
 | Passo 4 | pergunta + ~8 trechos | nada |
-| Vetores (Fase 2) | trechos, só para virar vetor | nada; vetores ficam no aparelho |
+| Passo 1 (indexar) | trechos, só para virar vetor | nada; os vetores voltam e ficam no aparelho |
 
 É a mesma categoria de exposição que o chat atual já tem (hoje ele manda a transcrição inteira), e em volume menor. **A promessa "cifrado no aparelho" continua valendo para o que fica guardado.** Vale ajustar uma frase na política de privacidade dizendo que trechos da conversa são enviados à IA para responder, se ainda não estiver dito.
 
@@ -153,30 +155,32 @@ Além do custo, **memória entre conversas é exatamente o tipo de recurso que j
 
 ### 5.4 Indexação e infraestrutura
 
-| | Fase 1 | Fase 2 (embeddings) |
+| | Por hora de conversa | Acervo de 100 h, uma vez |
 |---|---|---|
-| Indexar 1 hora | **R$ 0** | R$ 0,0012 (OpenAI 3-small) ou R$ 0,012 (Gemini Embedding 2) |
-| Acervo de 100 h, uma vez | R$ 0 | R$ 0,12 ou R$ 1,23 |
-| Comparação | | a extração já custa R$ 0,23 a R$ 0,43 por hora: soma de 0,3% a 5% |
-| Servidor / banco novo | R$ 0 | R$ 0 (vetores ficam no aparelho) |
-| Espaço no banco | só as mensagens do chat | nada no banco |
+| **Gemini Embedding 2** (escolhido) | R$ 0,012 | R$ 1,23 |
+| OpenAI `text-embedding-3-small` | R$ 0,0012 | R$ 0,12 |
+| Índice de palavras (BM25) | R$ 0 | R$ 0 |
+| Servidor ou banco novo | R$ 0 | R$ 0 |
+
+Para comparar: a extração de tópicos que já roda hoje custa de R$ 0,23 a R$ 0,43 por hora. A indexação soma de 3% a 5% a isso, e só uma vez por conversa.
+
+Espaço no aparelho: ~90 KB de vetores por hora de conversa, ou ~9 MB para 100 horas. No banco não entra nada.
 
 Sobre o plano gratuito do Gemini Embedding 2: existe, mas **não contar com ele**. Além dos limites de uso, o nível gratuito costuma permitir que o provedor use o conteúdo para melhorar produtos, o que não combina com a promessa de privacidade (conferir os termos antes de qualquer decisão).
 
-**Conclusão de custo: dá.** O custo real da feature é dominado por perguntas (centavos), não por indexação nem por infraestrutura.
+**Conclusão de custo: dá.** O custo é dominado por perguntas (centavos), não por indexação nem por infraestrutura.
 
 ---
 
-## 6. Fase 2: embeddings, se for preciso
+## 6. Por que os embeddings entraram no MVP
 
-Busca por palavra + sinônimos da IA resolve a maioria, mas pode falhar em transcrição falada (erros de reconhecimento, "buzocor" em vez de Buscopan) e em perguntas muito abstratas. Se falhar:
+A busca por palavra falha exatamente onde a fala transcrita é traiçoeira, e o teste mostrou os três casos:
 
-- Cada trecho vira um vetor (768 dimensões; o Gemini Embedding 2 permite reduzir sem perder muito). Um `/embeddar` no backend recebe trechos e **devolve os vetores sem guardar nada**.
-- Vetores ficam **no aparelho** (IndexedDB): ~90 KB por hora de conversa, ~9 MB para 100 horas. Cada aparelho indexa o seu, por R$ 0,001/h, e isso evita mexer no banco.
-- Busca **híbrida**: BM25 + similaridade de cosseno, fundidos por RRF. Comparar de 3 mil trechos leva milissegundos, sem índice especial.
-- Testar no teste de recall os dois provedores (OpenAI 3-small e Gemini Embedding 2) em português falado; escolher pelo resultado.
+- **Erro de transcrição.** "El Niño" virou "Ainho", "Elonim", "deinho" e "ninho". Nenhuma palavra casa, e nem os sinônimos da IA resolvem, porque ela escreve "El Niño" certo. O vetor achou assim mesmo, em 1º lugar.
+- **Vocabulário diferente.** "Qual foi a pressão medida?" contra um trecho que só diz "então são 12 por 8": palavra em 10º, vetor em 1º.
+- **Outro idioma.** "Quanto os fundadores levantaram no começo?" sobre um vídeo em inglês: palavra em 70º, vetor em 1º.
 
----
+O Gemini Embedding 2 ganhou do OpenAI `text-embedding-3-small` (93% contra 84% de acerto em 1º lugar) e custa 10× mais (R$ 0,012 contra R$ 0,0012 por hora). Mesmo assim é barato perto dos R$ 0,23 a R$ 0,43 que a extração já custa por hora, então a qualidade vale o preço. Se um dia o custo incomodar, trocar de provedor é mudar uma função.
 
 ## 7. Alternativas consideradas
 
@@ -191,9 +195,10 @@ Busca por palavra + sinônimos da IA resolve a maioria, mas pode falhar em trans
 
 ## 8. Riscos e limites
 
-- **Recall da busca por palavra** em fala transcrita. Mitigação: sinônimos do Passo 2 e o teste de recall antes de decidir pela Fase 2.
+- **O teste foi num acervo pequeno** (87 trechos). Num acervo grande a ordenação piora, e o jeito de saber é repetir a medição quando houver conta com muitas conversas.
+- **Indexar depende de um serviço de fora.** Sem rede, ou com a chave do Gemini fora do ar, a conversa nova fica sem vetor. A saída é indexar depois, em segundo plano, e deixar a busca por palavra respondendo enquanto isso.
 - **Perguntas de agregação** ("quantas vezes falamos de X?", "resuma todas as aulas do semestre") não funcionam bem com "8 melhores trechos". Fora do MVP; a saída depois é um modo "resumo por período" que junta os resumos já prontos.
-- **Escala do acervo no aparelho:** 50 KB por hora, então 100 h = 5 MB, 500 h = 25 MB. Bom no computador; no celular passar de ~300 h pede índice persistido no aparelho. A busca da barra lateral já tem essa característica hoje.
+- **Escala do acervo no aparelho:** 50 KB de texto mais 90 KB de vetores por hora, então 100 h = 14 MB, 500 h = 70 MB. Bom no computador; no celular passar de ~300 h pede índice persistido no aparelho. A busca da barra lateral já tem essa característica hoje.
 - **Sem chave no aparelho** (`SemChaveError`, sessão restaurada em aparelho novo): mesmo tratamento de hoje, "saia e entre de novo".
 - **Alucinação:** só responde com os trechos, obriga citação, mostra o trecho ao clicar, e reaproveita o botão de reportar.
 - **Citação com tempo:** a timeline hoje não aceita minuto na URL (a confirmar); é uma adaptação pequena.
@@ -204,34 +209,42 @@ Busca por palavra + sinônimos da IA resolve a maioria, mas pode falhar em trans
 
 | Etapa | O que entrega | Tamanho |
 |---|---|---|
-| **0. Teste de recall** | Mede se o trecho certo aparece entre os 10 primeiros. **Regra: ≥ 90% segue na Fase 1; abaixo disso, entra a Fase 2.** A parte da busca por palavra é local e grátis; a parte que testa a IA de "entender a pergunta" e os embeddings precisa de uma chave de API (centavos). **Parte 1 feita, resultado abaixo.** | pequeno |
-| **1. MVP** | índice + entender a pergunta + `/chat-acervo` + tela `/perguntar` + chips de fonte + cota mensal | médio |
-| **2. Embeddings** | só se a Etapa 0 mandar | pequeno |
-| **3. Acabamento** | filtros manuais (período, conversas), histórico, resumo por período | pequeno |
+| **0. Teste de recall** | ✅ **Feito** (20/09). Decidiu qual busca usar: embeddings do Gemini. Resultado abaixo. | pequeno |
+| **1. MVP** | índice com embeddings no aparelho + `/embeddar` + entender a pergunta + `/chat-acervo` + tela `/perguntar` + chips de fonte | médio |
+| **2. Acabamento** | filtros manuais (período, conversas), histórico, resumo por período | pequeno |
 
-### Etapa 0, parte 1: busca por palavra sozinha (19/09/2026)
+### Etapa 0: o teste de recall (concluído em 20/09/2026)
 
-Acervo: as 3 conversas reais do teste de qualidade (áudio de WhatsApp, consulta médica, teleconferência de 72 min), 52 trechos, 23 perguntas com o trecho certo marcado à mão. Sem a IA de sinônimos (é o cenário pessimista). Script e gabarito em `~/teste-recall/recall.py`.
+**Acervo:** 5 conversas reais, 87 trechos, 2 h 20 min no total. As 3 do teste de qualidade (áudio de WhatsApp, consulta médica, teleconferência de 72 min) mais 2 da conta de teste (uma aula de fisiologia do exercício e um documentário sobre o Google, **em inglês**). **43 perguntas**, com o trecho certo marcado à mão em cada transcrição. Script e gabarito em `~/teste-recall/recall2.py`.
 
-| Métrica (busca por palavra, sem IA) | Resultado |
-|---|---|
-| Trecho certo em 1º lugar | 17 de 23 (74%) |
-| Entre os 3 primeiros | 20 de 23 (87%) |
-| Entre os 10 primeiros | 22 de 23 (96%) |
-| Conversa certa em 1º | 20 de 23 |
+"@1" é o trecho certo em 1º lugar. A última coluna é a que decide: **o trecho certo estava entre os 8 que vão para a IA?**
 
-**Não dá para dizer que passou o critério de 90%:** com só 52 trechos, "os 10 primeiros" já cobre 19% do acervo. O número que importa é o dos 3 a 5 primeiros (87%), e o acervo real terá milhares de trechos. O teste mostra, por outro lado, **onde a busca por palavra falha**, e é o que o plano previa:
+| Método | @1 | @3 | @10 | Trecho certo entre os 8 |
+|---|---|---|---|---|
+| Busca por palavra (BM25) | 63% | 81% | 95% | 88% |
+| \+ sinônimos da IA | 60% | 86% | 100% | 88% |
+| Embeddings OpenAI 3-small | 84% | 98% | 100% | 100% |
+| **Embeddings Gemini 2** | **93%** | **100%** | 100% | **100%** |
+| Gemini + palavra + OpenAI juntos | 93% | 100% | 100% | 100% |
 
-- **Erros de transcrição:** "El Niño" saiu como "Ainho", "Elonim", "deinho" e "ninho" (quatro grafias); a pergunta sobre El Niño só achou o trecho em 4º. "Receita líquida" saiu como "receita lita".
-- **Vocabulário diferente:** "qual foi a pressão medida?" não acha o trecho que diz só "então são 12 por 8" (a única falha nos 10 primeiros).
-- Funciona bem com nomes, números e termos raros ("gambate", "hipoglicemia reativa", "projeto piloto", "nitrogênio").
+**Decisão: embeddings do Gemini no MVP, com a busca por palavra junto** (ela é de graça e a combinação teve a melhor ordenação média). Passou o critério de 90% com folga.
 
-**Conclusão parcial: inconclusiva, mas encorajadora.** Falta a parte 2, que decide de verdade: rodar a IA de "entender a pergunta" e os embeddings (OpenAI 3-small e Gemini Embedding 2) sobre um acervo maior, com o acervo real da conta de teste. Isso pede uma chave de API temporária com teto de gasto (o teste inteiro deve custar cerca de R$ 1). Correção a algo que escrevi antes: "sem gastar API" só vale para a parte 1.
+**O que a IA de "entender a pergunta" resolve, e os embeddings não:** conteúdo em outro idioma. Nas 10 perguntas em português sobre o vídeo em inglês, a busca por palavra sozinha acertou 40% em 1º lugar; com as palavras que o modelo devolveu **em inglês**, 80%. Ela também é quem vai resolver "últimas 2 reuniões", que vetor nenhum faz. Ela acertou a conversa certa em 42 de 43 perguntas.
 
-**O que falta de você:**
+**Custo do teste inteiro: US$ 0,02.**
 
-1. **Rodar o SQL** `supabase/perguntas_mes.sql` (o resultado esperado da conferência é `1 | 3 | false | false | true`). Depois disso eu troco o backend e a tela para o saldo mensal.
-2. **Chaves de API temporárias com teto** (OpenAI e Gemini), para a parte 2 da Etapa 0.
-3. **Autorização para ler o acervo da conta de teste** no navegador (decifrado só na máquina de desenvolvimento, fora do repositório, e apagado ao final) para montar as perguntas reais.
+**Limites honestos deste resultado:**
+
+- 87 trechos ainda é pouco. Num acervo de mil conversas a concorrência é outra, e estes números tendem a cair.
+- O gabarito das 20 perguntas novas fui eu que escrevi, lendo as transcrições. Escrever a pergunta olhando o trecho tende a favorecer quem busca por significado.
+- As 5 perguntas "armadilha" (cujo assunto está no áudio mas a resposta não) continuam trazendo trechos plausíveis. Quem precisa dizer "não encontrei" é a IA que responde, e isso é um teste diferente, ainda por fazer.
+- Uma marcação de gabarito ficou imprecisa (a pergunta sobre baixa intensidade cai bem na divisa entre dois trechos). Não muda a conclusão.
+
+### Feito até aqui
+
+- **Saldo mensal de perguntas no ar** (commit `4290d7b`): 5 / 60 / ilimitado, valendo para o chat de qualquer conversa. Testado em produção com a conta de teste: o contador foi de 0 para 1, sobraram 59, os minutos não mudaram e o ciclo do Stripe foi preservado.
+- **Etapa 0 concluída**, com a decisão pelos embeddings do Gemini.
+
+**Próximo passo:** construir o MVP (Etapa 1) — índice no aparelho, `/embeddar`, `/chat-acervo`, a tela `/perguntar` e os chips de fonte.
 
 **Fontes dos preços:** [Gemini API](https://ai.google.dev/gemini-api/docs/pricing), [OpenAI](https://developers.openai.com/api/docs/pricing), `.claude/skills/teste-qualidade/casos/slc-2t26/precos.json` (Luna e Gemini 3.8 Flash, conferidos em 18 e 19/09/2026).
