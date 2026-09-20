@@ -82,7 +82,7 @@ export default function Home({ mode = 'record' }) {
         <nav className="capture-nav home-capture-nav" aria-label="O que você quer transcrever">
           {CAPTURE_MODES.map(({ to, label, Icon }) => (
             <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'on' : '')}>
-              <Icon width={18} height={18} /> {label}
+              <Icon width={22} height={22} /> {label}
             </NavLink>
           ))}
         </nav>
