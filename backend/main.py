@@ -3037,6 +3037,12 @@ async def ia_fallbacks(dias: int = 30, user_id: str | None = Depends(guarda_de_u
         "principais": {
             "transcricao": GEMINI_MODEL if GEMINI_API_KEY else None,
             "chat": LUNA_MODEL if OPENAI_API_KEY else None,
+            # O "Perguntar ao acervo" usa os mesmos dois: o Luna responde e
+            # entende a pergunta, e o Gemini converte os trechos em vetores.
+            # Sem a chave do Gemini não há indexação nenhuma — e aí o recurso
+            # cai para a busca por palavra, que é pior mas continua de pé.
+            "chat_acervo": LUNA_MODEL if OPENAI_API_KEY else None,
+            "indexacao_acervo": EMBED_MODEL if GEMINI_API_KEY else None,
         },
         "total": len(fallbacks),
         "fallbacks": fallbacks,

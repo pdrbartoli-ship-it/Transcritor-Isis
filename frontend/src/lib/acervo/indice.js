@@ -13,20 +13,38 @@ const DB_VERSAO = 1
 const TRECHOS = 'trechos'
 const CONVERSAS = 'conversas'
 
+function criarStores(db) {
+  if (!db.objectStoreNames.contains(TRECHOS)) {
+    db.createObjectStore(TRECHOS, { keyPath: 'id' }).createIndex('sessionId', 'sessionId')
+  }
+  if (!db.objectStoreNames.contains(CONVERSAS)) {
+    db.createObjectStore(CONVERSAS, { keyPath: 'id' })
+  }
+}
+
 function abrirDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSAO)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(TRECHOS)) {
-        db.createObjectStore(TRECHOS, { keyPath: 'id' }).createIndex('sessionId', 'sessionId')
-      }
-      if (!db.objectStoreNames.contains(CONVERSAS)) {
-        db.createObjectStore(CONVERSAS, { keyPath: 'id' })
-      }
-    }
-    req.onsuccess = () => resolve(req.result)
+    req.onupgradeneeded = () => criarStores(req.result)
     req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      const db = req.result
+      if (db.objectStoreNames.contains(TRECHOS) && db.objectStoreNames.contains(CONVERSAS)) {
+        return resolve(db)
+      }
+      // O banco existe na versão que esperamos mas está sem as prateleiras
+      // dentro. Acontece quando uma atualização foi interrompida no meio, ou
+      // quando outro código abriu este nome antes de nós (um `open` sem versão
+      // CRIA o banco vazio). Sem este resgate o índice ficaria quebrado para
+      // sempre neste aparelho, e em silêncio: toda transação falharia e a
+      // busca simplesmente não acharia nada.
+      const proxima = db.version + 1
+      db.close()
+      const conserto = indexedDB.open(DB_NAME, proxima)
+      conserto.onupgradeneeded = () => criarStores(conserto.result)
+      conserto.onsuccess = () => resolve(conserto.result)
+      conserto.onerror = () => reject(conserto.error)
+    }
   })
 }
 

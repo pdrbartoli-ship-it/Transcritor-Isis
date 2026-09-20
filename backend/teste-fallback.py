@@ -416,7 +416,9 @@ r = client.get("/ia/fallbacks?dias=7", headers=AUTH)
 j = r.json()
 check("com login → lista", r.status_code == 200 and j["total"] == 1 and j["dias"] == 7, r.text[:200])
 check("campos certos e nada de usuário", set(j["fallbacks"][0]) == {"quando", "uso", "falhou", "assumiu", "motivo"} and UID not in r.text)
-check("diz quem está ligado", j["principais"] == {"transcricao": "gemini-3.8-flash", "chat": "gpt-5.6-luna"})
+check("diz quem está ligado, inclusive no acervo", j["principais"] == {
+    "transcricao": "gemini-3.8-flash", "chat": "gpt-5.6-luna",
+    "chat_acervo": "gpt-5.6-luna", "indexacao_acervo": "gemini-embedding-2"}, j["principais"])
 p = chamadas["events_get"]
 check("consulta filtra ia_fallback, período e ordem", p["name"] == "eq.ia_fallback" and p["created_at"].startswith("gte.2026") and p["order"] == "created_at.desc", p)
 r = client.get("/ia/fallbacks?dias=9999", headers=AUTH)
