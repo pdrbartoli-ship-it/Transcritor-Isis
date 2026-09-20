@@ -58,4 +58,13 @@ meio = Image.new("RGB", (512, 512), PINE)
 draw_mark(meio, 0.56, size=512)
 meio.save(os.path.join(PUBLIC, "icon-512.png"))
 
+# 5) Ícone da guia do navegador. O Chrome guarda o favicon pela URL do arquivo,
+# então trocar a cor mantendo o nome "favicon.png" deixava a guia laranja para
+# quem já tinha visitado o site. Por isso a guia aponta para um nome novo
+# (favicon-v2.png); se a cor mudar de novo, suba o número aqui e no index.html.
+aba = Image.new("RGB", (256, 256), PINE)
+draw_mark(aba, 0.56, size=256)
+aba.save(os.path.join(PUBLIC, "favicon-v2.png"))
+aba.save(os.path.join(PUBLIC, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+
 print("Ícones-fonte gerados em frontend/assets/ e frontend/public/")
