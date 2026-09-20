@@ -18,7 +18,7 @@ const recentes = []
 for (const [aba, hash, espera] of [
   ['Gravar', '#/', '.record-btn.hero'],
   ['Arquivo', '#/audio', '.drop-zone'],
-  ['Link', '#/video', '.url-form'],
+  ['Vídeo', '#/video', '.url-form'],
 ]) {
   await p.click(`.capture-nav a:has-text("${aba}")`)
   await p.waitForSelector(espera, { timeout: 5000 })

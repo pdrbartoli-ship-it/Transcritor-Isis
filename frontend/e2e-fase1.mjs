@@ -52,7 +52,7 @@ await step('Áudio abre em rota própria, com o título do WhatsApp', async () =
 })
 
 await step('Vídeo abre em rota própria, com o título certo', async () => {
-  await page.click('.capture-nav a:has-text("Link")')
+  await page.click('.capture-nav a:has-text("Vídeo")')
   await page.waitForSelector('.url-form', { timeout: 3000 })
   if (!page.url().endsWith('#/video')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
