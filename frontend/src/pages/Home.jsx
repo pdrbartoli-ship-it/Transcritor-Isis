@@ -14,7 +14,7 @@ import { IconMic, IconWhatsapp, IconYoutube } from '../components/Icons'
 const CAPTURE_MODES = [
   { to: '/', label: 'Gravar', Icon: IconMic },
   { to: '/audio', label: 'Arquivo', Icon: IconWhatsapp },
-  { to: '/video', label: 'Link', Icon: IconYoutube },
+  { to: '/video', label: 'Vídeo', Icon: IconYoutube },
 ]
 
 export default function Home({ mode = 'record' }) {
