@@ -281,11 +281,6 @@ const ESPERA_DURACAO_MS = 600
 // mesmo sem a conta (o servidor confere de novo e é quem recusa de fato).
 const ESPERA_MAXIMA_CONFERENCIA_MS = 4000
 
-// Com tanto saldo sobrando, um vídeo que não caiba (mais de 4 h) é raro demais
-// para valer qualquer espera no clique. A conferência só existe para quem está
-// perto do limite.
-const FOLGA_SEM_CONFERIR_MIN = 240
-
 function useDuracaoDoLink(url, ativa = true) {
   const [duracao, setDuracao] = useState(null)
   const [calculando, setCalculando] = useState(false)
@@ -349,7 +344,7 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
     // Já sabemos que não cabe (a linha vermelha está na tela): o clique leva
     // aos planos em vez de mandar uma captura que o servidor vai recusar.
     if (naoCabe(duracaoSec)) { abrirPlano?.(); return }
-    if (calculando && restam != null && restam < FOLGA_SEM_CONFERIR_MIN) {
+    if (calculando && restam != null) {
       const daqui = url
       setConferindo(true)
       const segundos = await Promise.race([

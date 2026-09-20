@@ -148,15 +148,28 @@ const navegador = await chromium.launch()
   await ctx.close()
 }
 
-// ── 6. Saldo de sobra: nem espera ──────────────────────────────────────────
+// ── 6. Iniciante com 250 min sobrando e vídeo de 5 h: NÃO envia ───────────
+// Foi o caso que passou batido numa versão em que "muito saldo" dispensava a
+// conferência: quanto mais sobra, mais fácil parecer que qualquer vídeo cabe.
 {
-  const { ctx, page, visto } = await contexto(navegador, { plano: 'avancado', minutosUsados: 0, duracao: { s: 600, atrasoMs: 3000 } })
+  const { ctx, page, visto } = await contexto(navegador, { plano: 'iniciante', minutosUsados: 0, duracao: { s: 18000, atrasoMs: 800 } })
   await colar(page, LINK)
-  const t0 = Date.now()
   await page.locator('.split-main').click()
-  for (let i = 0; i < 40 && !visto.processUrl.length; i++) await dormir(100)
-  const dt = visto.processUrl.length ? visto.processUrl[0] - t0 : null
-  checar('Saldo de sobra · envia sem esperar a duração', dt != null && dt < 1500, `${dt} ms`)
+  await page.waitForSelector('.linha-consumo.excede', { timeout: 10000 }).catch(() => {})
+  await dormir(500)
+  checar('Iniciante · vídeo de 300 min não cabe nos 250', /Esta captura tem 300 min e restam 250/.test((await texto(page, '.linha-consumo')) || ''), await texto(page, '.linha-consumo'))
+  checar('Iniciante · nada foi enviado', visto.processUrl.length === 0)
+  await ctx.close()
+}
+
+// ── 7. Duração já conhecida quando o clique chega: também não envia ───────
+{
+  const { ctx, page, visto } = await contexto(navegador, { plano: 'iniciante', minutosUsados: 0, duracao: { s: 18000, atrasoMs: 100 } })
+  await colar(page, LINK)
+  await page.waitForSelector('.linha-consumo.excede', { timeout: 10000 }).catch(() => {})
+  await page.locator('.split-main').click()
+  await page.waitForSelector('.modal-wide', { timeout: 5000 }).catch(() => {})
+  checar('Já sabia · clique leva aos planos e não envia', visto.processUrl.length === 0 && await page.locator('.modal-wide').count() === 1)
   await ctx.close()
 }
 

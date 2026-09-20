@@ -2006,6 +2006,21 @@ def duracao_cobravel(segments: list[dict], audio_seconds: float) -> float:
     return segments[-1]["end"] if segments else 0.0
 
 
+def recusar_se_nao_cabe(saldo: dict | None, minutos: float) -> None:
+    """402 quando esta captura passaria do que resta no mês. Um só texto e uma
+    só regra para os dois momentos em que se confere: na entrada, com a duração
+    do vídeo, e no fim, com a duração medida."""
+    if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
+        restam = saldo["minutos_limite"] - saldo["minutos_usados"]
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Esta captura tem {minutos:.0f} min e restam {restam:.0f} min no seu plano "
+                "neste mês. Abra \"Meu plano\" para assinar um plano maior."
+            ),
+        )
+
+
 async def analisar_transcricao(
     modo: str,
     full_transcript: str,
@@ -2031,15 +2046,7 @@ async def analisar_transcricao(
     convidado vale por último."""
     minutos = duracao_cobravel(segments, audio_seconds) / 60
     saldo = await ler_saldo(user_id, convidado=convidado) if user_id else None
-    if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
-        restam = saldo["minutos_limite"] - saldo["minutos_usados"]
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"Esta captura tem {minutos:.0f} min e restam {restam:.0f} min no seu plano "
-                "neste mês. Abra \"Meu plano\" para assinar um plano maior."
-            ),
-        )
+    recusar_se_nao_cabe(saldo, minutos)
 
     if modo == MODO_SIMPLES:
         resumo, in_tokens, out_tokens, cache_read, cache_write, modelo = await simple_summary(full_transcript, idioma)
@@ -2199,6 +2206,17 @@ async def process_url(
         raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
 
     convidado = bool(getattr(request.state, "convidado", False))
+
+    # A duração do vídeo já é conhecida (a tela a pediu ao colar, e ela está no
+    # cache) ou custa centenas de milissegundos: com ela, o que não cabe no mês
+    # é recusado AQUI, antes de buscar legenda ou baixar áudio. Sem ela (fonte
+    # fora do ar, artigo) segue como antes, e `analisar_transcricao` confere no
+    # fim com a duração medida.
+    if user_id and is_video_url(url) and (YOUTUBE_API_KEY or SUPADATA_API_KEY):
+        duracao_s = await duracao_com_cache(url.strip())
+        if duracao_s:
+            recusar_se_nao_cabe(await ler_saldo(user_id, convidado=convidado), duracao_s / 60)
+
     modo = await modo_do_plano(normalizar_modo(mode), user_id)
     idioma = normalizar_idioma(language)
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
@@ -2285,6 +2303,35 @@ async def _duracao_do_link(url: str) -> float | None:
     return None
 
 
+async def duracao_com_cache(url: str) -> float | None:
+    """Duração do vídeo do link, com o cache de 6 h e a junção de pedidos
+    iguais. Vale para quem pergunta a duração e para quem confere o saldo na
+    entrada da captura: o segundo quase sempre acha a resposta que o primeiro
+    acabou de guardar."""
+    chave = capture_key("duracao", url)
+    agora = time()
+    em_cache = _duracao_cache.get(chave)
+    if em_cache and em_cache[0] > agora:
+        return em_cache[1]
+
+    try:
+        # run_once: pedidos concorrentes pelo mesmo link (várias pessoas
+        # colando o mesmo vídeo ao mesmo tempo) esperam a MESMA consulta em vez
+        # de disparar uma cada — é o que corrige o nulo em rajada visto no
+        # teste de carga.
+        duracao_s = await run_once(chave, lambda: _duracao_do_link(url))
+    except Exception:
+        logger.warning("Não foi possível obter a duração do link")
+        return None
+
+    # Só o que se soube vale guardar: um "não sei" pode ser falha passageira, e
+    # ficar 6 h respondendo nulo para um link que a próxima tentativa resolveria
+    # seria pior que perguntar de novo.
+    if duracao_s:
+        _duracao_cache[chave] = (agora + DURACAO_CACHE_S, duracao_s)
+    return duracao_s
+
+
 @app.post("/duracao-link", dependencies=[Depends(guarda_de_uso)])
 async def duracao_link(body: DuracaoLinkRequest):
     """Quanto dura o vídeo de um link, sem baixar nada — para a tela dizer
@@ -2297,29 +2344,7 @@ async def duracao_link(body: DuracaoLinkRequest):
     url = body.url.strip()
     if not (YOUTUBE_API_KEY or SUPADATA_API_KEY) or not is_video_url(url) or not is_safe_public_url(url):
         return {"duracao_s": None}
-
-    chave = capture_key("duracao", url)
-    agora = time()
-    em_cache = _duracao_cache.get(chave)
-    if em_cache and em_cache[0] > agora:
-        return {"duracao_s": em_cache[1]}
-
-    try:
-        # run_once: pedidos concorrentes pelo mesmo link (várias pessoas
-        # colando o mesmo vídeo ao mesmo tempo) esperam a MESMA consulta em vez
-        # de disparar uma cada — é o que corrige o nulo em rajada visto no
-        # teste de carga.
-        duracao_s = await run_once(chave, lambda: _duracao_do_link(url))
-    except Exception:
-        logger.warning("Não foi possível obter a duração do link")
-        return {"duracao_s": None}
-
-    # Só o que se soube vale guardar: um "não sei" pode ser falha passageira, e
-    # ficar 6 h respondendo nulo para um link que a próxima tentativa resolveria
-    # seria pior que perguntar de novo.
-    if duracao_s:
-        _duracao_cache[chave] = (agora + DURACAO_CACHE_S, duracao_s)
-    return {"duracao_s": duracao_s}
+    return {"duracao_s": await duracao_com_cache(url)}
 
 
 def supadata_segments(content) -> list[dict]:
