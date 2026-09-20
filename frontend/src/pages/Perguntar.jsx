@@ -7,7 +7,7 @@ import { track } from '../lib/analytics'
 import ChatTextarea from '../components/chat/ChatTextarea'
 import MarkdownText from '../components/chat/MarkdownText'
 import FeedbackModal from '../components/FeedbackModal'
-import { IconAcervo, IconFlag, IconPlus, IconSend } from '../components/Icons'
+import { IconChat, IconFlag, IconPlus, IconSend } from '../components/Icons'
 import { cifrarMensagem, decifrarMensagens } from '../lib/cofre'
 import { displayTitle, listConversations } from '../lib/conversas'
 import { textoPerguntasRestantes } from './conversa/perguntas'
@@ -319,7 +319,7 @@ export default function Perguntar() {
       </div>
 
       <header className="conversa-head">
-        <h1>Perguntar ao acervo</h1>
+        <h1>Perguntar</h1>
         <p className="text-muted text-sm">
           Uma pergunta, todas as suas conversas
           <StatusDoIndice indice={indice} total={acervo?.length ?? 0} />
@@ -329,7 +329,7 @@ export default function Perguntar() {
       <div className="chat-messages">
         {vazio && (
           <div className="chat-starter">
-            <IconAcervo width={26} height={26} />
+            <IconChat width={26} height={26} />
             <p>
               Pergunte alguma coisa e procuramos em todas as suas conversas de uma vez.
               A resposta vem com as fontes, e cada uma abre a conversa no minuto exato.

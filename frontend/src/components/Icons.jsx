@@ -58,6 +58,11 @@ export const IconMail = (p) => (
 export const IconMessage = (p) => (
   <svg {...base} {...p}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>
 )
+// Megafone para o "Enviar feedback": o balão já é do "Perguntar" e do chat
+// da conversa, e um terceiro balão no mesmo menu não distingue nada.
+export const IconMegafone = (p) => (
+  <svg {...base} {...p}><path d="M3 11l18-5v12L3 14z" /><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" /></svg>
+)
 export const IconEdit = (p) => (
   <svg {...base} {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
 )
@@ -120,11 +125,26 @@ export const IconCaretDown = (p) => (
 export const IconCircle = (p) => (
   <svg {...base} {...p}><circle cx="12" cy="12" r="8" /></svg>
 )
-// Uma pilha de conversas com uma lupa: o "Perguntar ao acervo", que procura em
-// todas de uma vez. A lupa sozinha já é a busca da barra lateral, e as duas
-// entradas ficariam indistinguíveis.
-export const IconAcervo = (p) => (
-  <svg {...base} {...p}><path d="M3 7h13" /><path d="M3 12h8" /><path d="M3 17h5" /><circle cx="17" cy="15" r="4" /><line x1="20" y1="18" x2="22.5" y2="20.5" /></svg>
+// Balão retangular com rabinho: o "Perguntar", que responde sobre todas as
+// conversas. Não é a lupa (que já é a busca da barra lateral, e as duas
+// entradas ficariam indistinguíveis) nem o balão redondo do IconMessage, que
+// é o "Enviar feedback".
+export const IconChat = (p) => (
+  <svg {...base} {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+)
+// WhatsApp e YouTube só no contorno, sem as cores das marcas: dizem de onde
+// vem o conteúdo (o áudio que chegou no zap, o link de um vídeo) e seguem a
+// cor do texto como qualquer outro ícone do app.
+export const IconWhatsapp = (p) => (
+  <svg {...base} {...p}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />
+    <g transform="translate(7.3 7.3) scale(0.4)" strokeWidth="4">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+    </g>
+  </svg>
+)
+export const IconYoutube = (p) => (
+  <svg {...base} {...p}><rect x="2" y="5" width="20" height="14" rx="4.5" /><path d="M10 9.2v5.6l4.8-2.8z" /></svg>
 )
 export const IconMenu = (p) => (
   <svg {...base} {...p}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>

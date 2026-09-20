@@ -845,6 +845,8 @@ input::placeholder { color: var(--text-muted); }
   margin: 0 0 36px; padding: 5px; gap: 4px; max-width: 420px; width: 100%;
 }
 .home-capture-nav a { padding: 12px 8px; gap: 7px; font-size: 14px; border-radius: 9px; }
+/* Ícones sempre no verde-pinho, ativos ou não: são o contorno da marca. */
+.home-capture-nav a svg { color: var(--accent); opacity: 1; }
 
 .hero-record { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .record-btn-group { display: flex; gap: 28px; }

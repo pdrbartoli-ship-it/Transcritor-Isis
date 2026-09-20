@@ -16,9 +16,9 @@ import { trackAppOpen } from '../lib/analytics'
 import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
 import {
-  IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
+  IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin, IconMenu,
-  IconAcervo,
+  IconChat,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -280,18 +280,18 @@ export default function Layout() {
             chegava à captura clicando na marca ou já estando na home — o que
             deixava a ação mais frequente do app sem lugar fixo na tela. */}
         <button className="sidebar-novo" onClick={() => navigate('/')}>
-          <IconPlus width={16} height={16} /> Novo
+          <IconPlus width={16} height={16} /> Transcrever
         </button>
 
-        {/* Logo abaixo do "Novo", e não no rodapé com as configurações:
-            perguntar ao acervo é a segunda coisa que se faz no app, não um
+        {/* Logo abaixo do "Transcrever", e não no rodapé com as configurações:
+            o "Perguntar" é a segunda coisa que se faz no app, não um
             ajuste. Sem lugar fixo, o recurso só existiria para quem soubesse
             da URL. */}
         <button
           className={`sidebar-novo sidebar-perguntar ${location.pathname === '/perguntar' ? 'active' : ''}`}
           onClick={() => navigate('/perguntar')}
         >
-          <IconAcervo width={16} height={16} /> Perguntar ao acervo
+          <IconChat width={16} height={16} /> Perguntar
         </button>
 
         {searchOpen && (
@@ -354,7 +354,7 @@ export default function Layout() {
             <IconSettings /> Configurações
           </button>
           <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
-            <IconMessage /> Enviar feedback
+            <IconMegafone /> Enviar feedback
           </button>
           <button className="nav-item" onClick={() => setShowPlan(true)}>
             <IconCard /> Meu plano

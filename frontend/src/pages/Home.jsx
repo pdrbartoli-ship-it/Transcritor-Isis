@@ -5,7 +5,7 @@ import { createConversation, seedChatWithSummary } from '../lib/conversas'
 import { MODO_SIMPLES } from '../components/capture/modos'
 import CapturePanel from '../components/CapturePanel'
 import ContadorMinutos from '../components/ContadorMinutos'
-import { IconMic, IconLink, IconFile } from '../components/Icons'
+import { IconMic, IconWhatsapp, IconYoutube } from '../components/Icons'
 
 // As três origens de captura. Viviam pequenas na barra lateral; centralizadas
 // e maiores aqui, é a primeira coisa que a home mostra — não uma nav perdida
@@ -13,8 +13,8 @@ import { IconMic, IconLink, IconFile } from '../components/Icons'
 // "Áudio" aceitava vídeo e "Vídeo" era, na verdade, colar um link.
 const CAPTURE_MODES = [
   { to: '/', label: 'Gravar', Icon: IconMic },
-  { to: '/audio', label: 'Arquivo', Icon: IconFile },
-  { to: '/video', label: 'Link', Icon: IconLink },
+  { to: '/audio', label: 'Arquivo', Icon: IconWhatsapp },
+  { to: '/video', label: 'Link', Icon: IconYoutube },
 ]
 
 export default function Home({ mode = 'record' }) {
@@ -76,7 +76,7 @@ export default function Home({ mode = 'record' }) {
         {/* Nomeia a tarefa, sem cumprimento de chatbot. O subtítulo que repetia
             "grave, envie ou cole" saiu: as abas logo abaixo já dizem isso. */}
         <div className="home-greeting">
-          <h1>Nova conversa</h1>
+          <h1>O que você quer transcrever?</h1>
         </div>
 
         <nav className="capture-nav home-capture-nav" aria-label="O que você quer transcrever">
