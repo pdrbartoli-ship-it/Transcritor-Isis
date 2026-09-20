@@ -209,6 +209,10 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 YOUTUBE_COOKIES = os.environ.get("YOUTUBE_COOKIES", "")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "")
+# Só para a duração do vídeo (`/duracao-link`): a API oficial do YouTube
+# responde em centenas de milissegundos, contra os ~2,5 s da Supadata. Chave
+# restrita à YouTube Data API v3; vazia, tudo segue pela Supadata como antes.
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 
 # ── Assinatura (Stripe) ───────────────────────────────────────────────────
 # Só a versão web cobra: o app Android é distribuído pela Play Store, que
@@ -2239,17 +2243,59 @@ async def _duracao_via_supadata(url: str) -> float | None:
     return float(duracao) if duracao else None
 
 
+def _segundos_iso8601(valor: str) -> float | None:
+    """`PT1H2M3S` -> 3723.0. A live em andamento vem como `P0D`: sem duração
+    ainda, então None."""
+    m = re.fullmatch(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", valor or "")
+    if not m:
+        return None
+    dias, horas, minutos, segundos = (int(g or 0) for g in m.groups())
+    total = dias * 86400 + horas * 3600 + minutos * 60 + segundos
+    return float(total) if total else None
+
+
+async def _duracao_via_youtube(video_id: str) -> float | None:
+    """A API oficial do YouTube. Levanta em qualquer falha de comunicação ou de
+    cota (o chamador cai na Supadata); devolve None só quando o YouTube
+    respondeu e o vídeo não tem duração conhecida (live, vídeo removido)."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://www.googleapis.com/youtube/v3/videos",
+            # A chave vai no cabeçalho, não na URL: URL entra no log do httpx.
+            headers={"x-goog-api-key": YOUTUBE_API_KEY},
+            params={"part": "contentDetails", "id": video_id},
+            timeout=5.0,
+        )
+    resp.raise_for_status()
+    itens = resp.json().get("items") or []
+    if not itens:
+        return None
+    return _segundos_iso8601((itens[0].get("contentDetails") or {}).get("duration", ""))
+
+
+async def _duracao_do_link(url: str) -> float | None:
+    video_id = extract_youtube_id(url) if is_youtube_url(url) else None
+    if video_id and YOUTUBE_API_KEY:
+        try:
+            return await _duracao_via_youtube(video_id)
+        except Exception:
+            logger.warning("YouTube Data API falhou na duração; tentando a Supadata")
+    if SUPADATA_API_KEY:
+        return await _duracao_via_supadata(url)
+    return None
+
+
 @app.post("/duracao-link", dependencies=[Depends(guarda_de_uso)])
 async def duracao_link(body: DuracaoLinkRequest):
     """Quanto dura o vídeo de um link, sem baixar nada — para a tela dizer
     quantos minutos a captura vai consumir antes de a pessoa enviar.
 
     Devolve {"duracao_s": null} sempre que não der para saber (artigo, rede sem
-    metadado, Supadata fora do ar): a estimativa é informação, e a falta dela
+    metadado, fontes fora do ar): a estimativa é informação, e a falta dela
     nunca pode impedir a transcrição. O porteiro fica porque cada consulta sem
-    cache custa um crédito do Supadata."""
+    cache gasta cota (YouTube) ou crédito (Supadata)."""
     url = body.url.strip()
-    if not SUPADATA_API_KEY or not is_video_url(url) or not is_safe_public_url(url):
+    if not (YOUTUBE_API_KEY or SUPADATA_API_KEY) or not is_video_url(url) or not is_safe_public_url(url):
         return {"duracao_s": None}
 
     chave = capture_key("duracao", url)
@@ -2260,15 +2306,19 @@ async def duracao_link(body: DuracaoLinkRequest):
 
     try:
         # run_once: pedidos concorrentes pelo mesmo link (várias pessoas
-        # colando o mesmo vídeo ao mesmo tempo) esperam a MESMA chamada à
-        # Supadata em vez de disparar uma cada — é o que corrige o nulo em
-        # rajada visto no teste de carga.
-        duracao_s = await run_once(chave, lambda: _duracao_via_supadata(url))
+        # colando o mesmo vídeo ao mesmo tempo) esperam a MESMA consulta em vez
+        # de disparar uma cada — é o que corrige o nulo em rajada visto no
+        # teste de carga.
+        duracao_s = await run_once(chave, lambda: _duracao_do_link(url))
     except Exception:
-        logger.warning("Supadata não respondeu à duração do link")
+        logger.warning("Não foi possível obter a duração do link")
         return {"duracao_s": None}
 
-    _duracao_cache[chave] = (agora + DURACAO_CACHE_S, duracao_s)
+    # Só o que se soube vale guardar: um "não sei" pode ser falha passageira, e
+    # ficar 6 h respondendo nulo para um link que a próxima tentativa resolveria
+    # seria pior que perguntar de novo.
+    if duracao_s:
+        _duracao_cache[chave] = (agora + DURACAO_CACHE_S, duracao_s)
     return {"duracao_s": duracao_s}
 
 

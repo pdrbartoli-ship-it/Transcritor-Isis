@@ -1255,7 +1255,7 @@ input::placeholder { color: var(--text-muted); }
   .url-form { flex-direction: column; }
   /* Empilhado, o botão de transcrever ocupa a linha inteira — meio botão
      centralizado embaixo de um campo de largura total fica órfão. */
-  .url-form .split-btn { width: 100%; }
+  .url-form .split-btn, .url-form .btn-primary { width: 100%; }
   .url-form .split-main { flex: 1; }
 }
 

@@ -57,7 +57,7 @@ export function minutosDaCaptura(duracaoSec) {
 // `duracaoSec` põe no próprio botão quanto a captura vai consumir. Foi a
 // escolha no lugar de um "Consumir X minutos?" antes do envio: a mesma
 // informação, sem cobrar um clique a mais de quem já decidiu.
-export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, loading, disabled }) {
+export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, loading, conferindo, disabled }) {
   // O plano vem do Layout. Enquanto não chega, nada fica trancado: quem paga
   // não pode ver um cadeado piscando, e o backend atende como simples quem
   // pedir a completa sem ter direito a ela.
@@ -85,7 +85,7 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
     }
   }, [aberto])
 
-  const travado = disabled || loading
+  const travado = disabled || loading || conferindo
   const minutos = minutosDaCaptura(duracaoSec)
 
   return (
@@ -98,6 +98,8 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
       >
         {loading
           ? <><span className="spinner spinner-sm" /> Processando…</>
+          : conferindo
+          ? <><span className="spinner spinner-sm" /> Conferindo o saldo…</>
           : <>{MODOS[modo].label}{minutos && <span className="split-minutos"> · {minutos} min</span>}</>}
       </button>
       <button
@@ -161,6 +163,17 @@ export function LinhaConsumo({ duracaoSec, calculando }) {
 
   const restam = Math.max(0, Math.round(saldo.limite - saldo.usados))
   const minutos = minutosDaCaptura(duracaoSec)
+
+  // Sem nada no mês não há conta a fazer, nem duração a esperar: o servidor
+  // recusaria qualquer captura, então a linha já diz isso em vez de calar.
+  if (saldo.usados >= saldo.limite) {
+    return (
+      <p className="linha-consumo excede">
+        Você usou os {saldo.limite} minutos do seu mês.
+        {abrirPlano && <> <button type="button" onClick={abrirPlano}>Ver planos</button></>}
+      </p>
+    )
+  }
 
   // A busca da duração de um link passa por uma API externa e pode levar
   // alguns segundos. Sem isto a linha ficava calada nesse intervalo — parecia
@@ -256,44 +269,103 @@ export function FileReview({ pendingFile, onSubmit, onReset, loading }) {
   )
 }
 
-// Espera a pessoa parar de digitar antes de perguntar: cada consulta custa um
-// crédito do Supadata, e um link digitado letra a letra dispararia uma por
-// tecla. Colar não tem essa dúvida — a URL inteira chega pronta num só golpe
-// — então PULA esta espera (ver `aoColar` abaixo). É o caminho mais comum de
-// preencher este campo, e era quem menos precisava do debounce e mais sentia
-// o atraso dele.
+// Espera a pessoa parar de digitar antes de perguntar: cada consulta gasta cota
+// ou crédito, e um link digitado letra a letra dispararia uma por tecla.
+// Colar não tem essa dúvida — a URL inteira chega pronta num só golpe — então
+// PULA esta espera (ver `aoColar` abaixo). É o caminho mais comum de preencher
+// este campo, e era quem menos precisava do debounce e mais sentia o atraso.
 const ESPERA_DURACAO_MS = 600
 
-function useDuracaoDoLink(url) {
+// Clicar em transcrever antes de a duração chegar não trava nem espera à toa:
+// o clique só aguarda o que falta da consulta, no máximo isto, e depois envia
+// mesmo sem a conta (o servidor confere de novo e é quem recusa de fato).
+const ESPERA_MAXIMA_CONFERENCIA_MS = 4000
+
+// Com tanto saldo sobrando, um vídeo que não caiba (mais de 4 h) é raro demais
+// para valer qualquer espera no clique. A conferência só existe para quem está
+// perto do limite.
+const FOLGA_SEM_CONFERIR_MIN = 240
+
+function useDuracaoDoLink(url, ativa = true) {
   const [duracao, setDuracao] = useState(null)
   const [calculando, setCalculando] = useState(false)
   const semEsperaRef = useRef(false)
+  // Devolve a consulta em curso (disparando-a já, se ainda estava no debounce).
+  // É por aqui que o clique em "transcrever" pega carona nela, em vez de abrir
+  // uma segunda.
+  const iniciarRef = useRef(() => Promise.resolve(null))
 
   useEffect(() => {
     setDuracao(null)
     const limpo = url.trim()
-    if (!/^https?:\/\/\S+\.\S+/.test(limpo)) {
+    if (!ativa || !/^https?:\/\/\S+\.\S+/.test(limpo)) {
       setCalculando(false)
+      iniciarRef.current = () => Promise.resolve(null)
       return
     }
-    let ativo = true
+    let vivo = true
+    let promessa = null
+    const iniciar = () => {
+      if (!promessa) {
+        promessa = duracaoDoLink(limpo).then(segundos => {
+          if (vivo) { setDuracao(segundos); setCalculando(false) }
+          return segundos
+        })
+      }
+      return promessa
+    }
+    iniciarRef.current = iniciar
     const espera = semEsperaRef.current ? 0 : ESPERA_DURACAO_MS
     semEsperaRef.current = false
     setCalculando(true)
-    const timer = setTimeout(async () => {
-      const segundos = await duracaoDoLink(limpo)
-      if (ativo) { setDuracao(segundos); setCalculando(false) }
-    }, espera)
-    return () => { ativo = false; clearTimeout(timer) }
-  }, [url])
+    const timer = setTimeout(iniciar, espera)
+    return () => { vivo = false; clearTimeout(timer) }
+  }, [url, ativa])
 
   const aoColar = () => { semEsperaRef.current = true }
+  const esperarDuracao = () => iniciarRef.current()
 
-  return { duracao, calculando, aoColar }
+  return { duracao, calculando, aoColar, esperarDuracao }
 }
 
 export function UrlForm({ url, setUrl, onSubmit, loading }) {
-  const { duracao: duracaoSec, calculando, aoColar } = useDuracaoDoLink(url)
+  const { saldo, abrirPlano } = useOutletContext() || {}
+  const semSaldo = !!saldo && saldo.usados >= saldo.limite
+  const restam = saldo ? Math.max(0, Math.round(saldo.limite - saldo.usados)) : null
+  // Sem saldo nenhuma duração muda o resultado: nem consulta, o que ainda
+  // poupa a cota da API.
+  const { duracao: duracaoSec, calculando, aoColar, esperarDuracao } = useDuracaoDoLink(url, !semSaldo)
+  const [conferindo, setConferindo] = useState(false)
+  const urlRef = useRef(url)
+  urlRef.current = url
+
+  const naoCabe = segundos => {
+    const minutos = minutosDaCaptura(segundos)
+    return !!minutos && restam != null && minutos > restam
+  }
+
+  async function enviar(modo) {
+    if (semSaldo) { abrirPlano?.(); return }
+    // Já sabemos que não cabe (a linha vermelha está na tela): o clique leva
+    // aos planos em vez de mandar uma captura que o servidor vai recusar.
+    if (naoCabe(duracaoSec)) { abrirPlano?.(); return }
+    if (calculando && restam != null && restam < FOLGA_SEM_CONFERIR_MIN) {
+      const daqui = url
+      setConferindo(true)
+      const segundos = await Promise.race([
+        esperarDuracao(),
+        new Promise(resolve => setTimeout(() => resolve(null), ESPERA_MAXIMA_CONFERENCIA_MS)),
+      ])
+      setConferindo(false)
+      // Editou o link enquanto conferíamos: aquele clique era de outro vídeo.
+      if (urlRef.current !== daqui) return
+      // Não cabe: fica parado, e a linha abaixo já explica (a duração chegou ao
+      // estado junto com esta resposta).
+      if (naoCabe(segundos)) return
+    }
+    onSubmit(modo)
+  }
+
   return (
     <>
       <div className="url-form">
@@ -303,23 +375,28 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
           onChange={e => setUrl(e.target.value)}
           onPaste={aoColar}
           placeholder="Cole um link do YouTube"
-          disabled={loading}
+          disabled={loading || conferindo}
           onKeyDown={e => {
             // Sem <form> em volta (o botão dividido tem um botão dentro do outro,
             // e um submit implícito dispararia o modo errado), então o Enter
             // precisa ser ligado à mão — é como quem cola um link espera enviar.
-            if (e.key === 'Enter' && url.trim() && !loading) onSubmit(modoRecomendado({ origem: 'url' }))
+            if (e.key === 'Enter' && url.trim() && !loading && !conferindo) enviar(modoRecomendado({ origem: 'url' }))
           }}
         />
-        <TranscribeButton
-          recomendado={modoRecomendado({ origem: 'url' })}
-          duracaoSec={duracaoSec}
-          onSubmit={onSubmit}
-          loading={loading}
-          disabled={!url.trim()}
-        />
+        {semSaldo ? (
+          <button type="button" className="btn-primary" onClick={abrirPlano}>Ver planos</button>
+        ) : (
+          <TranscribeButton
+            recomendado={modoRecomendado({ origem: 'url' })}
+            duracaoSec={duracaoSec}
+            onSubmit={enviar}
+            loading={loading}
+            conferindo={conferindo}
+            disabled={!url.trim()}
+          />
+        )}
       </div>
-      {url.trim() && <LinhaConsumo duracaoSec={duracaoSec} calculando={calculando} />}
+      {(url.trim() || semSaldo) && <LinhaConsumo duracaoSec={duracaoSec} calculando={calculando} />}
     </>
   )
 }

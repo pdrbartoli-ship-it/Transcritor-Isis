@@ -27,6 +27,12 @@ export function useCapture({ onResult }) {
   const [error, setError] = useState(null)
   const [errorStatus, setErrorStatus] = useState(null)
 
+  // O Render hiberna, e a primeira chamada depois disso leva dezenas de
+  // segundos — inclusive a que calcula a duração do link colado, que roda
+  // ANTES de qualquer envio. Acordar ao abrir a tela de captura faz o servidor
+  // já estar de pé quando a pessoa chegar ao link.
+  useEffect(() => { wakeBackend().catch(() => {}) }, [])
+
   // O arquivo escolhido, esperando o usuário dizer QUAL transcrição quer. Antes
   // escolher o arquivo já disparava o envio; agora há uma decisão no meio, e
   // ela precisa de um lugar onde o arquivo espere. `durationSec` vem junto
