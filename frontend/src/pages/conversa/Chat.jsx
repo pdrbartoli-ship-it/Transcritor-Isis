@@ -8,6 +8,7 @@ import ChatTextarea from '../../components/chat/ChatTextarea'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import BaixarTranscricao from './BaixarTranscricao'
 import { cifrarMensagem, decifrarMensagens } from '../../lib/cofre'
 import { textoPerguntasRestantes } from './perguntas'
 
@@ -212,6 +213,7 @@ export default function Chat() {
         conversation={conversation}
         title="Pergunte qualquer coisa"
         subtitle="Sobre esta conversa"
+        action={<BaixarTranscricao conversation={conversation} />}
       />
 
       <div className="chat-messages">

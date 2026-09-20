@@ -3,15 +3,12 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
 import { planoPorId } from '../../lib/planos'
-import { IconChevron, IconDownload, IconCircle } from '../../components/Icons'
+import { IconChevron, IconCircle } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import BaixarTranscricao from './BaixarTranscricao'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { track } from '../../lib/analytics'
-import { showToast } from '../../lib/toast'
-import {
-  formatTimestamp, formatRange, sliceSegments,
-  buildTranscriptFile, downloadOrShareText, safeFilename,
-} from './shared'
+import { formatTimestamp, formatRange, sliceSegments } from './shared'
 
 // Visão geral: os quatro blocos que o usuário pode aprofundar. Cada um é uma
 // porta, e a sinalização disso é o próprio card reagindo ao ponteiro — mais o
@@ -60,17 +57,6 @@ export default function Conversa() {
     }
   }
 
-  async function download() {
-    track('download_transcricao')
-    const filename = safeFilename(conversation.title)
-    const result = await downloadOrShareText(filename, buildTranscriptFile(conversation))
-    if (result === 'shared') {
-      showToast('Transcrição compartilhada')
-    } else if (result === 'downloaded') {
-      showToast(`Transcrição baixada · ${filename}`)
-    }
-  }
-
   // Saber quais blocos são realmente abertos é o que vai dizer o que manter e
   // o que cortar — sem isso a próxima decisão de produto seria no palpite.
   function open(destino, evento, state) {
@@ -88,7 +74,7 @@ export default function Conversa() {
       <div className="conversa">
         <ConversaHeader
           conversation={conversation}
-          action={<DownloadButton onClick={download} />}
+          action={<BaixarTranscricao conversation={conversation} />}
         />
         {error && <div className="alert alert-error">{error}</div>}
         {conversation.summary && (
@@ -122,7 +108,7 @@ export default function Conversa() {
     <div className="conversa">
       <ConversaHeader
         conversation={conversation}
-        action={<DownloadButton onClick={download} />}
+        action={<BaixarTranscricao conversation={conversation} />}
       />
       {error && <div className="alert alert-error">{error}</div>}
 
@@ -215,14 +201,6 @@ export default function Conversa() {
       )}
 
     </div>
-  )
-}
-
-function DownloadButton({ onClick }) {
-  return (
-    <button className="btn-ghost btn-sm btn-download" onClick={onClick}>
-      <IconDownload width={15} height={15} /> Baixar a transcrição
-    </button>
   )
 }
 
