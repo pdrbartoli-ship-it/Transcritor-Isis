@@ -39,18 +39,24 @@ const MAX_HISTORY_MESSAGES = 20
 // pergunta reaberta amanhã continua com os chips clicáveis, sem migração.
 const MARCA_FONTES = '<!--dito-fontes:'
 
-function comFontes(texto, fontes) {
-  return fontes?.length ? `${texto}\n\n${MARCA_FONTES}${JSON.stringify(fontes)}-->` : texto
+function comFontes(texto, fontes, busca) {
+  if (!fontes?.length) return texto
+  return `${texto}\n\n${MARCA_FONTES}${JSON.stringify({ f: fontes, b: busca })}-->`
 }
 
 function semFontes(conteudo) {
   const at = conteudo.indexOf(MARCA_FONTES)
   if (at < 0) return { texto: conteudo, fontes: [] }
+  const texto = conteudo.slice(0, at).trimEnd()
   try {
-    const bruto = conteudo.slice(at + MARCA_FONTES.length, conteudo.lastIndexOf('-->'))
-    return { texto: conteudo.slice(0, at).trimEnd(), fontes: JSON.parse(bruto) }
+    const dados = JSON.parse(conteudo.slice(at + MARCA_FONTES.length, conteudo.lastIndexOf('-->')))
+    // As primeiras respostas guardaram só a lista de fontes, sem a contagem da
+    // busca. Elas continuam abrindo: o que falta é uma linha, não a resposta.
+    return Array.isArray(dados)
+      ? { texto, fontes: dados }
+      : { texto, fontes: dados.f || [], busca: dados.b || null }
   } catch {
-    return { texto: conteudo.slice(0, at).trimEnd(), fontes: [] }
+    return { texto, fontes: [] }
   }
 }
 
@@ -240,7 +246,7 @@ export default function Perguntar() {
 
       setMessages(prev => [...prev, { role: 'assistant', texto: resposta.answer, fontes: citadas, busca }])
       atualizarPerguntasRestantes?.(resposta.perguntas_restantes)
-      await guardar(pergunta, resposta.answer, citadas)
+      await guardar(pergunta, resposta.answer, citadas, busca)
       track('chat_acervo', { usage: resposta.usage, trechos: escolhidos.length, conversas: conversasBuscadas })
     } catch (err) {
       setError(err.message)
@@ -269,7 +275,7 @@ export default function Perguntar() {
   // Best-effort, como no chat de conversa: uma falha ao gravar não pode apagar
   // a resposta da tela. `session_id` nulo é o que marca a pergunta como sendo
   // do acervo inteiro, e não de uma conversa.
-  async function guardar(pergunta, resposta, fontes) {
+  async function guardar(pergunta, resposta, fontes, busca) {
     try {
       let id = chatId
       if (!id) {
@@ -281,7 +287,7 @@ export default function Perguntar() {
       }
       const cifrar = !convidado
       const p = cifrar ? await cifrarMensagem(pergunta) : { content: pergunta }
-      const texto = comFontes(resposta, fontes)
+      const texto = comFontes(resposta, fontes, busca)
       const r = cifrar ? await cifrarMensagem(texto) : { content: texto }
       await supabase.from('chat_messages').insert([
         { chat_id: id, user_id: user.id, role: 'user', ...p },
