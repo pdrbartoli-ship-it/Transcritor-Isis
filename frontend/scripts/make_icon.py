@@ -1,10 +1,11 @@
 """Gera as imagens-fonte do ícone do Dito a partir da identidade visual do app.
 
-Conceito: fundo verde-pinho (a cor de destaque do app) com "D." na serifa do
-logotipo, o "D" no tom do papel e o ponto em verde-claro, como o ponto
-colorido do "Dito." na tela. Saída em frontend/assets/ para o @capacitor/assets
-gerar todas as densidades + ícone adaptativo, e cópias em frontend/public/
-(favicon e ícone do PWA).
+Conceito: fundo verde-pinho (a cor de destaque do app) com "D." em creme, numa
+serifada executiva. É o desenho de sempre; em 2026-09-19 só a cor de fundo
+mudou (era terracota). A serifa pesada do Liberation é de propósito: a do
+logotipo, fina e de alto contraste, some no ícone de 16 px da barra de tarefas.
+Saída em frontend/assets/ para o @capacitor/assets gerar todas as densidades +
+ícone adaptativo, e cópias em frontend/public/ (favicon e ícone do PWA).
 
 Depois de rodar:
   npx capacitor-assets generate --android ...   (ver PLAYSTORE.md)
@@ -16,27 +17,25 @@ import shutil
 
 # Paleta da identidade visual (frontend/src/index.css)
 PINE = (26, 92, 78)        # #1a5c4e  accent do tema claro
-PAPER = (246, 248, 247)    # #f6f8f7  bg do tema claro
-MINT = (108, 190, 165)     # #6cbea5  accent do tema escuro
+CREAM = (250, 249, 245)    # a cor da letra, mantida do ícone original
 SIZE = 1024
 
 HERE = os.path.dirname(__file__)
-FONT = os.path.join(HERE, "fontes", "SourceSerif4-SemiBold.ttf")
+FONT = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
 OUT = os.path.join(HERE, "..", "assets")
 PUBLIC = os.path.join(HERE, "..", "public")
 os.makedirs(OUT, exist_ok=True)
 
 
-def draw_mark(img, scale):
+def draw_mark(img, scale, size=SIZE):
     """Desenha 'D.' centralizado. scale = fração da altura ocupada pela letra."""
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(FONT, int(SIZE * scale))
+    font = ImageFont.truetype(FONT, int(size * scale))
     # bbox real do glifo para centralizar de verdade (ignora sidebearings)
     l, t, r, b = draw.textbbox((0, 0), "D.", font=font)
-    x = (SIZE - (r - l)) / 2 - l
-    y = (SIZE - (b - t)) / 2 - t
-    draw.text((x, y), "D", font=font, fill=PAPER)
-    draw.text((x + font.getlength("D"), y), ".", font=font, fill=MINT)
+    x = (size - (r - l)) / 2 - l
+    y = (size - (b - t)) / 2 - t
+    draw.text((x, y), "D.", font=font, fill=CREAM)
 
 
 # 1) Ícone cheio (loja + launcher legado): fundo verde + D.
@@ -52,8 +51,11 @@ fg = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 draw_mark(fg, 0.40)
 fg.save(os.path.join(OUT, "icon-foreground.png"))
 
-# 4) Web: favicon e ícone do manifest
+# 4) Web: favicon e ícone do manifest. O de 512 é desenhado nesse tamanho, não
+# reduzido do de 1024: reduzir engrossa a serifa e suja a borda da letra.
 shutil.copy(os.path.join(OUT, "icon.png"), os.path.join(PUBLIC, "favicon.png"))
-full.resize((512, 512), Image.LANCZOS).save(os.path.join(PUBLIC, "icon-512.png"))
+meio = Image.new("RGB", (512, 512), PINE)
+draw_mark(meio, 0.56, size=512)
+meio.save(os.path.join(PUBLIC, "icon-512.png"))
 
 print("Ícones-fonte gerados em frontend/assets/ e frontend/public/")

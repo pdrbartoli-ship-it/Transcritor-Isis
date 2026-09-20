@@ -13,10 +13,13 @@ import os
 PINE = (26, 92, 78)        # #1a5c4e
 PAPER = (246, 248, 247)    # #f6f8f7
 MINT = (108, 190, 165)     # #6cbea5
+CREAM = (250, 249, 245)    # a cor da letra do ícone
 PAPER_SOFT = (246, 248, 247, 215)
 
 HERE = os.path.dirname(__file__)
 SERIF = os.path.join(HERE, "fontes", "SourceSerif4-SemiBold.ttf")
+# O ícone usa a serifa pesada do Liberation, como sempre usou (ver make_icon.py).
+SERIF_ICONE = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
 SANS = os.path.join(HERE, "fontes", "Inter-Medium.ttf")
 OUT = os.path.join(HERE, "..", "assets")
 PUBLIC = os.path.join(HERE, "..", "public")
@@ -48,9 +51,10 @@ def card(w, h, mark_px, tag_px, mark_y, tag_y):
     return img.convert("RGB")
 
 
-# 1) Ícone 512x512 (mesmo desenho do ícone 1024)
-Image.open(os.path.join(OUT, "icon.png")).resize((512, 512), Image.LANCZOS).save(
-    os.path.join(OUT, "icon-512.png"))
+# 1) Ícone 512x512, desenhado nesse tamanho (reduzir o de 1024 suja a letra)
+icone = Image.new("RGB", (512, 512), PINE)
+centered(ImageDraw.Draw(icone), "D.", ImageFont.truetype(SERIF_ICONE, int(512 * 0.56)), 256, 256, CREAM)
+icone.save(os.path.join(OUT, "icon-512.png"))
 
 # 2) Feature graphic 1024x500
 card(1024, 500, 150, 34, 215, 345).save(os.path.join(OUT, "feature-1024x500.png"))
