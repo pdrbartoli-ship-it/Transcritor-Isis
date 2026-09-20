@@ -34,8 +34,16 @@ export const IconLock = (p) => (
 export const IconTrash = (p) => (
   <svg {...base} {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>
 )
+// A única do conjunto com traço mais grosso, de propósito: ela mora sozinha
+// dentro de um botão redondo pequeno e cheio de cor, e no traço de 1.6 dos
+// outros ícones ficava fina demais contra o fundo. É a mesma seta nos três
+// lugares em que se envia uma pergunta (Perguntar, Chat e AskBar).
 export const IconSend = (p) => (
-  <svg {...base} {...p}><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
+  <svg {...base} strokeWidth={2.4} {...p}><line x1="12" y1="19.5" x2="12" y2="5.5" /><polyline points="5.5 12 12 5.5 18.5 12" /></svg>
+)
+// Relógio: marca o que já passou (as perguntas anteriores do "Perguntar").
+export const IconClock = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" /></svg>
 )
 export const IconSun = (p) => (
   <svg {...base} {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>

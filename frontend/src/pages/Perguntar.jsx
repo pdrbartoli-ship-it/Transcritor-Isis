@@ -7,7 +7,7 @@ import { track } from '../lib/analytics'
 import ChatTextarea from '../components/chat/ChatTextarea'
 import MarkdownText from '../components/chat/MarkdownText'
 import FeedbackModal from '../components/FeedbackModal'
-import { IconChat, IconFlag, IconPlus, IconSend } from '../components/Icons'
+import { IconClock, IconFlag, IconPlus, IconSend } from '../components/Icons'
 import { cifrarMensagem, decifrarMensagens } from '../lib/cofre'
 import { displayTitle, listConversations } from '../lib/conversas'
 import { textoPerguntasRestantes } from './conversa/perguntas'
@@ -24,11 +24,10 @@ import { buscar, construirBM25 } from '../lib/acervo/busca'
 //   4. só esses 8 vão ao /chat-acervo, que responde citando as fontes
 //   5. as citações viram chips que abrem a conversa no minuto
 
-const SUGESTOES = [
-  'O que ficou decidido nas últimas reuniões?',
-  'Quais tarefas ficaram pendentes?',
-  'Sobre o que eu mais falei este mês?',
-]
+// Quantas perguntas já feitas cabem embaixo da barra sem virar uma pilha de
+// texto de novo. As mais antigas continuam guardadas; o que se perde é só o
+// atalho para elas.
+const ANTERIORES_NA_TELA = 5
 
 const MAX_CHARS_PER_TURN = 2000
 const MAX_HISTORY_MESSAGES = 20
@@ -159,8 +158,20 @@ export default function Perguntar() {
 
       const primeira = new Map()
       for (const m of abertas) if (!primeira.has(m.chat_id)) primeira.set(m.chat_id, m.content)
-      setAnteriores(chats.filter(c => primeira.has(c.id))
-        .map(c => ({ id: c.id, pergunta: primeira.get(c.id), quando: c.created_at })))
+      // Perguntar duas vezes a mesma coisa é comum (a resposta não convenceu,
+      // a pessoa tentou de novo), e a lista ficava com a linha repetida. Fica
+      // a mais recente, que é a que tem a resposta que ela quis.
+      const vistas = new Set()
+      const lista = []
+      for (const c of chats) {
+        const pergunta = primeira.get(c.id)
+        if (!pergunta) continue
+        const chave = pergunta.trim().toLowerCase()
+        if (vistas.has(chave)) continue
+        vistas.add(chave)
+        lista.push({ id: c.id, pergunta, quando: c.created_at })
+      }
+      setAnteriores(lista)
     } catch { /* a lista é um extra; sem ela a tela funciona igual */ }
   }, [user?.id])
 
@@ -168,6 +179,8 @@ export default function Perguntar() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [messages, sending])
 
+  // Abrir uma pergunta anterior é só ler o que já foi respondido: nenhuma
+  // chamada de IA acontece aqui, então reabrir não gasta pergunta do mês.
   async function abrirThread(id) {
     setError(null); setErrorStatus(null)
     const { data: msgs } = await supabase.from('chat_messages')
@@ -183,8 +196,6 @@ export default function Perguntar() {
     setChatId(null); setMessages([]); setQuestion('')
     setError(null); setErrorStatus(null)
   }
-
-  function perguntar(texto) { enviar(null, texto) }
 
   async function enviar(e, texto) {
     e?.preventDefault()
@@ -304,9 +315,38 @@ export default function Perguntar() {
   }
 
   const vazio = messages.length === 0 && !sending
+  const statusIndice = textoDoIndice(indice, acervo?.length ?? 0)
+  const alerta = error && errorStatus !== 402 ? <div className="alert alert-error">{error}</div> : null
+
+  // A mesma barra nos dois estados da tela: no meio da altura enquanto não há
+  // pergunta nenhuma, presa ao rodapé assim que a conversa começa. Escrever o
+  // formulário duas vezes era como as duas acabavam diferentes uma da outra.
+  const barra = esgotado ? (
+    <div className="ask-bar ask-esgotado">
+      <span>Você usou todas as perguntas deste mês.</span>
+      <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>
+    </div>
+  ) : (
+    <form className="ask-bar" onSubmit={enviar}>
+      <ChatTextarea
+        value={question}
+        onChange={setQuestion}
+        onSubmit={enviar}
+        placeholder="Pergunte alguma coisa sobre suas conversas"
+        disabled={sending}
+      />
+      <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">
+        <IconSend width={18} height={18} />
+      </button>
+    </form>
+  )
+
+  const restantes = !esgotado && perguntasRestantes != null
+    ? <p className="ask-restantes">{textoPerguntasRestantes(perguntasRestantes)}</p>
+    : null
 
   return (
-    <div className="conversa chat-page">
+    <div className={`conversa chat-page${vazio ? ' chat-page-vazia' : ''}`}>
       <div className="conversa-topbar">
         <button className="btn-ghost btn-sm btn-reportar-ia" onClick={() => setReportando(true)}>
           <IconFlag width={14} height={14} /> <span>Sinalizar<span className="reportar-ia-extra"> conteúdo da IA</span></span>
@@ -318,106 +358,87 @@ export default function Perguntar() {
         )}
       </div>
 
-      <header className="conversa-head">
-        <h1>Perguntar</h1>
-        <p className="text-muted text-sm">
-          Uma pergunta, todas as suas conversas
-          <StatusDoIndice indice={indice} total={acervo?.length ?? 0} />
-        </p>
-      </header>
-
-      <div className="chat-messages">
-        {vazio && (
-          <div className="chat-starter">
-            <IconChat width={26} height={26} />
-            <p>
-              Pergunte alguma coisa e procuramos em todas as suas conversas de uma vez.
-              A resposta vem com as fontes, e cada uma abre a conversa no minuto exato.
-            </p>
-            {!esgotado && (
-              <div className="starter-chips">
-                {SUGESTOES.map(texto => (
-                  <button key={texto} type="button" onClick={() => perguntar(texto)} disabled={sending}>
-                    {texto}
-                  </button>
-                ))}
-              </div>
-            )}
-            {anteriores.length > 0 && (
-              <div className="acervo-anteriores">
-                <div className="sidebar-section-label">Perguntas anteriores</div>
-                {anteriores.map(a => (
-                  <button key={a.id} type="button" onClick={() => abrirThread(a.id)} title={a.pergunta}>
-                    {a.pergunta}
-                  </button>
-                ))}
-              </div>
-            )}
+      {vazio ? (
+        // Em repouso a tela é uma pergunta só: o convite, a barra no meio da
+        // altura e, embaixo, as últimas perguntas já feitas. O título da
+        // página, o parágrafo de explicação e as sugestões prontas saíram —
+        // eram três blocos de texto na frente da única coisa que se faz aqui.
+        <div className="ask-hero">
+          <h1 className="ask-hero-titulo">O que você precisa saber hoje?</h1>
+          <div className="ask-hero-barra">
+            {alerta}
+            {barra}
           </div>
-        )}
-
-        {messages.map((m, i) => (
-          <div key={i} className={`message ${m.role}`}>
-            <div className="bubble">
-              {m.role === 'assistant' ? (
-                <>
-                  <MarkdownText text={m.texto} />
-                  {m.fontes?.length > 0 && (
-                    <div className="acervo-fontes">
-                      {m.fontes.map(f => (
-                        <button key={f.r} type="button" className="fonte-chip" onClick={() => abrirFonte(f)}>
-                          <span className="fonte-rotulo">{f.r}</span>
-                          {f.t}
-                          <span className="fonte-quando">
-                            {new Date(f.d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                            {f.i != null && ` · ${formatTimestamp(f.i)}`}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {m.busca && (
-                    <p className="acervo-procura">{textoDaProcura(m.busca)}</p>
-                  )}
-                </>
-              ) : m.texto}
+          {anteriores.length > 0 && (
+            <div className="ask-anteriores">
+              {anteriores.slice(0, ANTERIORES_NA_TELA).map(a => (
+                <button key={a.id} type="button" onClick={() => abrirThread(a.id)} title={a.pergunta}>
+                  <IconClock width={15} height={15} />
+                  <span>{a.pergunta}</span>
+                </button>
+              ))}
             </div>
+          )}
+          <div className="ask-hero-rodape">
+            {restantes}
+            {statusIndice && <p className="ask-hero-status">{statusIndice}</p>}
           </div>
-        ))}
-
-        {sending && (
-          <div className="message assistant">
-            <div className="bubble"><span className="spinner spinner-sm" /> {etapa || 'Procurando'}…</div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {error && errorStatus !== 402 && <div className="alert alert-error">{error}</div>}
-
-      {esgotado ? (
-        <div className="ask-bar chat-input ask-esgotado">
-          <span>Você usou todas as perguntas deste mês.</span>
-          <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>
         </div>
       ) : (
-        <div className="chat-input-area">
-          <form className="ask-bar chat-input" onSubmit={enviar}>
-            <ChatTextarea
-              value={question}
-              onChange={setQuestion}
-              onSubmit={enviar}
-              placeholder="Pergunte alguma coisa sobre suas conversas"
-              disabled={sending}
-            />
-            <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">
-              <IconSend width={18} height={18} />
-            </button>
-          </form>
-          {perguntasRestantes != null && (
-            <p className="ask-restantes">{textoPerguntasRestantes(perguntasRestantes)}</p>
-          )}
-        </div>
+        <>
+          <header className="conversa-head">
+            <h1>Perguntar</h1>
+            <p className="text-muted text-sm">
+              Uma pergunta, todas as suas conversas
+              {statusIndice && <> · {statusIndice}</>}
+            </p>
+          </header>
+
+          <div className="chat-messages">
+            {messages.map((m, i) => (
+              <div key={i} className={`message ${m.role}`}>
+                <div className="bubble">
+                  {m.role === 'assistant' ? (
+                    <>
+                      <MarkdownText text={m.texto} />
+                      {m.fontes?.length > 0 && (
+                        <div className="acervo-fontes">
+                          {m.fontes.map(f => (
+                            <button key={f.r} type="button" className="fonte-chip" onClick={() => abrirFonte(f)}>
+                              <span className="fonte-rotulo">{f.r}</span>
+                              {f.t}
+                              <span className="fonte-quando">
+                                {new Date(f.d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                                {f.i != null && ` · ${formatTimestamp(f.i)}`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {m.busca && (
+                        <p className="acervo-procura">{textoDaProcura(m.busca, m.fontes)}</p>
+                      )}
+                    </>
+                  ) : m.texto}
+                </div>
+              </div>
+            ))}
+
+            {sending && (
+              <div className="message assistant">
+                <div className="bubble"><span className="spinner spinner-sm" /> {etapa || 'Procurando'}…</div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {alerta}
+
+          <div className="chat-input-area">
+            {barra}
+            {restantes}
+          </div>
+        </>
       )}
 
       {reportando && <FeedbackModal reportIA onClose={() => setReportando(false)} />}
@@ -425,30 +446,37 @@ export default function Perguntar() {
   )
 }
 
-// "Procurei em 47 conversas e usei 6 trechos de 3 delas": quem pergunta a um
-// acervo inteiro precisa saber onde a resposta foi procurada, senão não há
-// como distinguir "não está nas minhas conversas" de "a busca não achou".
-function textoDaProcura({ conversasBuscadas, trechos, conversasUsadas }) {
+// "Procurei em 47 conversas e a resposta veio de 2 trechos de 1 delas": quem
+// pergunta a um acervo inteiro precisa saber onde a resposta foi procurada,
+// senão não há como distinguir "não está nas minhas conversas" de "a busca não
+// achou". O número de trechos e de conversas é o das fontes CITADAS, não o dos
+// 8 trechos enviados à IA: a busca sempre enche as 8 vagas, com no máximo 3 por
+// conversa, então o enviado dava "8 trechos de 3 delas" em toda pergunta.
+function textoDaProcura({ conversasBuscadas, trechos }, fontes = []) {
   const onde = conversasBuscadas === 1 ? '1 conversa' : `${conversasBuscadas} conversas`
   if (!trechos) return `Procurei em ${onde} e não encontrei nada relacionado.`
-  const usados = trechos === 1 ? '1 trecho' : `${trechos} trechos`
-  const delas = conversasUsadas === 1 ? '1 delas' : `${conversasUsadas} delas`
-  return `Procurei em ${onde} e usei ${usados} de ${delas}.`
+  if (!fontes.length) return `Procurei em ${onde}, mas a resposta não se apoiou em nenhum trecho.`
+  const usados = fontes.length === 1 ? '1 trecho' : `${fontes.length} trechos`
+  const conversas = new Set(fontes.map(f => f.s)).size
+  const delas = conversas === 1 ? '1 delas' : `${conversas} delas`
+  return `Procurei em ${onde} e a resposta veio de ${usados} de ${delas}.`
 }
 
-// O estado do índice fica no subtítulo, discreto: enquanto ele não termina a
-// busca por palavra já responde, então isto é informação, não espera.
-function StatusDoIndice({ indice, total }) {
+// O estado do índice: enquanto ele não termina a busca por palavra já
+// responde, então isto é informação, não espera. Virou texto e não componente
+// porque agora aparece em dois lugares — no subtítulo depois de um ponto, e
+// sozinho embaixo da barra na tela em repouso.
+function textoDoIndice(indice, total) {
   if (indice.estado === 'indexando' && indice.progresso?.total) {
     const { fase, feitas, total: quantas } = indice.progresso
     const nome = fase === 'texto' ? 'Lendo suas conversas' : 'Preparando a busca'
-    return <> · {nome} ({Math.min(feitas + 1, quantas)} de {quantas})</>
+    return `${nome} (${Math.min(feitas + 1, quantas)} de ${quantas})`
   }
   if (indice.estado === 'pronto' && !indice.trechos.length && total > 0) {
-    return <> · não consegui preparar a busca neste aparelho</>
+    return 'Não consegui preparar a busca neste aparelho'
   }
   if (indice.estado === 'pronto' && indice.resumo?.semVetor) {
-    return <> · busca por palavra por enquanto</>
+    return 'Busca por palavra por enquanto'
   }
   return null
 }

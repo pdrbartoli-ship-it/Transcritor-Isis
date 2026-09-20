@@ -1458,6 +1458,9 @@ input::placeholder { color: var(--text-muted); }
 /* ---------- Chat da conversa ---------- */
 
 .chat-page { display: flex; flex-direction: column; min-height: calc(100vh - 120px); }
+/* Em repouso o centro tem de ser o centro do que se vê: o calc acima chuta a
+   altura e deixava um vão embaixo do conjunto no celular. */
+.chat-page-vazia { min-height: 100%; }
 
 /* Turnos mais espaçados: cada pergunta e resposta precisa de ar em volta para
    não ler como uma pilha de caixas — é isso, mais a resposta sem moldura
@@ -1502,6 +1505,51 @@ input::placeholder { color: var(--text-muted); }
    conjunto — sticky dentro de um embrulho da mesma altura não prende nada. O
    fundo é o que impede as mensagens de aparecerem por trás da contagem. */
 .chat-input-area { position: sticky; bottom: 0; max-width: 740px; width: 100%; background: var(--bg); padding-bottom: 4px; }
+
+/* ---------- Perguntar em repouso ---------- */
+
+/* Sem nenhuma pergunta feita, a tela é só o convite e a barra, no meio da
+   altura. Antes a barra ficava presa ao rodapé com um parágrafo de explicação,
+   três chips e a lista de perguntas anteriores empilhados por cima: muito
+   texto na frente da única coisa que se faz aqui. O respiro maior embaixo
+   sobe o conjunto um pouco acima do centro geométrico, que é onde o olho
+   espera encontrá-lo. */
+.ask-hero {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; padding: 24px 0 9vh; text-align: center;
+}
+.ask-hero-titulo {
+  margin: 0; font-size: 26px; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1.25; text-wrap: balance;
+}
+.ask-hero-barra { width: 100%; max-width: 620px; }
+/* A contagem do mês e o estado do índice ficam por último, juntos: entre a
+   barra e as sugestões eles cortavam a ligação entre uma coisa e outra. */
+.ask-hero-rodape { display: flex; flex-direction: column; gap: 4px; }
+.ask-hero-rodape .ask-restantes { margin: 0; }
+
+/* Embaixo da barra, o que já foi perguntado: uma coluna da mesma largura
+   dela, alinhada à esquerda como uma lista se lê, em texto apagado para não
+   competir com o campo. O relógio é o que avisa que aquilo é passado e não
+   sugestão — clicar reabre a resposta guardada, sem gastar pergunta. */
+.ask-anteriores {
+  display: flex; flex-direction: column; gap: 1px;
+  width: 100%; max-width: 620px; text-align: left;
+}
+.ask-anteriores button {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 12px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); font-size: 14px; line-height: 1.4;
+  text-align: left; transition: color .15s, background .15s;
+}
+.ask-anteriores button > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ask-anteriores button > svg { flex-shrink: 0; opacity: .7; }
+.ask-anteriores button:hover { background: var(--surface-2); color: var(--text); }
+.ask-anteriores button:hover > svg { opacity: 1; }
+.ask-anteriores button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ask-hero-status { margin: 0; font-size: 12px; color: var(--text-muted); }
 
 /* Perguntas restantes: informação de canto, no mesmo tom apagado do contador
    de minutos da home. */
@@ -1726,11 +1774,3 @@ input::placeholder { color: var(--text-muted); }
    dito — é o que separa "não está nas minhas conversas" de "a busca falhou". */
 .acervo-procura { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
 
-.acervo-anteriores { margin-top: 32px; text-align: left; max-width: 430px; margin-inline: auto; }
-.acervo-anteriores button {
-  display: block; width: 100%; padding: 8px 10px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--text); font-size: 13px; text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.acervo-anteriores button:hover { background: var(--surface-2); }
-.acervo-anteriores button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
