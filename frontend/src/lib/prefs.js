@@ -91,13 +91,19 @@ export function aplicarTemaDoUsuario() {
 // assim funciona antes mesmo de a sessão carregar.
 export const IDIOMA_AUTO = 'auto'
 
-// A ordem é a da lista na tela. O rótulo de cada idioma vem escrito NELE
-// mesmo: quem procura "English" numa tela em português acha pelo nome que
-// conhece, não por "Inglês". E o padrão se chama "Do áudio", não "Automático",
-// porque "automático" não diz automático em relação a quê.
+// Quem não escolheu nada lê em português: é a língua de quase todo mundo que
+// usa o Dito, e "Do áudio" fazia uma reunião em inglês voltar em inglês para
+// quem só queria entender o que foi dito. Quem prefere outra coisa muda nas
+// configurações, e aí a escolha é que vale.
+export const IDIOMA_PADRAO = 'pt'
+
+// A ordem é a da lista na tela, com o padrão na frente. O rótulo de cada
+// idioma vem escrito NELE mesmo: quem procura "English" numa tela em português
+// acha pelo nome que conhece, não por "Inglês". E "Do áudio" não se chama
+// "Automático" porque "automático" não diz automático em relação a quê.
 export const IDIOMAS = [
-  { code: IDIOMA_AUTO, label: 'Do áudio' },
   { code: 'pt', label: 'Português' },
+  { code: IDIOMA_AUTO, label: 'Do áudio' },
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Español' },
 ]
@@ -107,9 +113,9 @@ const CODIGOS = IDIOMAS.map(i => i.code)
 export function getIdioma() {
   try {
     const salvo = localStorage.getItem('dito-idioma')
-    return CODIGOS.includes(salvo) ? salvo : IDIOMA_AUTO
+    return CODIGOS.includes(salvo) ? salvo : IDIOMA_PADRAO
   } catch {
-    return IDIOMA_AUTO
+    return IDIOMA_PADRAO
   }
 }
 
