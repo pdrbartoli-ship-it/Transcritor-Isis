@@ -17,17 +17,18 @@ import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
-  IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin, IconMenu,
+  IconSearch, IconClose, IconCard, IconArrowRight, IconWhatsapp, IconYoutube, IconPlus, IconPin, IconMenu,
   IconChat,
 } from './Icons'
 
-// De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
-// gravação, arquivo e link eram indistinguíveis sem abrir.
+// De onde veio a captura. São os mesmos três ícones das abas da home
+// (Gravação, Áudio, Vídeo): quem escolheu a aba reconhece na lista o que
+// aquela conversa era, em vez de aprender um segundo conjunto de símbolos.
 // As conversas antigas foram todas gravadas como 'file' — daí o ícone de
-// arquivo ser o padrão, e não o microfone: ele seria mentira na metade delas.
-const KIND_ICON = { url: IconLink, record: IconMic, file: IconFile }
+// áudio ser o padrão, e não o microfone: ele seria mentira na metade delas.
+const KIND_ICON = { url: IconYoutube, record: IconMic, file: IconWhatsapp }
 function KindIcon({ sourceType }) {
-  const Icon = KIND_ICON[sourceType] || IconFile
+  const Icon = KIND_ICON[sourceType] || IconWhatsapp
   return <Icon className="kind-icon" width={14} height={14} />
 }
 
