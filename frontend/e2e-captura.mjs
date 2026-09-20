@@ -16,8 +16,8 @@ await p.waitForFunction(() => document.querySelectorAll('.conversation-card').le
 const alturas = []
 const recentes = []
 for (const [aba, hash, espera] of [
-  ['Gravar', '#/', '.record-btn.hero'],
-  ['Arquivo', '#/audio', '.drop-zone'],
+  ['Gravação', '#/', '.record-btn.hero'],
+  ['Áudio', '#/audio', '.drop-zone'],
   ['Vídeo', '#/video', '.url-form'],
 ]) {
   await p.click(`.capture-nav a:has-text("${aba}")`)

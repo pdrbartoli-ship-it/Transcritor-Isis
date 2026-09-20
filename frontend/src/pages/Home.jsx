@@ -12,8 +12,8 @@ import { IconMic, IconWhatsapp, IconYoutube } from '../components/Icons'
 // ao lado do resto da navegação. Os rótulos dizem o que se faz em cada uma:
 // "Áudio" aceitava vídeo e "Vídeo" era, na verdade, colar um link.
 const CAPTURE_MODES = [
-  { to: '/', label: 'Gravar', Icon: IconMic },
-  { to: '/audio', label: 'Arquivo', Icon: IconWhatsapp },
+  { to: '/', label: 'Gravação', Icon: IconMic },
+  { to: '/audio', label: 'Áudio', Icon: IconWhatsapp },
   { to: '/video', label: 'Vídeo', Icon: IconYoutube },
 ]
 

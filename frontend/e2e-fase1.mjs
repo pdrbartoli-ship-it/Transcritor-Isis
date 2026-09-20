@@ -44,7 +44,7 @@ await step('as três origens são abas, e Gravar é a padrão', async () => {
 })
 
 await step('Áudio abre em rota própria, com o título do WhatsApp', async () => {
-  await page.click('.capture-nav a:has-text("Arquivo")')
+  await page.click('.capture-nav a:has-text("Áudio")')
   await page.waitForSelector('.drop-zone', { timeout: 3000 })
   if (!page.url().endsWith('#/audio')) throw new Error(`rota: ${page.url()}`)
   const t = await page.textContent('.capture-mode-title')
@@ -64,7 +64,7 @@ await step('Vídeo abre em rota própria, com o título certo', async () => {
     () => document.querySelectorAll('.conversation-card').length > 0,
     { timeout: 20000 },
   ).catch(() => { throw new Error('a lista de conversas sumiu fora da home') })
-  await page.click('.capture-nav a:has-text("Gravar")')
+  await page.click('.capture-nav a:has-text("Gravação")')
   await page.waitForSelector('.record-btn.hero', { timeout: 3000 })
 })
 
