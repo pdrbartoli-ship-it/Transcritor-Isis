@@ -1691,3 +1691,44 @@ input::placeholder { color: var(--text-muted); }
   color: var(--accent); cursor: pointer; text-decoration: underline;
 }
 .alert-cta { display: block; margin-top: 10px; padding: 7px 14px; font-size: 13px; }
+
+/* ── Perguntar ao acervo ────────────────────────────────────────────────── */
+/* O botão da barra lateral repete a casca do "Novo" (mesma caixa, mesma
+   margem): são as duas coisas que se começa do zero, e dar cara diferente a
+   cada uma faria a segunda parecer de outra família. */
+.sidebar-perguntar { margin-top: -4px; }
+.sidebar-perguntar.active { border-color: var(--accent); }
+
+/* As fontes da resposta. Chips, e não uma lista: elas são um aparte da
+   resposta, e uma lista numerada embaixo competiria com o texto. */
+.acervo-fontes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.fonte-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  max-width: 100%; padding: 6px 12px 6px 7px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 12px; line-height: 1.3; text-align: left;
+  transition: border-color .15s, background .15s;
+}
+.fonte-chip:hover { background: var(--surface-2); border-color: var(--text-muted); }
+.fonte-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* O rótulo é o que casa o chip com o [C1] que aparece no texto da resposta.
+   Sem ele a pessoa vê a marca no meio da frase e não sabe a que se refere. */
+.fonte-rotulo {
+  flex-shrink: 0; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.fonte-quando { color: var(--text-muted); white-space: nowrap; }
+
+/* "Procurei em 47 conversas e usei 6 trechos de 3 delas": dito baixinho, mas
+   dito — é o que separa "não está nas minhas conversas" de "a busca falhou". */
+.acervo-procura { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+
+.acervo-anteriores { margin-top: 32px; text-align: left; max-width: 430px; margin-inline: auto; }
+.acervo-anteriores button {
+  display: block; width: 100%; padding: 8px 10px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text); font-size: 13px; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acervo-anteriores button:hover { background: var(--surface-2); }
+.acervo-anteriores button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

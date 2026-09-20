@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { cifrarLinha, cifrarMensagem, decifrarLinha, decifrarLista, ENC_ATUAL } from './cofre'
+import { apagarConversa as apagarDoIndice } from './acervo/indice'
 
 // Uma "conversa" é qualquer captura: gravação, arquivo de áudio/vídeo ou link.
 // No banco continua sendo a tabela `sessions` — o que mudou foi o produto, que
@@ -184,6 +185,10 @@ export async function deleteConversation(id) {
   const { error } = await supabase.from('sessions').delete().eq('id', id)
   if (error) throw error
   invalidarBuscaLocal()
+  // O índice do "Perguntar ao acervo" guarda os trechos desta conversa no
+  // aparelho. Apagar a conversa e deixar os trechos seria a resposta citando
+  // uma fonte que não existe mais — e conteúdo apagado continuando em disco.
+  apagarDoIndice(id).catch(() => {})
 }
 
 // Erro de "coluna não existe" na hora de fixar. A migração fixar_conversa.sql
@@ -238,6 +243,27 @@ async function carregarAcervo(userId) {
   const linhas = await decifrarLista(todas)
   cacheAcervo = { userId, linhas }
   return linhas
+}
+
+// As conversas inteiras (com `segments` e `insights`) de um punhado de ids. É o
+// que o indexador do "Perguntar ao acervo" precisa e a listagem não traz: sem
+// os segmentos não há como quebrar em trechos com minuto. Em lotes porque
+// essas duas colunas são pesadas — dez conversas de uma hora já são megabytes.
+const LOTE_COMPLETO = 10
+
+export async function carregarConversasCompletas(ids) {
+  const saida = []
+  for (let i = 0; i < ids.length; i += LOTE_COMPLETO) {
+    const pedaco = ids.slice(i, i + LOTE_COMPLETO)
+    const data = await selectWithFallback(
+      fields => supabase.from('sessions').select(fields).in('id', pedaco),
+      FULL_FIELDS, FULL_FIELDS_BASE,
+    )
+    // Uma conversa ilegível (gravada com outra chave) não pode derrubar o
+    // indexador: ela volta marcada e é pulada.
+    saida.push(...await decifrarLista(data))
+  }
+  return saida
 }
 
 export async function searchConversations(userId, term) {

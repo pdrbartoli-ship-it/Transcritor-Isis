@@ -66,6 +66,13 @@
   <p>Usamos seus dados exclusivamente para fazer o app funcionar: autenticar seu
   login, processar o áudio que você envia, gerar a transcrição e o resumo, e
   guardar esse material organizado na sua conta para você acessar depois.</p>
+  <p>Quando você faz uma pergunta sobre uma conversa, <strong>trechos dessa
+  conversa são enviados ao provedor de inteligência artificial</strong> para que
+  ele possa responder. O mesmo vale para a pergunta ao acervo inteiro
+  ("Perguntar ao acervo"): a busca acontece no seu próprio aparelho, e só os
+  poucos trechos que respondem à sua pergunta são enviados, junto com o título e
+  a data das conversas. O provedor usa esse material apenas para gerar a
+  resposta e não o guarda.</p>
 
   <h2>4. Serviços de terceiros</h2>
   <p>Para funcionar, o Dito utiliza provedores que processam parte dos dados em
@@ -75,6 +82,7 @@
     <li><strong>Groq:</strong> transcrição de áudio (tecnologia Whisper).</li>
     <li><strong>Google (Gemini):</strong> geração dos resumos e da análise das conversas.</li>
     <li><strong>OpenAI:</strong> respostas às perguntas sobre as conversas.</li>
+    <li><strong>Google (Gemini):</strong> também prepara a busca do "Perguntar ao acervo", convertendo trechos em números que ficam guardados no seu aparelho.</li>
     <li><strong>Anthropic (Claude):</strong> títulos das conversas de perguntas e, quando os provedores acima estão indisponíveis, resumos e respostas.</li>
   </ul>
   <p>Esses provedores recebem apenas o necessário para executar essas tarefas e

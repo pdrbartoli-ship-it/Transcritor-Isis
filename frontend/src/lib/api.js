@@ -324,6 +324,38 @@ export async function abrirPortalAssinatura() {
   )
 }
 
+// ── Perguntar ao acervo ─────────────────────────────────────────────────
+// As três chamadas do chat geral. O servidor não guarda nada em nenhuma delas:
+// converte, lê e responde. A busca em si acontece no aparelho, porque as
+// conversas são cifradas lá (ver plano-busca-geral.md).
+
+// Trechos → vetores, para o índice local. Lote de no máximo 100, que é o teto
+// do backend. `tipo` é 'documento' (trecho de conversa) ou 'pergunta': o
+// Gemini espera um prefixo diferente em cada caso, e quem o aplica é o
+// servidor — trocá-los piora a busca sem dar erro nenhum.
+export async function embeddar(textos, tipo = 'documento') {
+  const { vetores } = await postJson('/embeddar', { textos, tipo })
+  return vetores
+}
+
+// A pergunta + a lista de títulos (nunca o conteúdo) viram um plano de busca:
+// palavras e sinônimos, conversas prováveis, "as últimas N" e intervalo de
+// datas. Nunca lança: sem o plano a busca usa as palavras da própria pergunta
+// e só acerta um pouco menos.
+export async function entenderPergunta(question, conversas, { history = [] } = {}) {
+  try {
+    return await postJson('/entender-pergunta', { question, conversas, history })
+  } catch {
+    return { palavras: [], conversas: [], recencia: null, desde: null, ate: null, pergunta: question }
+  }
+}
+
+// A resposta do chat geral, com só os ~8 trechos que a busca escolheu. Gasta
+// uma pergunta do mesmo saldo mensal do chat de uma conversa.
+export async function askAcervo(question, trechos, { history = [] } = {}) {
+  return postJson('/chat-acervo', { question, trechos, history })
+}
+
 // O chat fala sobre UMA conversa. O backend marca a transcrição com
 // cache_control, então a partir da segunda pergunta ela não é recobrada.
 export async function askConversation(question, conversation, { history = [], makeTitle = false } = {}) {

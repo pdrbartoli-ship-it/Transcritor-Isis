@@ -1,19 +1,51 @@
-import { useState } from 'react'
-import { useLocation, useOutletContext } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useLocation, useOutletContext, useSearchParams } from 'react-router-dom'
 import { IconChevron } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import Trecho from './Trecho'
-import { formatRange } from './shared'
+import { formatRange, formatTimestamp } from './shared'
 
 // A conversa seção por seção. Abrir uma mostra a transcrição daquele intervalo
 // com os tempos e quem falou — o "resumo minuto a minuto" da tela anterior,
 // sem o resumo pelo meio.
+//
+// `?t=932` abre direto no minuto. É o endereço que as citações do "Perguntar
+// ao acervo" usam, e por isso ele mora na URL e não no state do roteador: um
+// chip que some ao recarregar a página não é uma fonte, é uma dica.
 export default function Timeline() {
   const { conversation } = useOutletContext()
   const location = useLocation()
-  const [open, setOpen] = useState(location.state?.focus ?? 0)
+  const [params] = useSearchParams()
 
   const chapters = conversation.insights?.chapters || []
+  const segundo = params.has('t') ? Number(params.get('t')) : null
+  const valido = segundo !== null && Number.isFinite(segundo) && segundo >= 0
+
+  const doMinuto = valido ? chapters.findIndex(c => c.end > segundo) : -1
+  const [open, setOpen] = useState(doMinuto >= 0 ? doMinuto : (location.state?.focus ?? 0))
+  const alvoRef = useRef(null)
+
+  // Chegar por uma citação e ter de procurar o intervalo na tela seria perder
+  // o que o chip prometeu.
+  useEffect(() => {
+    if (doMinuto >= 0) alvoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [doMinuto])
+
+  // Conversa sem capítulos (legenda de vídeo sem marcação, captura antiga):
+  // a citação continua sabendo o minuto, então mostramos a transcrição em
+  // volta dele em vez de dizer que não há nada aqui.
+  if (!chapters.length && valido) {
+    return (
+      <div className="conversa">
+        <ConversaHeader
+          conversation={conversation}
+          title="Trecho citado"
+          subtitle={`A partir de ${formatTimestamp(segundo)}`}
+        />
+        <Trecho conversation={conversation} start={Math.max(0, segundo - 30)} end={segundo + 150} />
+      </div>
+    )
+  }
 
   return (
     <div className="conversa">
@@ -28,7 +60,7 @@ export default function Timeline() {
       ) : (
         <ul className="chapter-full">
           {chapters.map((c, i) => (
-            <li key={i}>
+            <li key={i} ref={i === doMinuto ? alvoRef : null}>
               <div
                 className={`chapter-row ${open === i ? 'open' : ''}`}
                 role="button"

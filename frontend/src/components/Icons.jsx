@@ -120,6 +120,12 @@ export const IconCaretDown = (p) => (
 export const IconCircle = (p) => (
   <svg {...base} {...p}><circle cx="12" cy="12" r="8" /></svg>
 )
+// Uma pilha de conversas com uma lupa: o "Perguntar ao acervo", que procura em
+// todas de uma vez. A lupa sozinha já é a busca da barra lateral, e as duas
+// entradas ficariam indistinguíveis.
+export const IconAcervo = (p) => (
+  <svg {...base} {...p}><path d="M3 7h13" /><path d="M3 12h8" /><path d="M3 17h5" /><circle cx="17" cy="15" r="4" /><line x1="20" y1="18" x2="22.5" y2="20.5" /></svg>
+)
 export const IconMenu = (p) => (
   <svg {...base} {...p}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
 )

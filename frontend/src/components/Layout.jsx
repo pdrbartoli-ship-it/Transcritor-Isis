@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { esquecerDoAparelho } from '../lib/chaves'
+import { apagarTudo as apagarIndiceDoAcervo } from '../lib/acervo/indice'
 import { useAuth, rastroAuth } from '../contexts/AuthContext'
 import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
@@ -17,6 +18,7 @@ import { planoPorId } from '../lib/planos'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMessage,
   IconSearch, IconClose, IconCard, IconArrowRight, IconLink, IconFile, IconPlus, IconPin, IconMenu,
+  IconAcervo,
 } from './Icons'
 
 // De onde veio a captura. A lista mostrava o mesmo ponto cinza para tudo, então
@@ -211,6 +213,10 @@ export default function Layout() {
     // Deixá-la num computador compartilhado seria deixar o cofre destrancado
     // para o próximo que logar ali.
     await esquecerDoAparelho()
+    // Junto com a chave vai o índice do acervo: ele guarda trechos das
+    // conversas neste aparelho, e sem a chave eles nem seriam legíveis — mas
+    // deixar o arquivo lá seria deixar o rastro do que foi dito.
+    await apagarIndiceDoAcervo()
     await supabase.auth.signOut()
     navigate('/auth')
   }
@@ -275,6 +281,17 @@ export default function Layout() {
             deixava a ação mais frequente do app sem lugar fixo na tela. */}
         <button className="sidebar-novo" onClick={() => navigate('/')}>
           <IconPlus width={16} height={16} /> Novo
+        </button>
+
+        {/* Logo abaixo do "Novo", e não no rodapé com as configurações:
+            perguntar ao acervo é a segunda coisa que se faz no app, não um
+            ajuste. Sem lugar fixo, o recurso só existiria para quem soubesse
+            da URL. */}
+        <button
+          className={`sidebar-novo sidebar-perguntar ${location.pathname === '/perguntar' ? 'active' : ''}`}
+          onClick={() => navigate('/perguntar')}
+        >
+          <IconAcervo width={16} height={16} /> Perguntar ao acervo
         </button>
 
         {searchOpen && (

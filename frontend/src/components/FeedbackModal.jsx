@@ -15,9 +15,12 @@ const CATEGORIA_IA = 'Conteúdo da IA'
 // Com `conversaId`, vira o report de conteúdo da IA daquela conversa. O texto
 // da conversa não vai junto: ele é cifrado, e copiá-lo em claro para a tabela
 // de feedback furaria essa proteção — o usuário descreve o problema.
-export default function FeedbackModal({ onClose, conversaId = null }) {
+// `reportIA` sem `conversaId` é o caso do "Perguntar ao acervo": a resposta
+// olhou várias conversas, então não há uma para apontar — o que a loja exige é
+// poder sinalizar o conteúdo, e isso continua valendo.
+export default function FeedbackModal({ onClose, conversaId = null, reportIA: forcarIA = false }) {
   const { user } = useAuth()
-  const reportIA = !!conversaId
+  const reportIA = forcarIA || !!conversaId
   const [message, setMessage] = useState('')
   const [category, setCategory] = useState(reportIA ? CATEGORIA_IA : 'Ideia')
   const [loading, setLoading] = useState(false)

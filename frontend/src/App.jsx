@@ -12,6 +12,7 @@ import Topico from './pages/conversa/Topico'
 import Todos from './pages/conversa/Todos'
 import Timeline from './pages/conversa/Timeline'
 import Chat from './pages/conversa/Chat'
+import Perguntar from './pages/Perguntar'
 import Mini from './pages/Mini'
 import AssinaturaSucesso from './pages/AssinaturaSucesso'
 import AssinaturaCancelada from './pages/AssinaturaCancelada'
@@ -95,6 +96,10 @@ function AppPrincipal() {
           <Route path="/assinatura/sucesso" element={<ProtectedRoute><AssinaturaSucesso /></ProtectedRoute>} />
           <Route path="/assinatura/cancelada" element={<ProtectedRoute><AssinaturaCancelada /></ProtectedRoute>} />
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            {/* O chat geral: uma pergunta, todas as conversas. Fora do
+                /conversa/:id de propósito — ele não fala de uma captura, fala
+                do acervo inteiro. */}
+            <Route path="/perguntar" element={<Perguntar />} />
             {/* Rota própria por conversa: dá deep-link e faz o voltar do
                 navegador funcionar, o que o modelo antigo (tudo em state
                 dentro de uma pasta) não permitia. */}

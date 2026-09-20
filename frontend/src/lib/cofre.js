@@ -90,6 +90,28 @@ export async function decifrarLista(linhas) {
   }))
 }
 
+// ── Índice do acervo, guardado no aparelho ───────────────────
+// O índice do "Perguntar ao acervo" (trechos + vetores) mora no IndexedDB
+// deste aparelho. Ele é conteúdo da conversa como qualquer outro, então é
+// cifrado com a MESMA chave — e não por excesso de zelo: a chave sai do
+// aparelho quando a pessoa sai da conta (`esquecerDoAparelho`), e é isso que
+// faz o índice deixar de ser legível junto, num computador compartilhado.
+//
+// Sem chave (o convidado, que não tem senha e portanto não tem cofre) os
+// textos ficam como estão, no mesmo formato "legado" que o app já lê.
+export async function cifrarTextos(textos) {
+  const dek = await lerDoAparelho()
+  if (!dek) return { textos, encVersion: null }
+  return { textos: await Promise.all(textos.map(t => encryptText(dek, t))), encVersion: ENC_ATUAL }
+}
+
+export async function decifrarTextos(textos, encVersion) {
+  if (encVersion !== ENC_ATUAL) return textos
+  const dek = await lerDoAparelho()
+  if (!dek) throw new SemChaveError()
+  return Promise.all(textos.map(t => decryptText(dek, t)))
+}
+
 // ── Mensagens de chat ────────────────────────────────────────
 export async function cifrarMensagem(conteudo) {
   const dek = await lerDoAparelho()
