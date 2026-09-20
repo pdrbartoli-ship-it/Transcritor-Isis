@@ -83,11 +83,8 @@ function Demo() {
   return (
     <div className="lp-demo" ref={alvo}>
       <div className="lp-shot lp-shot-wide">
-        <div className="lp-shot-bar">
-          <span className="lp-dot" /><span className="lp-dot" /><span className="lp-dot" />
-          <span className="lp-shot-url">dito.albiecloud.com</span>
-        </div>
-
+        {/* Sem a barra de janela falsa (os três pontinhos e o endereço): ela
+            fingia um navegador que não é o do visitante e não dizia nada. */}
         <div className="lp-shot-body">
           <div className="lp-shot-head">
             <IconMic width={14} height={14} />
@@ -276,7 +273,6 @@ export default function Landing() {
           <h2>Como o Dito funciona</h2>
           <div className="lp-feats">
             <article className="lp-feat">
-              <span className="lp-feat-tag">Registrar</span>
               <h3>Grave, envie um arquivo ou cole um link.</h3>
               <p>
                 Tudo cai na mesma lista de conversas. Fixe as importantes no topo; o resto
@@ -295,7 +291,6 @@ export default function Landing() {
             </article>
 
             <article className="lp-feat">
-              <span className="lp-feat-tag">Perguntar</span>
               <h3>Tópicos, tarefas e um chat sobre a conversa.</h3>
               <p>
                 O Dito separa os tópicos, lista o que ficou combinado e monta um resumo
@@ -316,15 +311,17 @@ export default function Landing() {
         </section>
 
         {/* ── Privacidade: o diferencial ───────────────────── */}
-        <section className="lp-section lp-privacy">
-          <div className="lp-privacy-inner">
-            <IconShield width={26} height={26} />
+        <section className="lp-section lp-split">
+          <div className="lp-split-titulo">
+            <IconShield width={24} height={24} />
             <h2>Suas conversas são cifradas antes de sair do seu aparelho.</h2>
+          </div>
+          <div className="lp-split-texto">
             <p>
               A chave que abre o conteúdo fica só com você e nunca chega ao nosso servidor.
               Nem nós conseguimos ler o que você guarda no Dito.
             </p>
-            <p className="lp-privacy-foot">
+            <p className="lp-split-foot">
               Feito para quem tem sigilo a cumprir.{' '}
               <a href="/privacidade.html">Política de privacidade</a>
             </p>
@@ -332,16 +329,17 @@ export default function Landing() {
         </section>
 
         {/* ── Desktop: público que se auto-seleciona ───────── */}
-        <section className="lp-section lp-desktop">
-          <div>
-            <span className="lp-tag">App para Windows</span>
+        <section className="lp-section lp-split">
+          <div className="lp-split-titulo">
             <h2>No Windows, grave os dois lados da chamada.</h2>
+          </div>
+          <div className="lp-split-texto">
             <p>
               O navegador só capta o seu microfone. O app para Windows grava
               <strong> você e quem está do outro lado</strong>, com uma janela flutuante que
               fica por cima de tudo durante a conversa.
             </p>
-            <a className="btn-ghost lp-btn-lg" href={INSTALLER_URL}>
+            <a className="btn-ghost lp-btn-lg lp-split-btn" href={INSTALLER_URL}>
               <IconDownload width={16} height={16} />
               Baixar para Windows
             </a>
@@ -364,8 +362,12 @@ export default function Landing() {
           <div className="lp-planos">
             {PLANOS.map(p => (
               <article key={p.id} className={`lp-plano${p.destaque ? ' destaque' : ''}`}>
-                {p.destaque && <span className="lp-plano-selo">Recomendado</span>}
-                <h3>{p.nome}</h3>
+                {/* O selo mora na linha do nome: pendurado na borda de cima, ele
+                    empurrava o cartão do meio para baixo e desalinhava os três. */}
+                <div className="lp-plano-topo">
+                  <h3>{p.nome}</h3>
+                  {p.destaque && <span className="lp-plano-selo">Recomendado</span>}
+                </div>
                 {/* Mesma manchete do "Meu plano": o anual por mês na frente, o
                     mensal logo abaixo. A escolha entre os dois é feita só na hora
                     de pagar. */}
@@ -373,11 +375,13 @@ export default function Landing() {
                   <strong>{formatarPreco(p.anual ? precoMensalNoAnual(p) : 0)}</strong>
                   <span>{p.anual ? 'por mês' : 'para sempre'}</span>
                 </div>
-                {p.anual && (
-                  <p className="text-muted text-sm">
-                    com cobrança anual · {formatarPreco(p.mensal)} cobrado mensalmente
-                  </p>
-                )}
+                {/* O lugar da nota existe nos três cartões (vazio no Grátis):
+                    sem ele, cada coluna começava a lista numa altura. */}
+                <p className="lp-plano-nota">
+                  {p.anual
+                    ? `com cobrança anual · ${formatarPreco(p.mensal)} cobrado mensalmente`
+                    : '\u00a0'}
+                </p>
                 <p className="lp-plano-resumo">{p.resumo}</p>
                 <ul>
                   {p.itens.map(i => (
