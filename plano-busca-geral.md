@@ -1,10 +1,15 @@
 # Dito — Perguntar a todo o acervo (busca geral com IA)
 
-**Data:** 19/09/2026, atualizado em 20/09 com o resultado do teste · **Pergunta que a feature responde:** "o que foi dito nas últimas 2 reuniões de sprint sobre a UX do produto ABC?" / "o que a professora explicou sobre nematoide?"
+**Data:** 19/09/2026, atualizado em 20/09 com o MVP no ar · **Pergunta que a feature responde:** "o que foi dito nas últimas 2 reuniões de sprint sobre a UX do produto ABC?" / "o que a professora explicou sobre nematoide?"
 
 ---
 
 ## 1. Resposta curta
+
+**Está no ar desde 20/09/2026.** A tela `/perguntar` responde perguntas olhando
+todas as conversas, com fontes clicáveis que abrem a conversa no minuto. O que
+segue descreve o que foi construído e por quê; o que mudou em relação ao plano
+original está marcado.
 
 **Dá, e custa quase nada.** Uma pergunta ao acervo inteiro custa **cerca de R$ 0,02** (pior caso R$ 0,03), mais **R$ 0,012 por hora de conversa** para indexar, uma vez só. Não precisa de servidor novo, de banco de vetores nem de plano pago de nenhum serviço.
 
@@ -38,13 +43,13 @@
 
 **Uma tela nova: "Perguntar ao acervo"** (rota `/perguntar`), com a mesma cara do chat de conversa.
 
-- **Entrada 1, sempre visível:** botão fixo no topo da barra lateral, logo abaixo de "Nova conversa" (`components/Layout.jsx`).
-- **Entrada 2:** na busca da barra lateral, quando o texto digitado parece uma pergunta, o primeiro resultado vira "Perguntar ao acervo: '...'".
-- **Tela vazia:** três exemplos clicáveis ("O que ficou decidido nas últimas reuniões?", "O que a aula X explicou sobre Y?", "Quais tarefas ficaram pendentes esta semana?").
+- **Entrada 1, sempre visível:** ✅ botão fixo na barra lateral, logo abaixo do "Novo" (`components/Layout.jsx`).
+- **Entrada 2:** na busca da barra lateral, quando o texto digitado parece uma pergunta, o primeiro resultado vira "Perguntar ao acervo: '...'". **Não foi construída no MVP:** é uma segunda porta para o mesmo lugar, e o botão fixo já dá acesso permanente. Fica para o acabamento.
+- **Tela vazia:** ✅ três exemplos clicáveis ("O que ficou decidido nas últimas reuniões?", "Quais tarefas ficaram pendentes?", "Sobre o que eu mais falei este mês?").
 - **Resposta:** texto curto e direto, com **fontes em chips clicáveis** ("Sprint 14 · 12 set · 14:32"). Clicar abre a conversa no minuto exato.
 - **Transparência:** uma linha discreta abaixo da resposta: "Procurei em 47 conversas e usei 6 trechos de 3 delas". Quando não achar, diz que não achou (nada de inventar).
-- **Reaproveita** o botão "Reportar conteúdo da IA" que já existe nas telas de conversa.
-- **Histórico:** as perguntas ao acervo ficam salvas, cifradas, na tabela `chats` que já existe. A coluna `session_id` já aceita vazio, então **não precisa de SQL** para isso. Vale uma lista simples de perguntas anteriores dentro da própria tela.
+- **Reaproveita** ✅ o botão "Sinalizar conteúdo da IA" que já existe nas telas de conversa (o mesmo modal, agora sem precisar de uma conversa para apontar).
+- **Histórico:** ✅ as perguntas ficam salvas, cifradas, na tabela `chats` que já existe, com `session_id` vazio. **Não precisou de SQL nenhum.** Cada pergunta nova abre uma thread própria, e a tela vazia lista as anteriores.
 - **Convidado (sem conta):** funciona igual, só sem cifra.
 
 ---
@@ -86,10 +91,16 @@ No teste, é isto que salva conteúdo em outro idioma: perguntas em português s
 
 ### Passo 3: buscar (no aparelho, grátis)
 
-1. Ranking por similaridade dos vetores, combinado com o BM25 das palavras expandidas.
-2. Agrupa por conversa; a nota da conversa é a do melhor trecho.
-3. Aplica o filtro de tempo/recência ("as 2 mais recentes entre as relevantes").
-4. Pega **~8 trechos, no máximo 3 por conversa** (para não responder só com uma reunião).
+1. Ranking por similaridade dos vetores. **Correção medida ao construir:** quando
+   todos os trechos têm vetor, o vetor ordena **sozinho** — fundi-lo com a busca
+   por palavra piorava (ver "A correção da fusão", abaixo). A busca por palavra
+   entra quando algum trecho ainda não tem vetor, que é o caso durante a
+   indexação e quando ela falha.
+2. Aplica o filtro de tempo/recência ("as 2 mais recentes entre as relevantes")
+   e sobe as conversas que a IA apontou pelo título, sem excluir as outras.
+3. Pega **~8 trechos, no máximo 3 por conversa** (para não responder só com uma reunião).
+4. Sem nenhum trecho casando e com filtro de período ativo ("o que ficou decidido
+   esta semana?"), devolve o começo do período pedido em vez de nada.
 
 ### Passo 4: responder (servidor, endpoint novo `/chat-acervo`)
 
@@ -196,12 +207,14 @@ O Gemini Embedding 2 ganhou do OpenAI `text-embedding-3-small` (93% contra 84% d
 ## 8. Riscos e limites
 
 - **O teste foi num acervo pequeno** (87 trechos). Num acervo grande a ordenação piora, e o jeito de saber é repetir a medição quando houver conta com muitas conversas.
-- **Indexar depende de um serviço de fora.** Sem rede, ou com a chave do Gemini fora do ar, a conversa nova fica sem vetor. A saída é indexar depois, em segundo plano, e deixar a busca por palavra respondendo enquanto isso.
+- **Indexar depende de um serviço de fora.** Sem rede, ou com a chave do Gemini fora do ar, a conversa nova fica sem vetor. ✅ Resolvido como planejado: a indexação tem duas fases (texto primeiro, de graça; vetores depois), a busca por palavra responde enquanto isso, e a tela diz "busca por palavra por enquanto". A fase dos vetores para na primeira falha em vez de gastar uma chamada perdida por conversa, e retoma de onde parou na próxima abertura.
 - **Perguntas de agregação** ("quantas vezes falamos de X?", "resuma todas as aulas do semestre") não funcionam bem com "8 melhores trechos". Fora do MVP; a saída depois é um modo "resumo por período" que junta os resumos já prontos.
 - **Escala do acervo no aparelho:** 50 KB de texto mais 90 KB de vetores por hora, então 100 h = 14 MB, 500 h = 70 MB. Bom no computador; no celular passar de ~300 h pede índice persistido no aparelho. A busca da barra lateral já tem essa característica hoje.
 - **Sem chave no aparelho** (`SemChaveError`, sessão restaurada em aparelho novo): mesmo tratamento de hoje, "saia e entre de novo".
 - **Alucinação:** só responde com os trechos, obriga citação, mostra o trecho ao clicar, e reaproveita o botão de reportar.
-- **Citação com tempo:** a timeline hoje não aceita minuto na URL (a confirmar); é uma adaptação pequena.
+- **Citação com tempo:** ✅ resolvido. A timeline passou a aceitar `?t=segundos`,
+  e conversa sem capítulos (legenda de vídeo sem marcação) mostra a transcrição
+  em volta do minuto citado, em vez de dizer que não há intervalos.
 
 ---
 
@@ -210,8 +223,8 @@ O Gemini Embedding 2 ganhou do OpenAI `text-embedding-3-small` (93% contra 84% d
 | Etapa | O que entrega | Tamanho |
 |---|---|---|
 | **0. Teste de recall** | ✅ **Feito** (20/09). Decidiu qual busca usar: embeddings do Gemini. Resultado abaixo. | pequeno |
-| **1. MVP** | índice com embeddings no aparelho + `/embeddar` + entender a pergunta + `/chat-acervo` + tela `/perguntar` + chips de fonte | médio |
-| **2. Acabamento** | filtros manuais (período, conversas), histórico, resumo por período | pequeno |
+| **1. MVP** | ✅ **No ar** (20/09). Índice no aparelho + `/embeddar` + `/entender-pergunta` + `/chat-acervo` + tela `/perguntar` + chips de fonte. | médio |
+| **2. Acabamento** | filtros manuais (período, conversas), perguntas de agregação, resumo por período | pequeno |
 
 ### Etapa 0: o teste de recall (concluído em 20/09/2026)
 
@@ -240,11 +253,120 @@ O Gemini Embedding 2 ganhou do OpenAI `text-embedding-3-small` (93% contra 84% d
 - As 5 perguntas "armadilha" (cujo assunto está no áudio mas a resposta não) continuam trazendo trechos plausíveis. Quem precisa dizer "não encontrei" é a IA que responde, e isso é um teste diferente, ainda por fazer.
 - Uma marcação de gabarito ficou imprecisa (a pergunta sobre baixa intensidade cai bem na divisa entre dois trechos). Não muda a conclusão.
 
+### A medição repetida, depois de construir (20/09/2026)
+
+O mesmo teste, o mesmo gabarito de 43 perguntas, rodado de novo sobre o acervo
+real quando o MVP ficou pronto. **O resultado se manteve.**
+
+| Método | @1 (20/09, antes) | @1 (depois) | Trecho certo entre os 8 (antes → depois) |
+|---|---|---|---|
+| Busca por palavra (BM25) | 63% | 63% | 88% → 88% |
+| \+ sinônimos da IA | 60% | 65% | 88% → 91% |
+| Embeddings OpenAI 3-small | 84% | 84% | 100% → 100% |
+| **Embeddings Gemini 2** | **93%** | **93%** | **100% → 100%** |
+
+A IA que entende a pergunta apontou a conversa certa em 42 de 43, igual à
+primeira vez, e no vídeo em inglês ela levou a busca por palavra de 40% para
+90% de acerto em 1º lugar. Custo da rodada: **US$ 0,017**.
+
+#### A correção da fusão
+
+O plano dizia "embeddings do Gemini **com a busca por palavra junto**, porque a
+combinação teve a melhor ordenação média". **Isso não se confirmou.** Medindo a
+fusão com pesos de 1:1 a 1:5 entre palavra e vetor, sobre as mesmas 43
+perguntas:
+
+| Ordenação | Acerto em 1º | MRR | Trecho certo entre os 8 |
+|---|---|---|---|
+| **Só o vetor** | **93%** | **0,957** | **43/43** |
+| Só a palavra | 65% | 0,766 | 39/43 |
+| Fusão 1:1 | 86% | 0,919 | 43/43 |
+| Fusão 1:3 | 91% | 0,944 | 42/43 |
+| Fusão 1:5 | 93% | 0,955 | 42/43 |
+
+O vetor sozinho ganha em tudo, e nenhum peso chega a superá-lo. No que mais
+importa (o trecho certo estar entre os 8 que vão para a IA) a fusão 1:1 empata,
+então a diferença prática é a ordem dentro dos 8, não o que a IA recebe. Mesmo
+assim, ordenar melhor sai de graça: **o app usa o vetor sozinho quando todos os
+trechos têm vetor**, e a busca por palavra continua ligada onde ela é de fato
+necessária — no trecho que ainda não foi indexado.
+
+---
+
+## 10. O que foi construído
+
+**No servidor** (três rotas, nenhuma guarda nada):
+
+| Rota | O que faz |
+|---|---|
+| `/embeddar` | Trechos → vetores (Gemini Embedding 2, 768 dimensões). Os vetores voltam para o aparelho e é lá que ficam. |
+| `/entender-pergunta` | Pergunta + títulos e datas (**nunca o conteúdo**) → palavras, sinônimos, conversas prováveis, "últimas N" e intervalo de datas. Os dois modelos caindo devolve plano vazio, e não erro: a busca por palavra ainda responde. |
+| `/chat-acervo` | Pergunta + os ~8 trechos escolhidos → resposta citando `[C1]`. Gasta 1 do mesmo saldo mensal do chat de conversa. |
+
+As três seguem o padrão do `/chat`: **Luna na frente, Claude de reserva**,
+registro de fallback em `events` e o mesmo `guarda_de_uso`. O
+`/ia/fallbacks` passou a dizer quem está ligado nos dois usos novos.
+
+**No aparelho:**
+
+- **Índice no IndexedDB**, cifrado com a mesma chave do usuário. Sair da conta
+  apaga a chave e o índice junto; apagar uma conversa apaga os trechos dela na
+  hora.
+- **Indexador em duas fases**, disparado ao abrir a tela (quem nunca perguntar
+  ao acervo não paga a indexação dele): o texto primeiro, de graça, e os
+  vetores depois, em segundo plano. Reabrir a tela não reindexa nada — a
+  impressão digital de cada conversa sai da lista que o app já tem em mãos, e
+  renomear não conta como mudança, porque o título não vira vetor.
+- **Tela `/perguntar`**, com botão fixo na barra lateral logo abaixo do "Novo",
+  três exemplos clicáveis, chips de fonte que abrem a conversa no minuto, a
+  linha "Procurei em N conversas e usei M trechos de K delas", o botão de
+  sinalizar conteúdo da IA e a lista de perguntas anteriores.
+- **Histórico sem SQL novo:** as perguntas ficam em `chats`/`chat_messages` com
+  `session_id` nulo, cifradas. As fontes e a contagem da busca viajam num
+  marcador no fim do próprio texto da resposta, porque não existe coluna para
+  elas e criar uma exigiria uma migração — assim a pergunta reaberta amanhã
+  continua com os chips clicáveis.
+
+**Testado:**
+
+- `backend/teste-fallback.py`: **77 → 126 casos**, todos com dublê, sem gastar
+  API. Cobre as três rotas novas, os fallbacks, o saldo e os limites.
+- `frontend/e2e-perguntar.mjs`: **20 verificações contra o app publicado**, da
+  indexação (52 trechos, todos com vetor de 768 dimensões e cifrados) à
+  resposta com fontes, ao chip que abre a conversa em `?t=286` e à pergunta
+  reaberta. Saldo do mês caiu de 58 para 57 na pergunta, como devia.
+
+**Um achado do caminho:** um `indexedDB.open` sem versão **cria** o banco
+vazio. Se algo abrir "dito-acervo" assim antes do app, o app encontra o banco
+já na versão dele e sem as prateleiras dentro, e toda transação falha em
+silêncio — a busca simplesmente não acha nada. Foi o próprio teste de ponta a
+ponta que provocou o estado; o app agora detecta e conserta reabrindo numa
+versão acima.
+
 ### Feito até aqui
 
-- **Saldo mensal de perguntas no ar** (commit `4290d7b`): 5 / 60 / ilimitado, valendo para o chat de qualquer conversa. Testado em produção com a conta de teste: o contador foi de 0 para 1, sobraram 59, os minutos não mudaram e o ciclo do Stripe foi preservado.
+- **Saldo mensal de perguntas no ar** (commit `4290d7b`): 5 / 60 / ilimitado,
+  valendo para o chat de qualquer conversa e agora também para o chat geral.
 - **Etapa 0 concluída**, com a decisão pelos embeddings do Gemini.
+- **Etapa 1 (MVP) no ar** (20/09/2026), com a medição repetida confirmando o
+  resultado e corrigindo a decisão sobre a fusão.
 
-**Próximo passo:** construir o MVP (Etapa 1) — índice no aparelho, `/embeddar`, `/chat-acervo`, a tela `/perguntar` e os chips de fonte.
+### O que ficou para depois
+
+- **Perguntas de agregação** ("quantas vezes falamos de X?", "resuma todas as
+  aulas do semestre") continuam fora: elas não se resolvem com "8 melhores
+  trechos".
+- **Filtros manuais** de período e de conversa. Hoje quem filtra é a IA, a
+  partir do texto da pergunta.
+- **Teto de uso justo no Avançado** (sugerido ~500/mês). Segue sendo uma linha
+  de código, porque ele já é contado.
+- **Medir num acervo grande.** As 5 conversas e 87 trechos do teste continuam
+  sendo pouco, e num acervo de mil conversas a concorrência é outra. O jeito de
+  saber é repetir a medição quando houver conta com muitas conversas.
+- **Testar a recusa.** As 5 perguntas "armadilha" continuam trazendo trechos
+  plausíveis; quem precisa dizer "não encontrei" é a IA que responde, e isso é
+  um teste diferente, ainda por fazer. (No teste de ponta a ponta ela disse
+  exatamente isso quando o índice estava vazio, o que é um bom sinal, mas não é
+  a medição.)
 
 **Fontes dos preços:** [Gemini API](https://ai.google.dev/gemini-api/docs/pricing), [OpenAI](https://developers.openai.com/api/docs/pricing), `.claude/skills/teste-qualidade/casos/slc-2t26/precos.json` (Luna e Gemini 3.8 Flash, conferidos em 18 e 19/09/2026).
