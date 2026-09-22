@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { ouvirAviso, responderAviso } from '../lib/avisoWindow'
+import { IconMic, IconClock } from '../components/Icons'
+import { AVISO_W, ouvirAviso, responderAviso } from '../lib/avisoWindow'
 import { getTheme } from '../lib/prefs'
 import { montarConvite, montarAvisoSaldo, montarParouPorSaldo } from '../lib/reuniao'
 
@@ -41,6 +42,36 @@ export default function Aviso() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // A janela nasce com uma altura chutada por quem a abriu (ela não sabe o
+  // texto ainda). Aqui o texto já está na tela, então dá para medir e ajustar:
+  // o convite curto sobrava fundo branco, e o de saldo curto, com três linhas,
+  // ficava apertado contra os botões.
+  useEffect(() => {
+    if (previa || !estado) return
+    let cancelado = false
+    ;(async () => {
+      try {
+        const cartao = document.querySelector('.aviso-card')
+        if (!cartao) return
+        // O cartão ocupa 100% da janela; para medir o tamanho natural do
+        // conteúdo é preciso soltá-lo por um instante.
+        cartao.style.height = 'auto'
+        const altura = Math.ceil(cartao.getBoundingClientRect().height)
+        cartao.style.height = ''
+        if (cancelado) return
+        const [{ getCurrentWindow }, { LogicalSize }] = await Promise.all([
+          import('@tauri-apps/api/window'),
+          import('@tauri-apps/api/dpi'),
+        ])
+        await getCurrentWindow().setSize(new LogicalSize(AVISO_W, altura))
+      } catch {
+        // Fora do app nativo, ou sem permissão: fica com a altura de abertura.
+      }
+    })()
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado])
+
   // Sem resposta, some sozinha. Uma janelinha esquecida na frente da tela de
   // quem está em reunião é pior do que não ter aparecido.
   useEffect(() => {
@@ -62,23 +93,48 @@ export default function Aviso() {
 
   if (!estado) return <div className="aviso-card" />
 
+  // Duas famílias de aviso, dois ícones: a pergunta sobre gravar (microfone) e
+  // o recado sobre o saldo do plano (relógio). É a única coisa que a janelinha
+  // decide sozinha, e só porque é desenho — o texto continua vindo pronto.
+  const sobreSaldo = ['aviso-5min', 'aviso-1min', 'parou-saldo'].includes(estado.variante)
+
   return (
     <div className="aviso-card" data-tauri-drag-region>
-      <p className="aviso-titulo" data-tauri-drag-region>{estado.titulo}</p>
-      <p className="aviso-corpo" data-tauri-drag-region>{estado.corpo}</p>
+      <div className="aviso-linha" data-tauri-drag-region>
+        <span className="aviso-selo" aria-hidden="true">
+          {sobreSaldo ? <IconClock width={15} height={15} /> : <IconMic width={15} height={15} />}
+        </span>
+        <div className="aviso-texto" data-tauri-drag-region>
+          <p className="aviso-titulo" data-tauri-drag-region>{estado.titulo}</p>
+          <p className="aviso-corpo" data-tauri-drag-region>{estado.corpo}</p>
+        </div>
+      </div>
+
       {estado.acoes?.length > 0 && (
         <div className="aviso-acoes">
           {estado.acoes.map(acao => (
             <button
               key={acao.id}
-              className={acao.primaria ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+              className={acao.primaria ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}
               onClick={() => responder(acao.id)}
             >
+              {acao.id === 'gravar' && <span className="aviso-ponto" aria-hidden="true" />}
               {acao.rotulo}
             </button>
           ))}
         </div>
       )}
+
+      {/* A janelinha some sozinha, e até aqui isso não aparecia em lugar
+          nenhum: a pessoa via dois botões e não sabia que existia um relógio
+          correndo. O fio embaixo escoa no tempo exato do `timeoutS`. */}
+      {estado.timeoutS ? (
+        <span
+          key={`${estado.variante}-${estado.timeoutS}`}
+          className="aviso-tempo"
+          style={{ animationDuration: `${estado.timeoutS}s` }}
+        />
+      ) : null}
     </div>
   )
 }

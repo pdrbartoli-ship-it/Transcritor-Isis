@@ -1643,22 +1643,49 @@ input::placeholder { color: var(--text-muted); }
    conteúdo: aqui é texto e uma escolha, não um controle. Sem ícone de alerta e
    sem cor de urgência: aparecer no meio de uma reunião já é interrupção
    suficiente. */
+/* A janelinha que pergunta se é para gravar a reunião. Ela aparece por cima do
+   Zoom, sem barra de título e sem contexto nenhum: era um retângulo com duas
+   frases e dois botões, que lia como caixa de erro do sistema. O selo redondo
+   do lado diz de cara que o assunto é áudio, e o fio que escoa embaixo mostra
+   que a pergunta tem prazo — coisa que antes só acontecia. */
 .aviso-card {
+  position: relative; overflow: hidden;
   box-sizing: border-box; width: 100%; height: 100%;
-  display: flex; flex-direction: column; gap: 5px;
-  padding: 13px 15px;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 15px 13px;
   background: var(--surface); color: var(--text);
-  border: 1px solid var(--border); border-radius: 12px;
+  border: 1px solid var(--border); border-radius: 14px;
   font-family: var(--font-sans);
   /* A janela não tem barra de título: é o corpo dela que se arrasta. */
   cursor: default; user-select: none;
 }
+.aviso-linha { display: flex; align-items: flex-start; gap: 11px; }
+.aviso-selo {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.aviso-texto { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .aviso-titulo { margin: 0; font-size: 14px; font-weight: 600; }
 .aviso-corpo { margin: 0; font-size: 13px; line-height: 1.38; color: var(--text-muted); }
 /* `margin-top: auto` cola os botões no rodapé mesmo quando o corpo é de uma
    linha só — sem isso o convite curto e o de saldo curto teriam os botões em
    alturas diferentes. */
-.aviso-acoes { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+.aviso-acoes { margin-top: auto; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.aviso-acoes .btn-primary { display: inline-flex; align-items: center; gap: 7px; }
+/* O ponto de gravação no botão: a mesma marca vermelha que todo gravador usa,
+   para o botão dizer o que vai acontecer antes de a pessoa ler o rótulo. */
+.aviso-ponto { width: 7px; height: 7px; border-radius: 50%; background: #e2564a; }
+.aviso-tempo {
+  position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: var(--accent); opacity: 0.45;
+  transform-origin: left center;
+  animation-name: aviso-escoa; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+@keyframes aviso-escoa { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+/* Quem pediu menos movimento não precisa de um fio andando na tela; o prazo
+   continua valendo, só não é desenhado. */
+@media (prefers-reduced-motion: reduce) { .aviso-tempo { display: none; } }
 
 /* ---------- Interruptor das configurações ---------- */
 

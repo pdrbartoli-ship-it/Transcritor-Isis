@@ -43,12 +43,19 @@ await p.click('button[type="submit"]')
 await p.waitForSelector('.home', { timeout: 25000 })
 await p.waitForFunction(() => typeof window.__simularReuniao === 'function', { timeout: 10000 })
 
-// A detecção só age com a preferência ligada — é o padrão desligado em ação.
+// A detecção só age com a preferência ligada. Desde 22/09/2026 ela nasce
+// ligada (ver prefs.js), então quem precisa de preparo aqui é o caso
+// desligado: quem foi em Configurações e disse que não quer ser perguntado.
+await p.evaluate(() => localStorage.setItem('dito-avisar-reuniao', '0'))
+await p.reload()
+await p.waitForSelector('.home', { timeout: 25000 })
+await p.waitForFunction(() => typeof window.__simularReuniao === 'function', { timeout: 10000 })
+
 const desligado = await p.evaluate(() => window.__simularReuniao({ id: 1, app: 'zoom' }))
 console.log('com a preferência desligada:', desligado === null ? 'nada aparece' : 'ERRO: apareceu')
 if (desligado !== null) throw new Error('o aviso apareceu com o recurso desligado')
 
-await p.evaluate(() => localStorage.setItem('dito-avisar-reuniao', '1'))
+await p.evaluate(() => localStorage.removeItem('dito-avisar-reuniao'))
 await p.reload()
 await p.waitForSelector('.home', { timeout: 25000 })
 await p.waitForFunction(() => typeof window.__simularReuniao === 'function', { timeout: 10000 })

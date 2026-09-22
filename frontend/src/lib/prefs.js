@@ -126,14 +126,20 @@ export function setIdioma(idioma) {
 
 // ── Avisar quando uma reunião começar ─────────────────────
 //
-// Só existe no app de Windows. Nasce DESLIGADO, e é uma decisão de produto, não
-// de engenharia: gravar sem querer numa consulta, numa audiência ou numa
-// conversa de família é um estrago que não se desfaz, e o público do Dito
-// (saúde, jurídico) é justamente o mais exposto a isso. Ligar também faz o Dito
-// ficar na bandeja ao fechar a janela — sem isso o detector só funcionaria com
-// o app aberto na tela.
+// Só existe no app de Windows. Nasce LIGADO desde 22/09/2026, e a decisão é de
+// produto: nascia desligado por medo de gravar sem querer, mas o recurso não
+// grava nada — ele pergunta, e só grava se a pessoa clicar em "Gravar". O que
+// o padrão desligado produzia, na prática, era a pessoa perder a reunião que
+// queria ter gravado e descobrir o recurso depois, vasculhando as
+// Configurações. Quem não quiser ser perguntado desliga no mesmo interruptor.
+//
+// Ligado, o Dito também fica na bandeja ao fechar a janela: sem isso o detector
+// só funcionaria com o app aberto na tela.
+//
+// O `!== '0'` (e não `=== '1'`) é o que faz o padrão valer para quem nunca
+// mexeu no interruptor, sem apagar a escolha de quem já desligou.
 export function getAvisarReuniao() {
-  try { return localStorage.getItem('dito-avisar-reuniao') === '1' } catch { return false }
+  try { return localStorage.getItem('dito-avisar-reuniao') !== '0' } catch { return true }
 }
 
 export function setAvisarReuniao(ligado) {

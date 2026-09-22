@@ -40,12 +40,15 @@ for (const tema of ['light', 'dark']) {
   const salvo = await p.evaluate(() => localStorage.getItem('dito-avisar-reuniao'))
   if (tema === 'light') {
     console.log('padrão:', ligadoAntes, '→ depois do clique:', ligadoDepois, '| guardado:', salvo)
-    if (ligadoAntes !== 'false') throw new Error('o recurso tem de nascer desligado')
-    if (ligadoDepois !== 'true' || salvo !== '1') throw new Error('o interruptor não guardou a escolha')
+    // Desde 22/09/2026 nasce LIGADO: o recurso só pergunta, nunca grava
+    // sozinho, e desligado ele era descoberto tarde demais (ver prefs.js).
+    if (ligadoAntes !== 'true') throw new Error('o recurso tem de nascer ligado')
+    if (ligadoDepois !== 'false' || salvo !== '0') throw new Error('o interruptor não guardou a escolha')
     console.log('dica:', (await p.locator('.settings-switch + .hint').textContent()).replace(/\s+/g, ' ').trim())
   }
   await p.screenshot({ path: `.test-results/config-reuniao-${tema}.png` })
-  // Volta ao padrão, para o teste não deixar o recurso ligado na conta.
+  // Volta ao padrão (ligado), para o teste não deixar o recurso desligado na
+  // conta de quem rodou.
   await p.click('.settings-switch')
   await p.click('.modal .btn-primary')
 }

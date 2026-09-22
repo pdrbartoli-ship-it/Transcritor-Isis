@@ -13,7 +13,7 @@ const AVISO_LABEL = 'aviso'
 
 // Em pixels lógicos. Cabe o título, duas linhas de corpo e os botões; sem
 // botões a janela encolhe, para não sobrar um vazio embaixo do texto.
-const AVISO_W = 340
+export const AVISO_W = 340
 const AVISO_H_COM_BOTOES = 132
 const AVISO_H_SEM_BOTOES = 88
 
