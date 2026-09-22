@@ -2091,7 +2091,15 @@ async def analisar_transcricao(
 
 @app.get("/")
 async def health():
-    return {"status": "ok", "service": "Dito"}
+    # O commit vai junto para se saber, de fora, qual versão está no ar: o
+    # Render demora alguns minutos entre o push e a troca, e sem isto a única
+    # forma de descobrir se o conserto já subiu era provocar o erro de novo.
+    # A variável é posta pelo próprio Render; fora dele fica em branco.
+    return {
+        "status": "ok",
+        "service": "Dito",
+        "commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:7],
+    }
 
 
 # Sem autenticação de propósito: é a mesma vitrine que a landing mostra a quem
