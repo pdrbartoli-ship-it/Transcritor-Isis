@@ -58,9 +58,8 @@ Vale para as duas lojas e para o site: a Play Store exige o mesmo.
 
 ### Precisa de você
 
-1. **Rodar `supabase/apagar_conta.sql`** no SQL Editor do Supabase. Sem isso o
-   botão de apagar conta responde erro — a função não existe ainda. É o único
-   passo que não dá para fazer daqui.
+1. ~~Rodar `supabase/apagar_conta.sql` no SQL Editor do Supabase.~~ Feito em
+   22/09/2026, e já testado em produção.
 2. **Serviço de montagem na nuvem** (Codemagic ou equivalente), com a conta da
    Apple. Sem Mac, é o que gera o pacote.
 3. **Um iPhone** para o teste pelo TestFlight.
@@ -82,7 +81,21 @@ Vale para as duas lojas e para o site: a Play Store exige o mesmo.
 
 ## Testado até agora
 
-Build do frontend passa e o projeto iOS sincroniza. O fluxo de apagar a conta
-**ainda não foi testado de ponta a ponta**: depende do SQL rodado no Supabase e
-do deploy. Depois disso, o teste é com uma conta descartável, conferindo no
-banco que não sobrou linha nenhuma.
+Em produção, em 22/09/2026, depois do deploy:
+
+- **Servidor, conta vazia.** Convidado descartável criado na hora, `POST
+  /conta/apagar` respondeu 200 e o token dele parou de valer. Passou.
+- **Servidor, conta com dado dentro.** Mesmo teste, com uma linha em `events`
+  antes de apagar. Esse vínculo com `auth.users` não tem cascata, então um 200
+  aqui prova que o laço que varre as tabelas rodou — sem ele, o banco teria
+  barrado a exclusão do cadastro. Passou.
+- **Tela**, com a conta de teste da loja: a seção "Conta" aparece, o aviso cita
+  o e-mail certo, o botão nasce travado, palavra errada não destrava, "APAGAR"
+  destrava, e Cancelar volta ao estado anterior. Passou.
+
+O clique final não foi dado na conta de teste da loja de propósito: é a conta
+que vai para o revisor da Apple. O caminho depois do clique é exatamente o que
+os dois testes de servidor já percorreram.
+
+Falta testar no aparelho: o app de iPhone ainda não foi montado, então gravar,
+enviar arquivo e apagar a conta pelo iPhone só no TestFlight.
