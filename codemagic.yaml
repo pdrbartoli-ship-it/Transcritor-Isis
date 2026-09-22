@@ -1,0 +1,101 @@
+# Montagem do app de iPhone na nuvem.
+#
+# Por que existe: a Apple só aceita pacote gerado no Xcode, que só roda em Mac,
+# e não temos Mac. O Codemagic empresta um, roda estes passos e manda o
+# resultado direto para o TestFlight.
+#
+# Este arquivo já está pronto. O que falta é ligar a conta, e isso é na tela
+# deles, uma vez só (passo a passo em APPSTORE.md):
+#
+#   1. codemagic.io → entrar com o GitHub → adicionar este repositório.
+#   2. Teams → Integrations → Apple Developer Portal → Connect. Ali se cria uma
+#      chave de App Store Connect; dê a ela o nome `dito-app-store-connect`,
+#      que é o nome usado lá embaixo.
+#   3. App Store Connect → criar o app com o identificador
+#      br.com.albiecloud.dito, pegar o número que aparece na barra de endereço
+#      e guardar como variável APP_STORE_APPLE_ID no grupo `dito`.
+#
+# Depois disso, cada execução daqui sobe uma versão nova para o TestFlight.
+# Não roda sozinho a cada push de propósito: publicar no iPhone é decisão, não
+# consequência de salvar um arquivo. Aperte "Start new build" quando quiser.
+
+workflows:
+  ios-testflight:
+    name: Dito iPhone (TestFlight)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      # O nome dado à chave no passo 2 acima. Se você usar outro nome lá,
+      # troque aqui também, senão a montagem para dizendo que não achou a
+      # chave.
+      app_store_connect: dito-app-store-connect
+
+    environment:
+      groups:
+        - dito          # onde mora APP_STORE_APPLE_ID
+      vars:
+        XCODE_PROJECT: "frontend/ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        BUNDLE_ID: "br.com.albiecloud.dito"
+      node: 20
+      xcode: latest
+
+      ios_signing:
+        # `app_store` é o tipo de assinatura de quem publica na loja. O
+        # Codemagic cria e renova o certificado e o perfil sozinho, a partir da
+        # chave do passo 2 — não há nada para guardar à mão.
+        distribution_type: app_store
+        bundle_identifier: br.com.albiecloud.dito
+
+    scripts:
+      - name: Instalar as dependências do site
+        script: |
+          cd frontend
+          npm ci
+
+      - name: Montar o site e copiar para o projeto iOS
+        script: |
+          cd frontend
+          npm run ios:sync
+
+      - name: Aplicar o certificado e o perfil ao projeto
+        script: xcode-project use-profiles
+
+      - name: Numerar esta build
+        # A Apple recusa duas entregas com o mesmo número. Em vez de guardar
+        # esse número no repositório (onde ele desencontra assim que alguém
+        # sobe uma build pela mão), pergunta-se ao TestFlight qual foi o
+        # último e soma um.
+        script: |
+          cd frontend/ios/App
+          ULTIMA=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          agvtool new-version -all $(($ULTIMA + 1))
+
+      - name: Gerar o pacote
+        script: |
+          cd frontend/ios/App
+          xcode-project build-ipa --project "App.xcodeproj" --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - frontend/ios/App/build/ios/ipa/*.ipa
+      # Os logs do Xcode. Quando a montagem falha, a resposta está aqui, e não
+      # no resumo colorido da tela.
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      email:
+        recipients:
+          - pdrbartoli@gmail.com
+        notify:
+          success: true
+          failure: true
+
+      app_store_connect:
+        auth: integration
+        # Sobe para o TestFlight, que é a versão de teste, e para por aí. A
+        # entrega para a revisão da Apple continua sendo um clique seu, na tela
+        # deles: é a hora de conferir a ficha da loja, as capturas e a conta de
+        # teste do revisor.
+        submit_to_testflight: true
+        submit_to_app_store: false

@@ -53,6 +53,18 @@ Vale para as duas lojas e para o site: a Play Store exige o mesmo.
   questionário preenchido na página da loja.
 - Ícones e telas de abertura gerados a partir de `frontend/assets/icon.png`.
 - `npm run ios:sync` e `npm run ios:open`, irmãos dos comandos do Android.
+- Esquema compartilhado (`App.xcscheme`) versionado. O Xcode cria um sozinho,
+  mas dentro da pasta pessoal de quem abre o projeto — sem este no repositório,
+  a montagem na nuvem não acha o que construir.
+
+### Montagem na nuvem
+
+`codemagic.yaml`, na raiz, já pronto: instala, monta o site, sincroniza o
+projeto iOS, aplica certificado e perfil, numera a build perguntando ao
+TestFlight qual foi a última, gera o pacote e sobe.
+
+Não dispara a cada push de propósito. Publicar no iPhone é decisão, não
+consequência de salvar um arquivo — a build começa quando você aperta.
 
 ## O que falta
 
@@ -60,23 +72,30 @@ Vale para as duas lojas e para o site: a Play Store exige o mesmo.
 
 1. ~~Rodar `supabase/apagar_conta.sql` no SQL Editor do Supabase.~~ Feito em
    22/09/2026, e já testado em produção.
-2. **Serviço de montagem na nuvem** (Codemagic ou equivalente), com a conta da
-   Apple. Sem Mac, é o que gera o pacote.
-3. **Um iPhone** para o teste pelo TestFlight.
+2. **Ligar o Codemagic**, que é meia hora de telas, uma vez só:
+   1. [codemagic.io](https://codemagic.io) → entrar com o GitHub → adicionar
+      este repositório. Ele acha o `codemagic.yaml` sozinho.
+   2. Teams → Integrations → Apple Developer Portal → Connect, e criar ali uma
+      chave de App Store Connect. **Dê a ela o nome `dito-app-store-connect`**,
+      que é o nome usado no arquivo.
+   3. App Store Connect → criar o app com o identificador
+      `br.com.albiecloud.dito`, o mesmo do Android. Copie o número que aparece
+      na barra de endereço e guarde no Codemagic como variável
+      `APP_STORE_APPLE_ID`, no grupo `dito`.
+   4. "Start new build" e esperar. A primeira leva uns 15 minutos.
+3. ~~Um iPhone para o teste pelo TestFlight.~~ Confirmado em 22/09/2026.
 4. **Confirmar a declaração de criptografia.** Marcamos que o Dito usa só
    criptografia isenta (AES padrão do sistema e HTTPS). É declaração legal, não
    ajuste técnico.
 
 ### Técnico, depois da conta ligada
 
-1. **Assinatura do app** — certificado e perfil da Apple, criados a partir da
-   conta e guardados no serviço de montagem.
-2. **Compartilhar de outros apps** — no Android o Dito aparece no menu de
+1. **Compartilhar de outros apps** — no Android o Dito aparece no menu de
    compartilhar. No iPhone isso é uma extensão separada; ficou fora da primeira
    versão.
-3. **Capturas de tela** do iPhone para a página da loja
+2. **Capturas de tela** do iPhone para a página da loja
    (`e2e-store-screenshots.mjs` já faz isso para o Android).
-4. **Conta de teste para o revisor**, com saldo, e a nota explicando que o Dito
+3. **Conta de teste para o revisor**, com saldo, e a nota explicando que o Dito
    transcreve conversas com consentimento de quem é gravado.
 
 ## Testado até agora
