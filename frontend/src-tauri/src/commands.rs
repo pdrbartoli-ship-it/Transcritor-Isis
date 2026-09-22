@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 
 use crate::audio::{self, RecordingHandle};
+use crate::inicio;
 use crate::meeting::{self, Detector};
 
 #[derive(Default)]
@@ -108,18 +109,8 @@ pub fn meeting_detection_available() -> bool {
 #[tauri::command]
 pub fn set_background_mode(app: AppHandle, enabled: bool, state: State<BackgroundMode>) {
     state.0.store(enabled, Ordering::SeqCst);
-
-    use tauri_plugin_autostart::ManagerExt;
-    let autostart = app.autolaunch();
-    let resultado = if enabled {
-        autostart.enable()
-    } else {
-        autostart.disable()
-    };
-    if let Err(err) = resultado {
-        // Num pacote MSIX a chave `Run` não vale, e o autostart falha. O resto
-        // do recurso continua de pé: a pessoa abre o Dito e ele fica na
-        // bandeja. Ver a nota sobre StartupTask no plano.
-        log::warn!("não foi possível ajustar o início com o Windows: {err}");
-    }
+    // O início com o Windows é feito de dois jeitos (chave do registro fora do
+    // pacote, StartupTask dentro dele) e nenhum deles pode derrubar o modo
+    // bandeja: ver inicio.rs.
+    inicio::ajustar(app, enabled);
 }

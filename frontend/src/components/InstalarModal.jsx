@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconDownload, IconClose, IconCheck, IconArrowRight } from './Icons'
-import { aparelhoDoVisitante, baixarInstaladorWindows, usePwaPrompt } from '../lib/instalar'
+import { aparelhoDoVisitante, abrirLojaWindows, baixarInstaladorWindows, usePwaPrompt } from '../lib/instalar'
 
 // "Instalar grátis" levava direto para o login — quem clicava querendo o app
 // acabava na versão do navegador sem nunca ver que existe um instalador.
@@ -9,7 +9,7 @@ import { aparelhoDoVisitante, baixarInstaladorWindows, usePwaPrompt } from '../l
 export default function InstalarModal({ onClose, onUsarNavegador }) {
   const aparelho = aparelhoDoVisitante()
   const { podeInstalarPwa, instalarPwa } = usePwaPrompt()
-  const [baixou, setBaixou] = useState(false)
+  const [abriuLoja, setAbriuLoja] = useState(false)
 
   useEffect(() => {
     const porTecla = e => { if (e.key === 'Escape') onClose() }
@@ -17,13 +17,14 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
     return () => window.removeEventListener('keydown', porTecla)
   }, [onClose])
 
-  // No Windows o download começa sozinho: a pessoa já disse que quer instalar,
-  // e obrigá-la a um segundo clique só para confirmar o que pediu é atrito.
-  useEffect(() => {
-    if (aparelho !== 'windows') return
-    baixarInstaladorWindows()
-    setBaixou(true)
-  }, [aparelho])
+  // Antes o .exe começava a baixar sozinho ao abrir esta tela. Com a Store não
+  // dá — abrir uma aba fora de um clique é exatamente o que o bloqueador de
+  // pop-up existe para impedir, e a pessoa ficaria olhando para uma tela que
+  // diz que algo aconteceu sem nada ter acontecido. Um clique, então.
+  function irParaLoja() {
+    abrirLojaWindows()
+    setAbriuLoja(true)
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -37,46 +38,35 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
 
         {aparelho === 'windows' && (
           <>
-            {baixou && (
+            {abriuLoja && (
               <p className="instalar-ok">
-                <IconCheck width={15} height={15} /> O download começou.
+                <IconCheck width={15} height={15} /> A Microsoft Store abriu numa aba nova.
               </p>
             )}
             <p className="instalar-lead">
               É o app de Windows, o único que grava <strong>as duas vozes</strong> da chamada,
               com uma janela flutuante por cima da reunião.
             </p>
-            {/* Os passos são o conteúdo principal desta tela: o arquivo já está
-                baixando, e o que falta a pessoa saber é o que fazer com ele. O
-                aviso do Windows é o ponto onde se desiste da instalação, então
-                ele vem descrito com as palavras exatas que vão aparecer — quem
-                reconhece a tela não se assusta com ela. */}
+            {/* A instalação agora é pela Microsoft Store. O que se ganha com
+                isso é o passo que mais fazia gente desistir: o pacote da Store
+                é assinado pela Microsoft, então a tela azul "O Windows
+                protegeu seu PC" — que os passos antigos precisavam explicar —
+                simplesmente não aparece mais. */}
             <ol className="instalar-passos">
-              <li>Abra o <strong>Dito-setup.exe</strong> na sua pasta de downloads.</li>
-              <li>
-                Vai aparecer uma tela azul escrita <strong>“O Windows protegeu seu PC”</strong>.
-                É o aviso padrão para todo programa novo, não é sinal de problema.
-              </li>
-              <li>
-                Nela, clique em <strong>Mais informações</strong> e depois em{' '}
-                <strong>Executar assim mesmo</strong>.
-              </li>
-              <li>Entre com seu e-mail e comece a gravar.</li>
+              <li>Clique em <strong>Abrir na Microsoft Store</strong> aqui embaixo.</li>
+              <li>Na loja, clique em <strong>Obter</strong>. O Dito é gratuito.</li>
+              <li>Abra o Dito, entre com seu e-mail e comece a gravar.</li>
             </ol>
-            {/* Depois que o download já começou, um botão grande escrito
-                "Baixar de novo" convida justamente ao clique errado: a pessoa
-                acha que precisa baixar outra vez em vez de abrir o arquivo. Só
-                quem percebeu que nada baixou procura por isto, e para esse caso
-                um link basta. */}
-            {baixou ? (
-              <button type="button" className="instalar-refazer" onClick={baixarInstaladorWindows}>
-                O download não começou? Baixar de novo
-              </button>
-            ) : (
-              <button className="btn-primary instalar-btn" onClick={baixarInstaladorWindows}>
-                <IconDownload width={16} height={16} /> Baixar para Windows
-              </button>
-            )}
+            <button className="btn-primary instalar-btn" onClick={irParaLoja}>
+              <IconDownload width={16} height={16} /> Abrir na Microsoft Store
+            </button>
+            {/* O .exe continua aqui embaixo, como link: computador de empresa
+                com a Store bloqueada é caso real, e sem esta saída essa pessoa
+                fica sem app nenhum. Discreto de propósito — é o caminho que
+                mostra o aviso do Windows. */}
+            <button type="button" className="instalar-refazer" onClick={baixarInstaladorWindows}>
+              Não consegue usar a Store? Baixar o instalador
+            </button>
           </>
         )}
 
@@ -125,8 +115,8 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
             {/* O instalador nativo só existe para Windows; oferecê-lo aqui é
                 honesto porque muita gente lê a landing num aparelho e instala
                 em outro. */}
-            <button className="btn-ghost instalar-btn" onClick={baixarInstaladorWindows}>
-              <IconDownload width={16} height={16} /> Baixar o app de Windows
+            <button className="btn-ghost instalar-btn" onClick={irParaLoja}>
+              <IconDownload width={16} height={16} /> Ver o app de Windows na Store
             </button>
           </>
         )}

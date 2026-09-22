@@ -7,6 +7,21 @@ import { useEffect, useState } from 'react'
 // silêncio. Não dá para usar /releases/latest/ porque a release é prerelease.
 export const INSTALLER_URL = 'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
 
+// A Microsoft Store é a porta de entrada do Windows desde 22/09/2026. É o
+// mesmo app do instalador acima, com uma diferença que decidia desistências: o
+// pacote da Store é assinado pela Microsoft, então some a tela azul "O Windows
+// protegeu seu PC" que aparecia no .exe sem assinatura. O id 9pdvg213q755 é o
+// do produto no Partner Center e não muda; o link https funciona em qualquer
+// navegador e, no Windows, entrega a pessoa ao app da Store.
+export const STORE_URL = 'https://apps.microsoft.com/detail/9pdvg213q755'
+
+export function abrirLojaWindows() {
+  // Aba nova, e não a página inteira: quem clica pode estar lendo a landing no
+  // celular para instalar no PC depois, e trocar a página por uma loja que ali
+  // não instala nada seria um beco sem saída.
+  window.open(STORE_URL, '_blank', 'noopener')
+}
+
 // Em que aparelho a pessoa está lendo a landing. É só para escolher o que
 // oferecer no "Instalar grátis": no Windows existe instalador de verdade, no
 // resto o Dito se instala como app pelo próprio navegador.
@@ -19,6 +34,10 @@ export function aparelhoDoVisitante() {
   return 'outro'
 }
 
+// O caminho de fora da Store, que continua existindo: PC de empresa com a
+// Store bloqueada, Windows sem a Store instalada, ou quem simplesmente prefere
+// um arquivo. Não é mais o caminho principal, e por isso na tela ele aparece
+// como link, não como botão.
 export function baixarInstaladorWindows() {
   // Um <a download> em vez de window.location: trocar a URL da página inteira
   // por um .exe faz alguns navegadores mostrarem uma tela em branco no meio do

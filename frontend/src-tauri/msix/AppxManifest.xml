@@ -15,8 +15,10 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  IgnorableNamespaces="uap uap5 uap10 rescap">
 
   <Identity
     Name="AlbieCloud.57831C11EA014"
@@ -52,6 +54,37 @@
         Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" ShortName="Dito" />
       </uap:VisualElements>
+
+      <!--
+        Iniciar com o Windows. Dentro de um pacote MSIX a chave `Run` do
+        registro (o que o tauri-plugin-autostart escreve) não vale: o Windows
+        só liga na inicialização o que está declarado aqui. Sem isto, na versão
+        da Store o detector de reunião só existiria depois de a pessoa abrir o
+        Dito na mão — justamente o contrário do recurso.
+
+        Enabled="false" porque quem liga é o app, pelo interruptor de
+        Configurações (StartupTask::RequestEnableAsync, ver src/inicio.rs). O
+        TaskId é o mesmo nome usado lá e não pode mudar depois: é por ele que o
+        Windows reconhece a tarefa já existente de uma versão anterior.
+
+        Parameters passa o mesmo `--minimizado` que o plugin passa fora do
+        pacote, para o Dito subir na bandeja em vez de abrir a janela na cara
+        de quem acabou de ligar o computador. O atributo é do uap10 (Windows 10
+        2004 em diante); em um Windows mais velho ele é ignorado junto com o
+        namespace, e o pior que acontece é a janela aparecer.
+      -->
+      <Extensions>
+        <uap5:Extension
+          Category="windows.startupTask"
+          Executable="Dito.exe"
+          EntryPoint="Windows.FullTrustApplication"
+          uap10:Parameters="--minimizado">
+          <uap5:StartupTask
+            TaskId="DitoInicioComWindows"
+            Enabled="false"
+            DisplayName="Dito." />
+        </uap5:Extension>
+      </Extensions>
     </Application>
   </Applications>
 

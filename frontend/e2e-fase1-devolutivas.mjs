@@ -44,7 +44,12 @@ const navegador = await chromium.launch()
   await ctx.close()
 }
 
-// ── Item 2: o modal de instalar não convida ao clique errado ──────────────
+// ── Item 2: no Windows, o modal manda para a Microsoft Store ─────────────
+// A checagem original era do tempo do .exe: passos que explicavam a tela "O
+// Windows protegeu seu PC" e um "Baixar de novo" discreto. Desde 22/09/2026 o
+// caminho do Windows é a Store, e o que precisa continuar valendo é outro: o
+// botão principal leva à loja certa, e o .exe sobrevive como saída discreta
+// para quem não consegue usá-la.
 {
   const ctx = await navegador.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
@@ -56,25 +61,46 @@ const navegador = await chromium.launch()
   await page.waitForSelector('.instalar-modal')
   await page.waitForTimeout(600)
 
-  const textoBotoes = await page.$$eval('.instalar-modal button', bs => bs.map(b => b.textContent.trim()))
   const botaoPrimario = await page.$$eval(
     '.instalar-modal .btn-primary',
     bs => bs.map(b => b.textContent.trim()),
   )
   checar(
-    'Nenhum botão primário escrito "Baixar de novo"',
-    !botaoPrimario.some(t => /Baixar de novo/i.test(t)),
+    'Botão principal é a Microsoft Store',
+    botaoPrimario.some(t => /Microsoft Store/i.test(t)),
     `primários: ${JSON.stringify(botaoPrimario)}`,
-  )
-  checar(
-    '"Baixar de novo" virou link discreto',
-    textoBotoes.some(t => /O download não começou\? Baixar de novo/i.test(t)),
-    `botões: ${JSON.stringify(textoBotoes)}`,
   )
 
   const passos = await page.$$eval('.instalar-passos li', ls => ls.map(l => l.textContent.trim()))
-  checar('Passos explicam o aviso do Windows pelo nome', passos.some(p => /O Windows protegeu seu PC/i.test(p)), `${passos.length} passos`)
-  checar('Passos dizem onde clicar', passos.some(p => /Mais informações/i.test(p) ) && passos.some(p => /Executar assim mesmo/i.test(p)))
+  checar('Passos falam da loja e do botão de lá', passos.some(p => /Microsoft Store/i.test(p)) && passos.some(p => /Obter/i.test(p)), `${passos.length} passos`)
+  checar(
+    'Passos não assustam mais com o aviso do Windows',
+    !passos.some(p => /O Windows protegeu seu PC/i.test(p)),
+  )
+
+  const textoBotoes = await page.$$eval('.instalar-modal button', bs => bs.map(b => b.textContent.trim()))
+  checar(
+    'Instalador direto continua disponível, como link discreto',
+    textoBotoes.some(t => /Baixar o instalador/i.test(t)) &&
+      !botaoPrimario.some(t => /instalador/i.test(t)),
+    `botões: ${JSON.stringify(textoBotoes)}`,
+  )
+
+  // O destino de verdade, e não só o texto do botão: um id errado na URL
+  // levaria a uma página de "produto não encontrado" sem quebrar teste nenhum.
+  const [loja] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByRole('button', { name: /Microsoft Store/i }).first().click(),
+  ])
+  checar(
+    'A aba aberta é a página do Dito na Store',
+    /apps\.microsoft\.com\/detail\/9pdvg213q755/i.test(loja.url()),
+    loja.url(),
+  )
+  await loja.close()
+
+  const confirmacao = await page.textContent('.instalar-ok').catch(() => '')
+  checar('A tela confirma que a loja abriu', /Microsoft Store/i.test(confirmacao || ''), confirmacao || '(sem aviso)')
 
   await page.screenshot({ path: `${OUT}fase1-instalar.png` })
   await ctx.close()

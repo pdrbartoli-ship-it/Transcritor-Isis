@@ -48,8 +48,16 @@ crossbeam-channel = "0.5"
 # 0.62, então duas versões convivem de qualquer jeito; ficar do lado do Tauri é
 # o que evita uma terceira. Conferido com `cargo tree -d`.
 winreg = "0.52"
+#
+# ApplicationModel/Foundation são WinRT: é de lá que sai a StartupTask, o único
+# jeito de o Dito iniciar com o Windows dentro do pacote MSIX (ver inicio.rs).
+# Packaging_Appx é o que responde se estamos dentro de um pacote.
 windows = { version = "0.61", features = [
+  "ApplicationModel",
+  "Foundation",
   "Win32_Foundation",
+  "Win32_Storage_Packaging_Appx",
+  "Win32_System_Com",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }
