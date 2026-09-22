@@ -2291,6 +2291,47 @@ async def _duracao_via_youtube(video_id: str) -> float | None:
     return _segundos_iso8601((itens[0].get("contentDetails") or {}).get("duration", ""))
 
 
+# Idioma da faixa de áudio do vídeo, guardado pelo tempo que o processo viver.
+# Não muda depois de publicado, e a consulta é a mesma cota da duração.
+_idioma_cache: dict[str, str | None] = {}
+
+
+async def _idioma_do_youtube(video_id: str) -> str | None:
+    """Em que língua o vídeo foi falado, na palavra do próprio YouTube.
+
+    É o que se pede à Supadata como legenda. Sem esse pedido ela escolhe
+    sozinha, e a escolha dela não é a do vídeo: um vídeo em inglês voltou em
+    alemão no teste em produção de 22/09/2026, com o texto de uma tradução
+    automática. Quem colou o link recebia a transcrição de uma conversa que
+    ninguém teve naquela língua.
+
+    `defaultAudioLanguage` é a língua falada; `defaultLanguage` é a do título e
+    da descrição, e serve de segunda opção. Qualquer falha devolve None, e aí
+    seguimos sem pedir língua nenhuma, como antes."""
+    if video_id in _idioma_cache:
+        return _idioma_cache[video_id]
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/youtube/v3/videos",
+                headers={"x-goog-api-key": YOUTUBE_API_KEY},
+                params={"part": "snippet", "id": video_id},
+                timeout=5.0,
+            )
+        resp.raise_for_status()
+        itens = resp.json().get("items") or []
+        snippet = (itens[0].get("snippet") or {}) if itens else {}
+        bruto = snippet.get("defaultAudioLanguage") or snippet.get("defaultLanguage")
+        # "pt-BR" e "en-US" viram "pt" e "en": é assim que a Supadata nomeia as
+        # faixas, e pedir a variante exata acha menos legenda do que existe.
+        idioma = bruto.split("-")[0].lower() if bruto else None
+    except Exception:
+        logger.warning("Não foi possível saber o idioma do vídeo no YouTube")
+        idioma = None
+    _idioma_cache[video_id] = idioma
+    return idioma
+
+
 async def _duracao_do_link(url: str) -> float | None:
     video_id = extract_youtube_id(url) if is_youtube_url(url) else None
     if video_id and YOUTUBE_API_KEY:
@@ -2365,10 +2406,39 @@ def supadata_segments(content) -> list[dict]:
     return segments
 
 
+def legenda_imprestavel(
+    segments: list[dict], lang_veio: str | None, lang_alvo: str | None,
+    duracao_s: float | None,
+) -> str | None:
+    """Por que esta legenda não serve, ou None se ela serve.
+
+    Dois defeitos, os dois silenciosos: vir na língua errada (uma tradução
+    automática que ninguém pediu) e cobrir só o começo do vídeo. Nos dois casos
+    a transcrição sai errada sem nenhum aviso, e é melhor gastar o tempo de
+    baixar o áudio e ouvir o que foi realmente dito."""
+    base = lambda c: (c or "").split("-")[0].lower()
+    if lang_alvo and lang_veio and base(lang_veio) != base(lang_alvo):
+        return f"veio em {lang_veio}, e o vídeo é em {lang_alvo}"
+
+    # Cobertura: a última fala tem de chegar perto do fim do vídeo. A folga é
+    # grande de propósito — vídeo que termina em música, ou com um minuto de
+    # créditos, tem legenda que para antes e está correto.
+    if segments and duracao_s and duracao_s > 0:
+        fim = segments[-1]["end"]
+        if fim < duracao_s * 0.7 and (duracao_s - fim) > 120:
+            return f"cobre {fim / 60:.0f} min de um vídeo de {duracao_s / 60:.0f} min"
+    return None
+
+
 async def build_url_result(
     url: str, modo: str = MODO_COMPLETA, user_id: str | None = None,
     idioma: str = IDIOMA_AUTO, convidado: bool = False,
 ) -> TranscriptionResult:
+    # "Está demorando" só vira coisa que dá para consertar com o tempo medido e
+    # separado: buscar o texto (legenda, ou baixar e transcrever o áudio) e
+    # analisá-lo são duas esperas muito diferentes, e a segunda cresce com o
+    # tamanho da transcrição.
+    comeco = time()
     if is_video_url(url):
         if is_youtube_url(url):
             video_id = extract_youtube_id(url)
@@ -2381,9 +2451,27 @@ async def build_url_result(
             duration_str = "–"
             audio_seconds = 0.0
 
+            # Qual legenda pedir. Sem dizer, a Supadata escolhe entre as
+            # faixas do vídeo (que incluem traduções automáticas para dezenas
+            # de línguas) e a escolha não é a do vídeo — ver _idioma_do_youtube.
+            lang_alvo = None
+            if idioma != IDIOMA_AUTO:
+                lang_alvo = idioma
+            elif YOUTUBE_API_KEY:
+                lang_alvo = await _idioma_do_youtube(video_id)
+
+            # Legenda que chegou mas não serve (língua errada, ou cobrindo só
+            # um pedaço do vídeo). Fica guardada: se não houver como baixar o
+            # áudio, uma transcrição imperfeita ainda é melhor que um erro.
+            reserva = None
+
             # Step 1: Supadata API (no proxy needed, covers videos with captions)
             if SUPADATA_API_KEY:
+                comecou = time()
                 try:
+                    params = {"videoId": video_id, "text": "false"}
+                    if lang_alvo:
+                        params["lang"] = lang_alvo
                     async with httpx.AsyncClient() as sup_client:
                         resp = await sup_client.get(
                             "https://api.supadata.ai/v1/youtube/transcript",
@@ -2392,11 +2480,12 @@ async def build_url_result(
                             # Pedindo texto corrido, o vídeo entrava sem
                             # segmento nenhum e a conversa perdia o resumo
                             # minuto a minuto e os recortes de cada tópico.
-                            params={"videoId": video_id, "text": "false"},
-                            timeout=30.0,
+                            params=params,
+                            timeout=20.0,
                         )
                     if resp.status_code == 200:
-                        content = resp.json().get("content")
+                        dados = resp.json()
+                        content = dados.get("content")
                         segments = supadata_segments(content)
                         full_transcript = (
                             " ".join(s["text"] for s in segments) if segments
@@ -2411,6 +2500,18 @@ async def build_url_result(
                         elif full_transcript:
                             total_words = len(full_transcript.split())
                             duration_str = f"~{max(1, total_words // 150)} min"
+                        logger.info(
+                            "Supadata respondeu em %.1fs (lang pedida=%s, veio=%s, %d trechos)",
+                            time() - comecou, lang_alvo or "-", dados.get("lang") or "-", len(segments),
+                        )
+                        motivo = legenda_imprestavel(
+                            segments, dados.get("lang"), lang_alvo,
+                            await duracao_com_cache(url),
+                        )
+                        if full_transcript and motivo:
+                            logger.warning("Legenda descartada (%s); tentando o áudio do vídeo", motivo)
+                            reserva = (full_transcript, segments, duration_str)
+                            full_transcript, segments, duration_str = None, [], "–"
                 except Exception:
                     pass  # fall through to yt-dlp
 
@@ -2449,6 +2550,13 @@ async def build_url_result(
                         raise HTTPException(status_code=400, detail="Não foi possível extrair áudio do link.")
                     audio_path = os.path.join(tmpdir, audio_files[0])
                     full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(audio_path, "video.m4a")
+
+            # A legenda recusada volta ao jogo se o áudio não pôde ser
+            # baixado: pela metade, ou na língua errada, ela ainda é mais útil
+            # que uma tela de erro.
+            if full_transcript is None and reserva:
+                logger.info("Sem caminho pelo áudio; usando a legenda que tinha sido descartada")
+                full_transcript, segments, duration_str = reserva
 
             # Step 3: nothing configured — clear error with instructions
             if full_transcript is None:
@@ -2508,13 +2616,20 @@ async def build_url_result(
     # quando o próprio YouTube já diz o nome dele.
     title = await fetch_video_title(url) if is_video_url(url) else None
 
-    return await analisar_transcricao(
+    texto_pronto = time()
+    resultado = await analisar_transcricao(
         modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
         title_override=title,
         user_id=user_id,
         idioma=idioma,
         convidado=convidado,
     )
+    logger.info(
+        "Link pronto em %.1fs (texto: %.1fs, análise: %.1fs, %d caracteres)",
+        time() - comeco, texto_pronto - comeco, time() - texto_pronto,
+        len(full_transcript or ""),
+    )
+    return resultado
 
 
 @app.post("/insights", response_model=InsightsResponse)
