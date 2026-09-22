@@ -9,9 +9,9 @@ todo mundo que abre o site num PC. O que falta é enviar uma versão nova do
 pacote, com duas coisas que a publicada não tem: o detector de reunião e o
 "iniciar com o Windows" funcionando de dentro do pacote.
 
-**Versão a enviar: 1.0.96.0**, que é o build do commit `a12268b`. Se um build
-novo rodar antes do envio, o número sobe junto: confira o que está escrito na
-release antes de subir o arquivo.
+**Versão a enviar: 1.0.98.0**, que é o build do commit `b75d404`, já publicado
+na release. Se um build novo rodar antes do envio, o número sobe junto: confira
+o que está escrito na release antes de subir o arquivo.
 
 ## Antes de enviar: 20 minutos num PC de verdade
 
@@ -59,7 +59,7 @@ na bandeja, perto do relógio, sem a janela abrir na sua frente.
 **5. Só depois disso, enviar.** No Partner Center, em **Update your product**,
 suba o `Dito-store.msix`, que é o outro arquivo da mesma release, o sem
 assinatura (quem assina é a Microsoft). Confirme que a versão listada é a
-**1.0.96.0** e envie.
+**1.0.98.0** e envie.
 
 ## O que mudou nesta versão
 
