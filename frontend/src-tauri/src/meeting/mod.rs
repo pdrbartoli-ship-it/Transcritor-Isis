@@ -70,10 +70,6 @@ impl Detector {
             .name("meeting-detector".into())
             .spawn(move || rodar(app, ligado));
     }
-
-    pub fn esta_ligado(&self) -> bool {
-        self.ligado.load(Ordering::SeqCst)
-    }
 }
 
 fn rodar(app: AppHandle, ligado: Arc<AtomicBool>) {

@@ -11,8 +11,11 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 
-use windows::core::PWSTR;
-use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, MAX_PATH, TRUE};
+// BOOL mora em `windows::core`, e não em `Win32::Foundation`: nas versões novas
+// da crate os tipos primitivos foram para o núcleo, e só as constantes (TRUE)
+// ficaram onde estavam.
+use windows::core::{BOOL, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, MAX_PATH, TRUE};
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION,

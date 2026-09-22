@@ -44,11 +44,11 @@ crossbeam-channel = "0.5"
 # janela — que separa uma reunião no navegador de um áudio do WhatsApp Web —
 # sai da API de janelas.
 #
-# O `wasapi` já traz uma versão da `windows`. Se `cargo tree -d` acusar duas,
-# alinhar a versão daqui com a dele: são dezenas de segundos de compilação a
-# mais, não um defeito.
+# A versão é a 0.61 porque é a que o Tauri (via tao) já traz. O `wasapi` puxa a
+# 0.62, então duas versões convivem de qualquer jeito; ficar do lado do Tauri é
+# o que evita uma terceira. Conferido com `cargo tree -d`.
 winreg = "0.52"
-windows = { version = "0.62", features = [
+windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",

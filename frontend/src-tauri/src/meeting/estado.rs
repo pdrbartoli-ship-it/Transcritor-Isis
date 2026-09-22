@@ -51,6 +51,9 @@ pub struct Uso {
 }
 
 impl Uso {
+    /// Só os testes montam um `Uso` na mão: em produção quem preenche é o
+    /// `mod.rs`, a partir do registro e dos títulos de janela.
+    #[cfg(test)]
     pub fn novo(exe: &str, titulos: &[&str]) -> Self {
         Uso {
             exe: exe.to_lowercase(),
