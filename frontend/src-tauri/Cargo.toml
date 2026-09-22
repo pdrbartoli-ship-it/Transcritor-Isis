@@ -21,9 +21,16 @@ tauri-build = { version = "2.6.3" }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3" }
+# tray-icon: o Dito fica na bandeja quando o detector de reunião está ligado,
+# para o recurso não depender da janela aberta na tela.
+tauri = { version = "2.11.3", features = ["tray-icon", "image-png"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
+# Abrir o Dito de novo foca o que já está rodando, em vez de subir um segundo
+# app com um segundo detector.
+tauri-plugin-single-instance = "2"
+# Início com o Windows, ligado junto com o detector.
+tauri-plugin-autostart = "2"
 
 # Captura de áudio WASAPI (loopback + mic), ver Fase 2. O resample/downmix
 # fica por conta do autoconvert do WASAPI em modo compartilhado (ver
@@ -32,3 +39,17 @@ tauri-plugin-fs = "2"
 wasapi = "0.24"
 hound = "3.5"
 crossbeam-channel = "0.5"
+# Detector de reunião: quem está com o microfone aberto sai do registro
+# (ConsentStore, o mesmo dado da tela de privacidade do Windows), e o título da
+# janela — que separa uma reunião no navegador de um áudio do WhatsApp Web —
+# sai da API de janelas.
+#
+# O `wasapi` já traz uma versão da `windows`. Se `cargo tree -d` acusar duas,
+# alinhar a versão daqui com a dele: são dezenas de segundos de compilação a
+# mais, não um defeito.
+winreg = "0.52"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }

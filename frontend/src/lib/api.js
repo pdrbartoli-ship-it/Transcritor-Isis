@@ -1,6 +1,10 @@
 import { supabase } from './supabase'
 import { MODO_COMPLETA } from '../components/capture/modos'
 import { getIdioma } from './prefs'
+// Importação circular de propósito e sem risco: planos.js só lê API_URL daqui
+// dentro de uma função, e este arquivo só chama planoPorId dentro de outra —
+// nenhum dos dois precisa do outro no instante em que o módulo é avaliado.
+import { planoPorId } from './planos'
 
 export const API_URL = 'https://transcritor-backend.onrender.com'
 
@@ -269,11 +273,17 @@ export async function generateInsights(transcript, segments = []) {
 // (backend: registrar_uso), e sem isto o consumo do mês passado apareceria no
 // começo do mês novo.
 export async function lerSaldo(userId) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('uso_mensal')
     .select('minutos_usados, perguntas_usadas, periodo_fim')
     .eq('user_id', userId)
     .maybeSingle()
+
+  // Uma leitura que falhou não é uma linha vazia. Engolir o erro aqui fazia
+  // "sem rede" virar "mês zerado, saldo cheio" — e é justamente com esse
+  // número que o teto da gravação e o convite de reunião decidem o que
+  // prometer. Quem chama já trata a falha: sem saldo lido, o aviso não aparece.
+  if (error) throw new Error(error.message || 'não foi possível ler o saldo')
 
   const vencido = !data?.periodo_fim || new Date(data.periodo_fim) <= new Date()
   return {
@@ -281,6 +291,29 @@ export async function lerSaldo(userId) {
     // As perguntas do mês moram na mesma linha e viram junto com os minutos.
     perguntasUsadas: vencido ? 0 : Number(data.perguntas_usadas || 0),
     periodoFim: vencido ? null : data.periodo_fim,
+  }
+}
+
+// Saldo completo: o consumo do mês junto do plano e do limite dele, numa
+// chamada só. Existe porque a mesma junção estava no `useEffect` do Layout e
+// passou a ser precisa em mais dois lugares — o teto da gravação e o convite
+// de reunião —, e um deles (o convite) não pode usar o valor guardado no
+// Layout: ele pode ter minutos de atraso, e é com esse número que decidimos
+// interromper a pessoa.
+export async function lerSaldoAtual(userId) {
+  const [uso, { data, error }] = await Promise.all([
+    lerSaldo(userId),
+    supabase.from('subscriptions').select('plano').eq('user_id', userId).maybeSingle(),
+  ])
+  if (error) throw new Error(error.message || 'não foi possível ler o plano')
+  const plano = data?.plano || 'gratuito'
+  const limite = planoPorId(plano).minutos
+  return {
+    plano,
+    usados: uso.minutosUsados,
+    limite,
+    perguntasUsadas: uso.perguntasUsadas,
+    restanteMin: Math.max(0, limite - uso.minutosUsados),
   }
 }
 
@@ -321,6 +354,21 @@ export async function abrirPortalAssinatura() {
     '/billing/portal-session',
     {},
     'O servidor demorou demais para responder. Tente de novo.',
+  )
+}
+
+// Apagar a conta de vez: dados, cadastro e assinatura. Exigência das lojas —
+// quem cria conta dentro do app precisa poder apagá-la ali também.
+//
+// Sem retentativa de rede: repetir um pedido destrutivo que pode ter dado
+// certo é pior do que mostrar um erro. Quem não tiver certeza abre de novo e
+// vê se ainda está logado. O teto é o mesmo da cobrança, porque a espera é a
+// mesma: o Render acordando.
+export async function apagarConta() {
+  return comTeto(
+    signal => postJson('/conta/apagar', {}, { retries: 0, signal }),
+    BILLING_TIMEOUT_MS,
+    'O servidor demorou demais para responder. Sua conta continua como estava. Tente de novo.',
   )
 }
 

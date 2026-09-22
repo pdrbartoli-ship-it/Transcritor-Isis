@@ -261,7 +261,7 @@ export default function Chat() {
       {esgotado ? (
         <div className="ask-bar chat-input ask-esgotado">
           <span>Você usou todas as perguntas desta transcrição.</span>
-          <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>
+          {abrirPlano && <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>}
         </div>
       ) : (
         <div className="chat-input-area">

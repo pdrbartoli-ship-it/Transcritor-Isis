@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { usePlatform } from '../lib/platform'
 import { sharedFileToFile } from '../lib/sharedContent'
 import { useCapture } from './capture/useCapture'
@@ -7,8 +6,6 @@ import { useOutletContext } from 'react-router-dom'
 import { modoRecomendado, MODO_SIMPLES } from './capture/modos'
 import { planoPorId } from '../lib/planos'
 import { readMediaDuration } from './capture/estimate'
-import { useMiniRecorder } from './recorder/useMiniRecorder'
-import MiniRecorder from './recorder/MiniRecorder'
 import CaptureWeb from './capture/CaptureWeb'
 import CaptureNative from './capture/CaptureNative'
 
@@ -40,19 +37,10 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
   const capture = useCapture({ onResult })
   const handledRef = useRef(null)
 
-  // A janelinha flutuante mora aqui, e não dentro de CaptureWeb/CaptureNative,
-  // porque é aqui que a gravação existe: as duas telas são só desenho, e a
-  // janelinha precisa da mesma gravação que elas mostram.
-  const mini = useMiniRecorder({
-    isRecording: capture.isRecording,
-    isPaused: capture.isPaused,
-    startedAt: capture.startedAt,
-    pausedMs: capture.pausedMs,
-    pausedAt: capture.pausedAt,
-    onPause: capture.pauseRecording,
-    onResume: capture.resumeRecording,
-    onStop: capture.stopRecording,
-  })
+  // A janelinha flutuante subiu para o GravacaoProvider junto com a gravação:
+  // ela mostra o que está sendo gravado, e não a tela onde a pessoa está. Aqui
+  // ela só é repassada para as views, que desenham o botão de destacar.
+  const { mini } = capture
 
   useEffect(() => {
     if (!autoCapture) return
@@ -102,21 +90,6 @@ export default function CapturePanel({ onResult, variant = 'hero', mode = 'recor
   return (
     <div className="capture-panel">
       <View capture={viewCapture} variant={variant} mode={mode} mini={mini} onVerPlanos={onVerPlanos} />
-      {/* No navegador a janelinha é um documento separado, mas no MESMO
-          contexto de JS: um portal desenha o React direto lá dentro, e o
-          estado chega sem passar por evento nenhum. */}
-      {mini.pipWindow && createPortal(
-        <MiniRecorder
-          seconds={capture.recordingTime}
-          paused={capture.isPaused}
-          getLevel={capture.getLevel}
-          onPause={capture.pauseRecording}
-          onResume={capture.resumeRecording}
-          onStop={() => { capture.stopRecording(); mini.close() }}
-          onClose={mini.close}
-        />,
-        mini.pipWindow.document.body,
-      )}
     </div>
   )
 }

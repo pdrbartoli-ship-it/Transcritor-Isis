@@ -1,18 +1,60 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getTheme, setTheme, getIdioma, setIdioma, IDIOMAS } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
+import { esquecerDoAparelho } from '../lib/chaves'
+import { apagarTudo as apagarIndiceDoAcervo } from '../lib/acervo/indice'
+import { apagarConta } from '../lib/api'
 
 // Duas preferências de leitura, no mesmo lugar: como o app aparece (tema) e em
 // que língua ele escreve (idioma). Os ajustes de tom, formato e profundidade
 // saíram: eram quatro controles que quase ninguém tocava e que faziam a mesma
 // captura render resumos diferentes. O resumo agora é sempre neutro e em
 // bullets.
-export default function SettingsModal({ onClose }) {
+//
+// No fim, a exclusão da conta. Ela mora aqui porque é onde as lojas mandam
+// procurar: a Apple recusa app que deixa criar conta e não deixa apagar, e
+// "fale com o suporte" não conta como deixar apagar.
+const CONFIRMACAO = 'APAGAR'
+
+export default function SettingsModal({ onClose, deteccaoDisponivel = false, avisarReuniao = false, onAvisarReuniao }) {
   const [theme, setThemeState] = useState(getTheme())
   const [idioma, setIdiomaState] = useState(getIdioma())
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  // Três estados, não um booleano: 'fechado' é o link discreto, 'confirmando'
+  // é o aviso com a palavra a digitar, 'apagando' trava os dois botões. Com um
+  // booleano o botão seguiria vivo durante a chamada, e o segundo clique
+  // apagaria uma conta que já não existe — erro incompreensível na tela de
+  // quem acabou de acertar.
+  const [passo, setPasso] = useState('fechado')
+  const [digitado, setDigitado] = useState('')
+  const [erro, setErro] = useState('')
 
   function changeTheme(t) { setThemeState(t); setTheme(t) }
   function changeIdioma(i) { setIdiomaState(i); setIdioma(i) }
+
+  async function confirmarExclusao() {
+    setErro('')
+    setPasso('apagando')
+    try {
+      await apagarConta()
+    } catch (e) {
+      setErro(e.message || 'Não foi possível apagar sua conta agora. Tente de novo.')
+      setPasso('confirmando')
+      return
+    }
+    // A conta já não existe no servidor; o que sobrou é o rastro neste
+    // aparelho. A chave sai primeiro porque sem ela nada mais aqui é legível,
+    // e o índice do acervo guarda trechos do que foi dito. Falhar em qualquer
+    // um deles não desfaz a exclusão, então nenhum deles pode travar a saída.
+    try { await esquecerDoAparelho() } catch { /* aparelho sem IndexedDB */ }
+    try { await apagarIndiceDoAcervo() } catch { /* idem */ }
+    try { await supabase.auth.signOut() } catch { /* sessão já morta */ }
+    navigate('/auth', { replace: true, state: { contaApagada: true } })
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -56,6 +98,87 @@ export default function SettingsModal({ onClose }) {
             ))}
           </div>
         </div>
+
+        {/* Só no app de Windows, e só onde o executável já tem o detector: o
+            site novo chega ao app antes do instalador novo, e a opção
+            apareceria sem fazer nada. */}
+        {deteccaoDisponivel && (
+          <div className="settings-group" style={{ marginTop: 22 }}>
+            <label>Reuniões</label>
+            <button
+              className={`settings-switch ${avisarReuniao ? 'on' : ''}`}
+              role="switch"
+              aria-checked={avisarReuniao}
+              onClick={() => onAvisarReuniao?.(!avisarReuniao)}
+            >
+              <span className="settings-switch-texto">Avisar quando uma reunião começar</span>
+              <span className="settings-switch-trilho"><span className="settings-switch-bolinha" /></span>
+            </button>
+            <p className="hint">
+              O Dito percebe quando você entra numa reunião do Zoom, Teams ou
+              Meet e pergunta se quer gravar. Nada sai do seu computador nessa
+              detecção. Avise os participantes antes de gravar.
+            </p>
+          </div>
+        )}
+
+        {/* Convidado não tem o que apagar: a sessão anônima não guarda e-mail,
+            e o caminho dele é criar conta, não encerrar uma. */}
+        {user && !user.is_anonymous && (
+          <div className="settings-group settings-perigo">
+            <label>Conta</label>
+            {passo === 'fechado' ? (
+              <>
+                <p className="hint">
+                  Apagar a conta remove suas conversas, sua chave e seu
+                  cadastro. Não dá para desfazer.
+                </p>
+                <button className="btn-perigo-link" onClick={() => setPasso('confirmando')}>
+                  Apagar minha conta
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="hint">
+                  Vamos apagar tudo que é seu: as conversas e as transcrições,
+                  a chave que as abre, seus minutos do mês e o cadastro de{' '}
+                  <strong>{user.email}</strong>. Se você assina um plano, ele é
+                  cancelado agora e não haverá nova cobrança. Nada disso volta,
+                  nem por nós.
+                </p>
+                <label className="hint" htmlFor="confirmar-exclusao">
+                  Para confirmar, escreva {CONFIRMACAO} abaixo.
+                </label>
+                <input
+                  id="confirmar-exclusao"
+                  type="text"
+                  value={digitado}
+                  onChange={e => setDigitado(e.target.value)}
+                  disabled={passo === 'apagando'}
+                  autoComplete="off"
+                  placeholder={CONFIRMACAO}
+                />
+                {erro && <div className="alert alert-error">{erro}</div>}
+                <div className="perigo-acoes">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => { setPasso('fechado'); setDigitado(''); setErro('') }}
+                    disabled={passo === 'apagando'}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className="btn-perigo"
+                    onClick={confirmarExclusao}
+                    disabled={digitado.trim().toUpperCase() !== CONFIRMACAO || passo === 'apagando'}
+                  >
+                    {passo === 'apagando' ? 'Apagando…' : 'Apagar para sempre'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="modal-actions">
           <button className="btn-primary" onClick={onClose}>Concluído</button>

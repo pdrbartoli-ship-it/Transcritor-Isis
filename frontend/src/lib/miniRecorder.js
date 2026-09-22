@@ -73,20 +73,31 @@ export async function closeMiniWindow() {
 
 // Canto inferior direito do monitor atual. Se não der para descobrir o monitor,
 // a janela nasce onde o sistema quiser — melhor do que não nascer.
-async function bottomRightPosition() {
+//
+// Recebe o tamanho porque a janelinha de gravação não é a única que nasce ali:
+// o aviso de reunião usa o mesmo canto, e `acima` é o que o empurra para cima
+// da janelinha quando as duas estão na tela ao mesmo tempo.
+export async function cantoInferiorDireito(largura, altura, acima = 0) {
   try {
     const { currentMonitor } = await tauriWindow()
     const monitor = await currentMonitor()
     if (!monitor) return {}
     const scale = monitor.scaleFactor || 1
     return {
-      x: Math.round(monitor.size.width / scale - MINI_W - MARGIN),
-      y: Math.round(monitor.size.height / scale - MINI_H - MARGIN * 3),
+      x: Math.round(monitor.size.width / scale - largura - MARGIN),
+      y: Math.round(monitor.size.height / scale - altura - MARGIN * 3 - acima),
     }
   } catch {
     return {}
   }
 }
+
+function bottomRightPosition() {
+  return cantoInferiorDireito(MINI_W, MINI_H)
+}
+
+// O tamanho da janelinha de gravação, para quem precisa desviar dela.
+export const MINI_SIZE = { largura: MINI_W, altura: MINI_H }
 
 // ── Estado: principal → janelinha ────────────────────────────
 // O payload leva instantes, não um contador: a janela principal minimizada tem

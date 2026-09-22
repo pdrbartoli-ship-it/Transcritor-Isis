@@ -47,6 +47,14 @@ jobs:
       - name: Compilar o app nativo
         run: cd frontend && npx tauri build
 
+      # A regra do detector de reunião (quem está com o microfone, por quanto
+      # tempo, o que vale como reunião) é lógica pura em src/meeting/estado.rs,
+      # e é a única parte dele que dá para provar sem uma máquina com Zoom
+      # aberto. Roda depois do build de propósito: assim reaproveita tudo o que
+      # já foi compilado, e falha antes de qualquer publicação.
+      - name: Testes do Rust
+        run: cd frontend/src-tauri && cargo test
+
       # O nome que o Tauri gera carrega a versão (Dito_0.1.0_x64-setup.exe), e a
       # landing precisa de um link fixo. Publicar também uma cópia com nome
       # estável evita que subir a versão quebre o botão "Baixar o app" — que já

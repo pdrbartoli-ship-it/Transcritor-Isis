@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
@@ -36,6 +37,11 @@ const cleanEmail = value => value.trim().toLowerCase()
 export default function Auth() {
   useTemaClaro()
   const { setHoldRedirect } = useAuth()
+  // Quem acabou de apagar a conta cai aqui. Sem uma palavra, a tela de login
+  // depois da exclusão parece o app tendo deslogado sozinho — e a dúvida que
+  // sobra é justamente "apagou mesmo?".
+  const { state } = useLocation()
+  const contaApagada = Boolean(state?.contaApagada)
   const [mode, setMode] = useState('signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -289,6 +295,11 @@ export default function Auth() {
             )}
           </div>
 
+          {contaApagada && !error && !message && (
+            <div className="alert alert-success">
+              Sua conta foi apagada. Obrigado por ter usado o Dito.
+            </div>
+          )}
           {error && <div className="alert alert-error">{error}</div>}
           {message && <div className="alert alert-success">{message}</div>}
 

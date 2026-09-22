@@ -122,3 +122,20 @@ export function getIdioma() {
 export function setIdioma(idioma) {
   try { localStorage.setItem('dito-idioma', idioma) } catch {}
 }
+
+
+// ── Avisar quando uma reunião começar ─────────────────────
+//
+// Só existe no app de Windows. Nasce DESLIGADO, e é uma decisão de produto, não
+// de engenharia: gravar sem querer numa consulta, numa audiência ou numa
+// conversa de família é um estrago que não se desfaz, e o público do Dito
+// (saúde, jurídico) é justamente o mais exposto a isso. Ligar também faz o Dito
+// ficar na bandeja ao fechar a janela — sem isso o detector só funcionaria com
+// o app aberto na tela.
+export function getAvisarReuniao() {
+  try { return localStorage.getItem('dito-avisar-reuniao') === '1' } catch { return false }
+}
+
+export function setAvisarReuniao(ligado) {
+  try { localStorage.setItem('dito-avisar-reuniao', ligado ? '1' : '0') } catch {}
+}

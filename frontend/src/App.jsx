@@ -14,9 +14,12 @@ import Timeline from './pages/conversa/Timeline'
 import Chat from './pages/conversa/Chat'
 import Perguntar from './pages/Perguntar'
 import Mini from './pages/Mini'
+import Aviso from './pages/Aviso'
 import AssinaturaSucesso from './pages/AssinaturaSucesso'
 import AssinaturaCancelada from './pages/AssinaturaCancelada'
-import { isStandalonePwa, isTauriApp } from './lib/platform'
+import { GravacaoProvider } from './contexts/GravacaoContext'
+import { ReuniaoProvider } from './contexts/ReuniaoContext'
+import { isStandalonePwa, isTauriApp, isNative } from './lib/platform'
 import { useReguaDePlanos } from './lib/planos'
 
 function ProtectedRoute({ children }) {
@@ -38,9 +41,11 @@ function RootRoute() {
   const location = useLocation()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (user && !(user.is_anonymous && location.state?.vitrine)) return <Layout />
-  // Dentro do app instalado (PWA ou nativo Windows) não existe "instalar de
-  // novo" — vai direto pro login.
-  if (isStandalonePwa() || isTauriApp()) return <Navigate to="/auth" replace />
+  // Dentro do app instalado (PWA, nativo Windows ou o app das lojas) não
+  // existe "instalar de novo" — vai direto pro login. No iPhone isso é também
+  // exigência de loja: a landing traz a tabela de preços, e preço de
+  // assinatura que não passa pela Apple não pode aparecer dentro do app.
+  if (isStandalonePwa() || isTauriApp() || isNative()) return <Navigate to="/auth" replace />
   return <Landing />
 }
 
@@ -67,6 +72,10 @@ export default function App() {
   // supabase-js na mesma origem, disputando a renovação do mesmo token com a
   // janela principal — risco gratuito numa janela que não lê nada do banco.
   if (window.location.hash.startsWith('#/mini')) return <Mini />
+  // A janelinha de aviso ("uma reunião começou, quer gravar?") sai daqui pelo
+  // mesmo motivo: ela não tem rota, sessão nem banco — só desenha o que a
+  // janela principal manda e devolve o clique.
+  if (window.location.hash.startsWith('#/aviso')) return <Aviso />
 
   return <AppPrincipal />
 }
@@ -80,6 +89,13 @@ function AppPrincipal() {
     <AuthProvider>
       <HashRouter>
         <DeepLinks />
+        {/* A gravação e o detector de reunião ficam acima das rotas de
+            propósito: a home e as telas de conversa estão em ramos diferentes
+            daqui de baixo, cada um com o seu próprio <Layout>, e navegar entre
+            elas desmonta um e monta o outro. Uma gravação de uma hora não pode
+            depender de a pessoa não abrir uma conversa no meio. */}
+        <GravacaoProvider>
+        <ReuniaoProvider>
         <Routes>
           <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
           {/* Fora do PublicRoute: quem chega aqui ainda não tem sessão, e
@@ -115,6 +131,8 @@ function AppPrincipal() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ReuniaoProvider>
+        </GravacaoProvider>
       </HashRouter>
     </AuthProvider>
   )

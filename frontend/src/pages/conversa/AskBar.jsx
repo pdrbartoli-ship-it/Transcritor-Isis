@@ -31,7 +31,7 @@ export default function AskBar({ restantes = null, onVerPlanos }) {
     return (
       <div className="ask-bar ask-esgotado">
         <span>Você usou todas as perguntas desta transcrição.</span>
-        <button type="button" className="btn-primary btn-sm" onClick={onVerPlanos}>Ver planos</button>
+        {onVerPlanos && <button type="button" className="btn-primary btn-sm" onClick={onVerPlanos}>Ver planos</button>}
       </div>
     )
   }

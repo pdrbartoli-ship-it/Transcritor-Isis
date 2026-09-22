@@ -93,7 +93,7 @@ export default function Conversa() {
             </button>
           ) : (
             <>
-              <button className="btn-primary" onClick={abrirPlano}>Ver planos</button>
+              {abrirPlano && <button className="btn-primary" onClick={abrirPlano}>Ver planos</button>}
               <p className="nota-plano">A transcrição completa faz parte do plano Avançado.</p>
             </>
           )}

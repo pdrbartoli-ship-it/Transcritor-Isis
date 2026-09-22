@@ -10,13 +10,16 @@
     "build:app": "cross-env CAPACITOR=1 vite build",
     "build:tauri": "cross-env CAPACITOR=1 vite build",
     "app:sync": "npm run build:app && cap sync android",
-    "app:open": "cap open android"
+    "ios:sync": "npm run build:app && cap sync ios",
+    "app:open": "cap open android",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.1.1",
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.5.2",
     "@capgo/capacitor-updater": "^8.51.6",
     "@supabase/supabase-js": "^2.45.0",
     "@tauri-apps/api": "^2.11.1",

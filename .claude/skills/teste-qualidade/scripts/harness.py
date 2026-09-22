@@ -18,7 +18,8 @@ Cada teste vive em casos/<slug>/:
 
 Uso:
   python3 harness.py buscar   <slug> <url-ou-caminho-de-arquivo> [completa|simples]
-  python3 harness.py extrair  <slug> <modelo> [modelo...]
+  python3 harness.py extrair  <slug> <modelo> [modelo...] [--tag=__r1]
+  python3 harness.py simples  <slug> <modelo> [modelo...] [--tag=__r1]
   python3 harness.py curto    <slug> <segundos> <modelo> [modelo...]
   python3 harness.py chat     <slug> <modelo> [modelo...]
 """
@@ -111,25 +112,27 @@ def buscar(slug, origem, modo="simples"):
 
 
 # ---------- runners: um por fornecedor, todos devolvem (data, uso) ----------
-async def rodar_claude(slug, modelo, system, user, m):
+# `schema`/`max_tokens` vazios = os da extração completa; o modo simples passa os dele.
+async def rodar_claude(slug, modelo, system, user, m, schema=None, max_tokens=None):
     keys = carregar_keys(slug)
     os.environ["ANTHROPIC_API_KEY"] = keys["ANTHROPIC_API_KEY"]
     m.ANTHROPIC_API_KEY = keys["ANTHROPIC_API_KEY"]
     effort = m.INSIGHTS_EFFORT if modelo == "claude-sonnet-5" else None
     instr = system.split("\n\nFormato esperado (schema JSON):")[0]
-    data, tin, tout, cread, cwrite = await m.call_insights(instr, user, m.INSIGHTS_SCHEMA, effort=effort, model=modelo)
+    data, tin, tout, cread, cwrite = await m.call_insights(instr, user, schema or m.INSIGHTS_SCHEMA,
+        max_tokens=max_tokens or m.INSIGHTS_MAX_TOKENS, effort=effort, model=modelo)
     return data, {"input": tin + cread + cwrite, "output": tout, "cache_read": cread, "cache_write": cwrite}
 
 
-async def rodar_openai(slug, modelo, system, user, m):
+async def rodar_openai(slug, modelo, system, user, m, schema=None, max_tokens=None):
     keys = carregar_keys(slug)
     async with httpx.AsyncClient(timeout=600) as c:
         r = await c.post("https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {keys['OPENAI_API_KEY']}"},
             json={"model": modelo,
                   "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                  "response_format": {"type": "json_schema", "json_schema": {"name": "insights", "schema": m.INSIGHTS_SCHEMA, "strict": True}},
-                  "reasoning_effort": "low", "max_completion_tokens": m.INSIGHTS_MAX_TOKENS})
+                  "response_format": {"type": "json_schema", "json_schema": {"name": "insights", "schema": schema or m.INSIGHTS_SCHEMA, "strict": True}},
+                  "reasoning_effort": "low", "max_completion_tokens": max_tokens or m.INSIGHTS_MAX_TOKENS})
     j = r.json()
     if r.status_code != 200:
         raise RuntimeError(f"{r.status_code} {json.dumps(j)[:500]}")
@@ -141,15 +144,15 @@ async def rodar_openai(slug, modelo, system, user, m):
         "cache_read": (u.get("prompt_tokens_details") or {}).get("cached_tokens", 0), "cache_write": 0}
 
 
-async def rodar_gemini(slug, modelo, system, user, m):
+async def rodar_gemini(slug, modelo, system, user, m, schema=None, max_tokens=None):
     keys = carregar_keys(slug)
     async with httpx.AsyncClient(timeout=600) as c:
         r = await c.post(f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
             headers={"x-goog-api-key": keys["GEMINI_API_KEY"]},
             json={"systemInstruction": {"parts": [{"text": system}]},
                   "contents": [{"role": "user", "parts": [{"text": user}]}],
-                  "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": m.INSIGHTS_SCHEMA,
-                                       "maxOutputTokens": m.INSIGHTS_MAX_TOKENS, "thinkingConfig": {"thinkingLevel": "low"}}})
+                  "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": schema or m.INSIGHTS_SCHEMA,
+                                       "maxOutputTokens": max_tokens or m.INSIGHTS_MAX_TOKENS, "thinkingConfig": {"thinkingLevel": "low"}}})
     j = r.json()
     if r.status_code != 200:
         raise RuntimeError(f"{r.status_code} {json.dumps(j)[:500]}")
@@ -190,6 +193,30 @@ async def extrair(slug, modelo, tag=""):
         res["insights"] = m.normalize_insights(data, segments)
     json.dump(res, open(os.path.join(caso_dir(slug), "out", f"{modelo}{tag}.json"), "w"), ensure_ascii=False, indent=1)
     print(json.dumps({k: v for k, v in res.items() if k != "insights"}, ensure_ascii=False))
+    return res
+
+
+# ---------- simples: o resumo curto do modo simples (título + tópicos) ----------
+async def resumir(slug, modelo, tag=""):
+    """Mesmo texto que `simple_summary` de produção manda: instruções do modo
+    simples + schema, e a transcrição corrida (sem marcadores de tempo)."""
+    import main as m
+    transcript, _, _, _ = carregar_transcricao(slug)
+    precos = carregar_precos(slug)
+    schema = m.SIMPLE_SUMMARY_SCHEMA
+    system = f"{m.instrucoes_resumo_simples(m.IDIOMA_AUTO)}\n\nFormato esperado (schema JSON):\n{json.dumps(schema, ensure_ascii=False)}"
+    t0 = time.time()
+    try:
+        data, uso = await runner_de(modelo)(slug, modelo, system, f"Transcrição:\n{transcript}", m,
+                                            schema=schema, max_tokens=m.SIMPLE_SUMMARY_MAX_TOKENS)
+        erro = None
+    except Exception as e:
+        data, uso, erro = None, None, repr(e)[:600]
+    res = {"modelo": modelo, "segundos": round(time.time() - t0, 1), "erro": erro, "uso": uso, "resumo": data}
+    if data is not None:
+        res["custo_usd"] = custo(precos, modelo, uso["input"], uso["output"], uso["cache_read"], uso["cache_write"])
+    json.dump(res, open(os.path.join(caso_dir(slug), "out", f"{modelo}__simples{tag}.json"), "w"), ensure_ascii=False, indent=1)
+    print(json.dumps({k: v for k, v in res.items() if k != "resumo"}, ensure_ascii=False))
     return res
 
 
@@ -264,19 +291,29 @@ async def chat_modelo(slug, modelo):
     print(modelo, "chat ok | custo total US$", round(sum(x["custo_usd"] for x in res), 5), "| cache lido por pergunta:", [x["uso"]["cache_read"] for x in res])
 
 
+async def em_paralelo(coros):
+    # asyncio.run() só aceita corrotina; um gather() criado fora do loop quebra no Python 3.12+
+    return await asyncio.gather(*coros)
+
+
 if __name__ == "__main__":
-    cmd, *args = sys.argv[1:]
+    # `--tag=__r1` / `--tag=__r2` separam as rodadas (o arquivo de saída ganha o sufixo)
+    tag = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--tag=")), "")
+    cmd, *args = [a for a in sys.argv[1:] if not a.startswith("--tag=")]
     if cmd == "buscar":
         slug, url, *resto = args
         buscar(slug, url, resto[0] if resto else "simples")
     elif cmd == "extrair":
         slug, *modelos = args
-        asyncio.run(asyncio.gather(*[extrair(slug, mo) for mo in modelos]))
+        asyncio.run(em_paralelo([extrair(slug, mo, tag) for mo in modelos]))
+    elif cmd == "simples":
+        slug, *modelos = args
+        asyncio.run(em_paralelo([resumir(slug, mo, tag) for mo in modelos]))
     elif cmd == "curto":
         slug, seg, *modelos = args
-        asyncio.run(asyncio.gather(*[extrair_curto(slug, int(seg), mo) for mo in modelos]))
+        asyncio.run(em_paralelo([extrair_curto(slug, int(seg), mo) for mo in modelos]))
     elif cmd == "chat":
         slug, *modelos = args
-        asyncio.run(asyncio.gather(*[chat_modelo(slug, mo) for mo in modelos]))
+        asyncio.run(em_paralelo([chat_modelo(slug, mo) for mo in modelos]))
     else:
         print(__doc__)

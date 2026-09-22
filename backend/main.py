@@ -3301,6 +3301,66 @@ async def criar_sessao_portal(request: Request):
     return CheckoutResponse(url=session.url)
 
 
+@app.post("/conta/apagar")
+async def apagar_conta(request: Request):
+    """Apaga a conta de quem chama: dados, cadastro e assinatura.
+
+    Exigência das duas lojas — app que deixa criar conta tem que deixar apagar,
+    dentro do app, sem pedir para falar com o suporte.
+
+    Quem manda o id é o token, nunca o corpo da requisição: um `user_id` vindo
+    do cliente seria um jeito de apagar a conta alheia. Por isso também a
+    função no banco não é executável pelo usuário comum — só pela service role,
+    daqui, depois desta conferência."""
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=500, detail="Exclusão de conta não configurada.")
+
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
+    if not identidade:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para apagar a conta.")
+    user_id, _, _ = identidade
+
+    # A assinatura sai primeiro. Na ordem inversa, uma falha no banco deixaria
+    # a pessoa sem conta e ainda pagando — o pior dos dois lados.
+    assinaturas = await supabase_service_get(
+        "subscriptions",
+        {"user_id": f"eq.{user_id}", "select": "stripe_subscription_id", "limit": 1},
+    )
+    assinatura_id = assinaturas[0].get("stripe_subscription_id") if assinaturas else None
+    if assinatura_id and STRIPE_SECRET_KEY:
+        try:
+            await asyncio.to_thread(stripe.Subscription.cancel, assinatura_id)
+        except stripe.StripeError as exc:
+            # Assinatura que o Stripe não conhece mais já está cancelada: é o
+            # estado que queríamos, então não trava a exclusão.
+            if getattr(exc, "code", "") != "resource_missing":
+                logger.exception("Stripe recusou o cancelamento antes de apagar a conta")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Não conseguimos cancelar sua assinatura agora, então não apagamos nada. Tente de novo em instantes.",
+                ) from exc
+
+    resp = await _rpc_service("apagar_conta", {"p_user_id": user_id})
+    if resp.status_code >= 300:
+        logger.error("Falha ao apagar a conta %s: %s %s", user_id, resp.status_code, resp.text)
+        raise HTTPException(
+            status_code=502,
+            detail="Não foi possível apagar sua conta agora. Nada foi alterado. Tente de novo em instantes.",
+        )
+
+    # Sem e-mail no log: o que fica registrado é que a conta saiu, não quem era.
+    logger.info("Conta apagada: %s", resp.text)
+    return {"ok": True}
+
+
 @app.post("/billing/webhook")
 async def billing_webhook(request: Request):
     if not STRIPE_WEBHOOK_SECRET:

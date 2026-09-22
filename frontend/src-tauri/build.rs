@@ -8,6 +8,9 @@ fn main() {
     "start_recording",
     "stop_recording",
     "set_recording_paused",
+    "set_meeting_detection",
+    "meeting_detection_available",
+    "set_background_mode",
   ]);
   tauri_build::try_build(tauri_build::Attributes::new().app_manifest(comandos))
     .expect("falha ao preparar o build do Tauri");

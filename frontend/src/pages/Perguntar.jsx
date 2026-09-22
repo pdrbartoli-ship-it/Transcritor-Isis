@@ -324,7 +324,7 @@ export default function Perguntar() {
   const barra = esgotado ? (
     <div className="ask-bar ask-esgotado">
       <span>Você usou todas as perguntas deste mês.</span>
-      <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>
+      {abrirPlano && <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>}
     </div>
   ) : (
     <form className="ask-bar" onSubmit={enviar}>

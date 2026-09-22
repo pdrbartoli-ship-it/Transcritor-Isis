@@ -11,10 +11,13 @@ import PlanModal from './PlanModal'
 import ConversaMenu, { useConversaMenu } from './ConversaMenu'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
-import { lerSaldo } from '../lib/api'
+import { lerSaldoAtual } from '../lib/api'
 import { trackAppOpen } from '../lib/analytics'
 import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
+import { useReuniao } from '../contexts/ReuniaoContext'
+import { aoPedirPlano } from '../lib/planoModal'
+import { podeVender } from '../lib/platform'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
   IconSearch, IconClose, IconCard, IconArrowRight, IconWhatsapp, IconYoutube, IconPlus, IconPin, IconMenu,
@@ -45,6 +48,9 @@ const AVISO_A_PARTIR_DE = 0.8
 // ele seria barulho.
 const ROTAS_DE_CAPTURA = ['/', '/audio', '/video']
 
+// A gravação e o detector de reunião NÃO moram aqui: este componente é
+// remontado a cada troca de ramo do roteador (a home e as conversas têm cada
+// uma o seu Layout), e os dois precisam sobreviver a isso. Ver App.jsx.
 export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -68,8 +74,16 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
+  // No iPhone o app não vende (ver `podeVender`): sem "Meu plano", sem "Ver
+  // planos" e sem o modal. `abrirPlano` vai nulo para as telas, e cada uma
+  // delas já sabe não desenhar o convite quando ele não existe — assim nenhum
+  // botão fica na tela sem fazer nada.
+  const vendeAqui = podeVender()
   const [saldo, setSaldo] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // O interruptor de "Avisar quando uma reunião começar". O estado mora no
+  // provedor, com o detector; aqui só se desenha.
+  const { disponivel: deteccaoDisponivel, avisar: avisarReuniao, definirAvisar } = useReuniao()
 
   const [term, setTerm] = useState('')
   const [results, setResults] = useState(null)   // null = não está buscando
@@ -113,20 +127,12 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id) return
     let ativo = true
-    Promise.all([
-      lerSaldo(user.id),
-      supabase.from('subscriptions').select('plano').eq('user_id', user.id).maybeSingle(),
-    ])
-      .then(([uso, { data }]) => {
-        if (!ativo) return
-        // O plano vai junto do saldo porque as telas de dentro precisam dele
-        // para desenhar o que está liberado — o cadeado da transcrição completa.
-        const plano = data?.plano || 'gratuito'
-        setSaldo({
-          usados: uso.minutosUsados, limite: planoPorId(plano).minutos, plano,
-          perguntasUsadas: uso.perguntasUsadas,
-        })
-      })
+    // O plano vai junto do saldo porque as telas de dentro precisam dele para
+    // desenhar o que está liberado — o cadeado da transcrição completa. A
+    // junção mora em lerSaldoAtual, que o teto da gravação e o convite de
+    // reunião também usam.
+    lerSaldoAtual(user.id)
+      .then(atual => { if (ativo) setSaldo(atual) })
       .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
     return () => { ativo = false }
   }, [user?.id, conversations.length])
@@ -200,6 +206,10 @@ export default function Layout() {
   }, [navigate])
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+
+  // "Ver planos" clicado na janelinha de aviso de reunião. Ela vive fora do
+  // Layout, e este é o ponto onde o modal existe.
+  useEffect(() => aoPedirPlano(plano => setShowPlan(plano || true)), [])
 
   function toggleCollapsed() {
     setCollapsed(v => {
@@ -357,9 +367,11 @@ export default function Layout() {
           <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
             <IconMegafone /> Enviar feedback
           </button>
-          <button className="nav-item" onClick={() => setShowPlan(true)}>
-            <IconCard /> Meu plano
-          </button>
+          {vendeAqui && (
+            <button className="nav-item" onClick={() => setShowPlan(true)}>
+              <IconCard /> Meu plano
+            </button>
+          )}
           {convidado ? (
             // O convidado não tem e-mail para mostrar, e "Sair" seria perder a
             // única captura dele sem aviso. No lugar, o convite para entrar —
@@ -408,12 +420,12 @@ export default function Layout() {
               <span>
                 Faltam {Math.max(0, Math.round(saldo.limite - saldo.usados))} minutos do seu mês.
               </span>
-              <button type="button" onClick={() => setShowPlan(true)}>Ver planos</button>
+              {vendeAqui && <button type="button" onClick={() => setShowPlan(true)}>Ver planos</button>}
             </div>
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, abrirPlano: () => setShowPlan(true) }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
         </div>
       </div>
 
@@ -429,9 +441,16 @@ export default function Layout() {
         }}
       />
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          deteccaoDisponivel={deteccaoDisponivel}
+          avisarReuniao={avisarReuniao}
+          onAvisarReuniao={definirAvisar}
+        />
+      )}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
-      {showPlan && (
+      {showPlan && vendeAqui && (
         <PlanModal
           inicial={typeof showPlan === 'string' ? showPlan : null}
           onClose={() => setShowPlan(false)}

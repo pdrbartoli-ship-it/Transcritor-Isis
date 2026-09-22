@@ -4,7 +4,8 @@
   "description": "Permissões das janelas do Dito. A página vem do site publicado (e não da cópia dentro do instalador), para que todo deploy chegue ao app sem reinstalar — daí o `remote`: sem ele o Tauri recusa qualquer comando vindo de fora do app.",
   "windows": [
     "main",
-    "mini"
+    "mini",
+    "aviso"
   ],
   "remote": {
     "urls": [
@@ -16,6 +17,9 @@
     "allow-start-recording",
     "allow-stop-recording",
     "allow-set-recording-paused",
+    "allow-set-meeting-detection",
+    "allow-meeting-detection-available",
+    "allow-set-background-mode",
     "core:window:allow-set-theme",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
@@ -26,6 +30,9 @@
     "core:window:allow-start-dragging",
     "core:window:allow-is-minimized",
     "core:window:allow-unminimize",
+    "core:window:allow-minimize",
+    "core:window:allow-is-visible",
+    "core:window:allow-set-size",
     {
       "identifier": "fs:allow-read-file",
       "allow": [

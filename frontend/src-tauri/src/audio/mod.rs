@@ -35,6 +35,10 @@ const STARTUP_PROBE: Duration = Duration::from_millis(300);
 /// dez quadros por segundo — o bastante para a onda parecer viva sem inundar a
 /// ponte de eventos.
 const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
+/// Quando avisar que o saldo do plano está acabando, em segundos restantes do
+/// teto. Cada um é emitido uma vez só, e só se o teto for maior que ele — com
+/// dois minutos de saldo, "restam 5 minutos" seria mentira já na largada.
+const AVISOS_S: [u64; 2] = [300, 60];
 
 pub struct RecordingHandle {
     output_path: PathBuf,
@@ -80,7 +84,17 @@ impl RecordingHandle {
     }
 }
 
-pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<RecordingHandle, String> {
+/// `max_seconds` é o teto da gravação, vindo do saldo do mês (ver
+/// commands::start_recording). `None` grava sem teto, como sempre. O teto é
+/// contado aqui, e não no JS, por dois motivos: o tempo que vale é o de áudio
+/// realmente escrito (pausa não conta), e os timers do navegador são
+/// estrangulados justamente quando a janela está minimizada, que é onde uma
+/// gravação de reunião passa a maior parte da vida.
+pub fn start_recording(
+    output_path: PathBuf,
+    app: AppHandle,
+    max_seconds: Option<u64>,
+) -> Result<RecordingHandle, String> {
     let stop_flag = Arc::new(AtomicBool::new(false));
     let pause_flag = Arc::new(AtomicBool::new(false));
 
@@ -137,7 +151,7 @@ pub fn start_recording(output_path: PathBuf, app: AppHandle) -> Result<Recording
         let app = app.clone();
         thread::Builder::new()
             .name("audio-mixer".into())
-            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag, app))
+            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag, app, max_seconds))
             .map_err(|e| e.to_string())?
     };
 
@@ -301,6 +315,7 @@ fn mixer_loop(
     sys_rx: Receiver<Vec<f32>>,
     pause_flag: Arc<AtomicBool>,
     app: AppHandle,
+    max_seconds: Option<u64>,
 ) -> Result<(), String> {
     let spec = WavSpec {
         channels: CHANNELS,
@@ -317,6 +332,19 @@ fn mixer_loop(
     // segundo para alimentar cinco barrinhas, e o olho não vê diferença.
     let mut level_peak: f32 = 0.0;
     let mut last_level_at = Instant::now();
+
+    // O teto em amostras escritas — é o único relógio honesto aqui: o que o
+    // backend vai medir é a duração do arquivo, e o que entra no arquivo é
+    // exatamente o que passa por este contador.
+    let limite_amostras = max_seconds.map(|s| s * SAMPLE_RATE as u64);
+    let mut escritas: u64 = 0;
+    let mut limite_atingido = false;
+    // Só os avisos que cabem dentro do teto. Do maior para o menor, para sair
+    // sempre na ordem em que o tempo passa.
+    let mut avisos: Vec<u64> = match max_seconds {
+        Some(teto) => AVISOS_S.iter().copied().filter(|a| teto > *a).collect(),
+        None => Vec::new(),
+    };
 
     loop {
         let mic_result = mic_rx.recv_timeout(poll_timeout);
@@ -343,7 +371,22 @@ fn mixer_loop(
             continue;
         }
 
-        let len = mic_samples.len().max(sys_samples.len());
+        // Teto atingido: o .wav para de crescer, mas a gravação continua
+        // "aberta" até o JS chamar stop_recording — é ele quem fecha o arquivo
+        // e leva o áudio para a tela de revisão, pelo mesmo caminho do botão de
+        // parar. Os canais seguem sendo drenados, senão as threads de captura
+        // travam no `bounded(64)`.
+        if limite_atingido {
+            level_peak = 0.0;
+            emit_level(&app, &mut level_peak, &mut last_level_at);
+            continue;
+        }
+
+        let cabem = match limite_amostras {
+            Some(limite) => (limite - escritas) as usize,
+            None => usize::MAX,
+        };
+        let len = mic_samples.len().max(sys_samples.len()).min(cabem);
 
         for i in 0..len {
             let mic_sample = mic_samples.get(i).copied().unwrap_or(0.0);
@@ -356,7 +399,20 @@ fn mixer_loop(
                 .map_err(|e| e.to_string())?;
         }
 
+        escritas += len as u64;
         emit_level(&app, &mut level_peak, &mut last_level_at);
+
+        if let Some(limite) = limite_amostras {
+            let restantes_s = (limite - escritas) / SAMPLE_RATE as u64;
+            while avisos.first().is_some_and(|a| restantes_s <= *a) {
+                let aviso = avisos.remove(0);
+                let _ = app.emit("recording-limit-warning", serde_json::json!({ "remaining_s": aviso }));
+            }
+            if escritas >= limite {
+                limite_atingido = true;
+                let _ = app.emit("recording-limit-reached", ());
+            }
+        }
     }
 
     writer.finalize().map_err(|e| e.to_string())?;

@@ -20,6 +20,16 @@ export const isTauriApp = () => isTauri()
 export const SITE_URL = 'https://dito.albiecloud.com'
 export const siteUrl = () => (isNative() ? SITE_URL : window.location.origin)
 
+// A App Store proíbe vender assinatura de serviço digital por fora do sistema
+// de compras da Apple, e proíbe até apontar o caminho de fora — um "assine no
+// site" dentro do app é recusa na revisão. Enquanto a compra da Apple não
+// existir, o app de iPhone não vende: quem quiser um plano pago escolhe no
+// site, pelo navegador, e o app respeita o plano que já está na conta.
+//
+// Uma função só, e não um `isIOS` espalhado pelas telas: no dia em que a
+// compra da Apple entrar, é aqui que ela é ligada.
+export const podeVender = () => platformName() !== 'ios'
+
 export function isMobileViewport() {
   try { return window.matchMedia(MOBILE_QUERY).matches } catch { return false }
 }
@@ -58,5 +68,6 @@ export function usePlatform() {
     isAndroid: platformName() === 'android',
     isIOS: platformName() === 'ios',
     isWeb: !native,
+    podeVender: podeVender(),
   }
 }

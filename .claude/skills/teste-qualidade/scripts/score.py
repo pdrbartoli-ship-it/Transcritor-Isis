@@ -70,6 +70,10 @@ if __name__ == "__main__":
     ref = carregar_referencia(slug)
     for arq in arquivos:
         r = json.load(open(arq))
+        # chat (lista) e modo simples ("resumo") não têm capítulo nem locutor, e o `curto`
+        # cobre só um trecho — a referência é do material inteiro: ficam pra leitura manual
+        if isinstance(r, list) or "resumo" in r or "segundos_audio" in r:
+            continue
         if r.get("insights") is None:
             print(f"{arq.split('/')[-1]:34s} SEM RESULTADO — erro: {r.get('erro')}")
             continue

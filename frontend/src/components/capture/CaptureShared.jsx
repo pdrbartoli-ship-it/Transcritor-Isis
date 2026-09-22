@@ -378,7 +378,10 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
             if (e.key === 'Enter' && url.trim() && !loading && !conferindo) enviar(modoRecomendado({ origem: 'url' }))
           }}
         />
-        {semSaldo ? (
+        {/* Sem saldo, o caminho de saída é assinar — mas onde o app não vende
+            (iPhone) não existe esse caminho, e o botão de transcrever fica
+            apenas travado: a linha acima já diz que os minutos acabaram. */}
+        {semSaldo && abrirPlano ? (
           <button type="button" className="btn-primary" onClick={abrirPlano}>Ver planos</button>
         ) : (
           <TranscribeButton
@@ -387,7 +390,7 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
             onSubmit={enviar}
             loading={loading}
             conferindo={conferindo}
-            disabled={!url.trim()}
+            disabled={!url.trim() || semSaldo}
           />
         )}
       </div>
