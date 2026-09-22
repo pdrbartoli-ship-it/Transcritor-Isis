@@ -27,6 +27,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # O manifesto do MSIX só era conferido no fim, pelo makeappx, depois de
+      # seis minutos de compilação — e um comentário XML com dois hifens
+      # seguidos derrubou o build 96 exatamente assim. Aqui a checagem custa um
+      # segundo e falha antes de qualquer coisa cara.
+      - name: Conferir o manifesto do MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml](Get-Content frontend/src-tauri/msix/AppxManifest.xml -Raw) | Out-Null
+          'AppxManifest.xml é XML válido'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

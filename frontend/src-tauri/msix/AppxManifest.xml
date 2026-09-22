@@ -67,11 +67,16 @@
         TaskId é o mesmo nome usado lá e não pode mudar depois: é por ele que o
         Windows reconhece a tarefa já existente de uma versão anterior.
 
-        Parameters passa o mesmo `--minimizado` que o plugin passa fora do
-        pacote, para o Dito subir na bandeja em vez de abrir a janela na cara
-        de quem acabou de ligar o computador. O atributo é do uap10 (Windows 10
-        2004 em diante); em um Windows mais velho ele é ignorado junto com o
-        namespace, e o pior que acontece é a janela aparecer.
+        Parameters passa ao executável o mesmo sinalizador de início escondido
+        que o plugin passa fora do pacote (ARG_MINIMIZADO, em lib.rs), para o
+        Dito subir na bandeja em vez de abrir a janela na cara de quem acabou
+        de ligar o computador. O atributo é do uap10 (Windows 10 2004 em
+        diante); num Windows mais velho ele é ignorado junto com o namespace, e
+        o pior que acontece é a janela aparecer.
+
+        Cuidado ao editar este comentário: dois hifens seguidos dentro de um
+        comentário XML são proibidos, e o makeappx recusa o pacote inteiro por
+        causa disso (foi o que aconteceu no build 96).
       -->
       <Extensions>
         <uap5:Extension
