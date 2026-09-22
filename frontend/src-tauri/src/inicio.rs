@@ -65,7 +65,7 @@ fn aplicar(app: &AppHandle, ligado: bool) -> Result<(), String> {
 /// buffer vazio (`ERROR_INSUFFICIENT_BUFFER`), que é resposta suficiente — o
 /// nome do pacote em si não interessa a ninguém aqui.
 #[cfg(windows)]
-fn empacotado() -> bool {
+pub fn empacotado() -> bool {
     use windows::Win32::Foundation::APPMODEL_ERROR_NO_PACKAGE;
     use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
 

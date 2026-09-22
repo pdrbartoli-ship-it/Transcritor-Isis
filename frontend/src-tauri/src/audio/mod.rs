@@ -7,6 +7,8 @@
 // { autoconvert: true, .. }` deixa o próprio engine de áudio do Windows (modo
 // compartilhado) fazer o resample/downmix pra esse formato — por isso não
 // precisamos rodar resample manual (rubato) nem downmix estéreo→mono aqui.
+mod consentimento;
+
 use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::collections::VecDeque;
@@ -14,7 +16,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -27,10 +29,18 @@ use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
 // (ver capture_stream) faz a reamostragem, então nada mais muda aqui.
 const SAMPLE_RATE: u32 = 16_000;
 const CHANNELS: u16 = 1;
-/// Quanto tempo esperamos pelo primeiro dado de cada stream antes de decidir
-/// se um dispositivo está mesmo disponível (usado só pra decidir se
-/// `start_recording` deve falhar por falta de mic *e* de saída de áudio).
-const STARTUP_PROBE: Duration = Duration::from_millis(300);
+/// Quanto tempo esperamos pelo primeiro dado antes de dar a gravação por
+/// iniciada. Na prática o primeiro bloco chega em dezenas de milissegundos e
+/// esta espera termina antes; o tempo cheio só é gasto quando nenhum dos dois
+/// dispositivos responde, que é justamente o caso em que vale esperar.
+const STARTUP_PROBE: Duration = Duration::from_millis(1500);
+/// De quanto em quanto tempo a espera acima olha de novo.
+const PROBE_PASSO: Duration = Duration::from_millis(25);
+/// Abaixo disto é silêncio digital, não som baixo: um dispositivo de verdade,
+/// mesmo numa sala calada, entrega o rumor da sala acima deste valor. Um
+/// stream recusado pelo Windows entrega zeros exatos. É o que separa "gravou
+/// baixinho" de "não gravou nada" (ver `teve_som`).
+const LIMIAR_SILENCIO: f32 = 0.0008;
 /// De quanto em quanto tempo o nível de áudio vai para a janelinha. 100ms dá
 /// dez quadros por segundo — o bastante para a onda parecer viva sem inundar a
 /// ponte de eventos.
@@ -42,6 +52,7 @@ const AVISOS_S: [u64; 2] = [300, 60];
 
 pub struct RecordingHandle {
     output_path: PathBuf,
+    teve_som: Arc<AtomicBool>,
     stop_flag: Arc<AtomicBool>,
     pause_flag: Arc<AtomicBool>,
     mic_handle: Option<JoinHandle<()>>,
@@ -52,6 +63,14 @@ pub struct RecordingHandle {
 impl RecordingHandle {
     pub fn output_path(&self) -> &PathBuf {
         &self.output_path
+    }
+
+    /// Se alguma amostra passou do silêncio digital em toda a gravação. Um
+    /// `false` aqui significa arquivo mudo, e arquivo mudo não pode seguir
+    /// para a transcrição: o Whisper inventa frases em cima de silêncio (foi
+    /// de onde saiu o famoso "Thank you. Thank you.").
+    pub fn teve_som(&self) -> bool {
+        self.teve_som.load(Ordering::SeqCst)
     }
 
     /// Pausar NÃO fecha os streams do WASAPI: os dispositivos seguem abertos e
@@ -103,15 +122,21 @@ pub fn start_recording(
 
     let mic_had_data = Arc::new(AtomicBool::new(false));
     let sys_had_data = Arc::new(AtomicBool::new(false));
+    // O que o Windows respondeu quando o dispositivo não abriu. Antes isso
+    // virava só um `log::warn!` que ninguém lia (em release nem arquivo de log
+    // existia), e a pessoa ficava com uma gravação muda e nenhuma explicação.
+    let mic_erro: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let sys_erro: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let mic_handle = {
         let stop_flag = stop_flag.clone();
         let had_data = mic_had_data.clone();
+        let erro = mic_erro.clone();
         let app = app.clone();
         thread::Builder::new()
             .name("capture-mic".into())
             .spawn(move || {
-                run_capture_with_retry(false, mic_tx, stop_flag, had_data, app, "microfone")
+                run_capture_with_retry(false, mic_tx, stop_flag, had_data, erro, app, "microfone")
             })
             .map_err(|e| e.to_string())?
     };
@@ -119,44 +144,71 @@ pub fn start_recording(
     let system_handle = {
         let stop_flag = stop_flag.clone();
         let had_data = sys_had_data.clone();
+        let erro = sys_erro.clone();
         let app = app.clone();
         thread::Builder::new()
             .name("capture-system".into())
             .spawn(move || {
-                run_capture_with_retry(true, sys_tx, stop_flag, had_data, app, "áudio do sistema")
+                run_capture_with_retry(
+                    true,
+                    sys_tx,
+                    stop_flag,
+                    had_data,
+                    erro,
+                    app,
+                    "áudio do sistema",
+                )
             })
             .map_err(|e| e.to_string())?
     };
 
-    // Espera um instante pro caso mais comum de falta de dispositivo (nenhum
-    // microfone plugado, ou nenhum dispositivo de saída padrão) já aparecer
-    // antes de decidir se a gravação pode começar.
-    thread::sleep(STARTUP_PROBE);
-    if !mic_had_data.load(Ordering::SeqCst)
-        && !sys_had_data.load(Ordering::SeqCst)
-        && mic_handle.is_finished()
-        && system_handle.is_finished()
-    {
-        stop_flag.store(true, Ordering::SeqCst);
-        let _ = mic_handle.join();
-        let _ = system_handle.join();
-        return Err(
-            "nenhum microfone nem dispositivo de saída de áudio disponível para gravar".into(),
-        );
+    // Espera o primeiro dado de qualquer um dos dois lados. Antes eram 300 ms
+    // fixos e a gravação só era recusada se as DUAS threads já tivessem
+    // desistido nesse intervalo — um microfone que o Windows demorasse a negar
+    // passava batido, e o resultado era um .wav de silêncio do começo ao fim.
+    let limite = Instant::now() + STARTUP_PROBE;
+    loop {
+        if mic_had_data.load(Ordering::SeqCst) || sys_had_data.load(Ordering::SeqCst) {
+            break;
+        }
+        if mic_handle.is_finished() && system_handle.is_finished() {
+            stop_flag.store(true, Ordering::SeqCst);
+            let _ = mic_handle.join();
+            let _ = system_handle.join();
+            return Err(falha_de_captura(&mic_erro, &sys_erro));
+        }
+        if Instant::now() >= limite {
+            break;
+        }
+        thread::sleep(PROBE_PASSO);
     }
+
+    let teve_som = Arc::new(AtomicBool::new(false));
 
     let mixer_handle = {
         let output_path = output_path.clone();
         let pause_flag = pause_flag.clone();
         let app = app.clone();
+        let teve_som = teve_som.clone();
         thread::Builder::new()
             .name("audio-mixer".into())
-            .spawn(move || mixer_loop(output_path, mic_rx, sys_rx, pause_flag, app, max_seconds))
+            .spawn(move || {
+                mixer_loop(
+                    output_path,
+                    mic_rx,
+                    sys_rx,
+                    pause_flag,
+                    app,
+                    max_seconds,
+                    teve_som,
+                )
+            })
             .map_err(|e| e.to_string())?
     };
 
     Ok(RecordingHandle {
         output_path,
+        teve_som,
         stop_flag,
         pause_flag,
         mic_handle: Some(mic_handle),
@@ -176,9 +228,22 @@ fn run_capture_with_retry(
     tx: Sender<Vec<f32>>,
     stop_flag: Arc<AtomicBool>,
     had_data: Arc<AtomicBool>,
+    erro: Arc<Mutex<Option<String>>>,
     app: AppHandle,
     stream_label: &'static str,
 ) {
+    // Num pacote MSIX o microfone só abre depois de o app pedir a permissão
+    // (ver consentimento.rs). O áudio do sistema não passa por essa porta.
+    if !is_loopback {
+        if let Err(e) = consentimento::garantir_microfone() {
+            log::warn!("permissão de microfone negada: {e}");
+            if let Ok(mut slot) = erro.lock() {
+                *slot = Some(e);
+            }
+            return;
+        }
+    }
+
     for _ in 0..2 {
         if stop_flag.load(Ordering::SeqCst) {
             return;
@@ -187,6 +252,9 @@ fn run_capture_with_retry(
             Ok(()) => return,
             Err(err) => {
                 log::warn!("captura de {stream_label} interrompida: {err}");
+                if let Ok(mut slot) = erro.lock() {
+                    *slot = Some(err);
+                }
             }
         }
     }
@@ -198,6 +266,38 @@ fn run_capture_with_retry(
                  desconectado ou indisponível). O restante continua sendo gravado normalmente."
             ),
         );
+    }
+}
+
+/// A frase que a pessoa vê quando nenhum dos dois lados abriu. O erro cru do
+/// Windows não diz nada a quem está com uma reunião começando, mas o código
+/// 0x80070005 (acesso negado) tem resposta exata — e é o caso que a versão da
+/// Store trouxe, porque lá a permissão é por app.
+fn falha_de_captura(
+    mic_erro: &Arc<Mutex<Option<String>>>,
+    sys_erro: &Arc<Mutex<Option<String>>>,
+) -> String {
+    let mic = mic_erro.lock().ok().and_then(|e| e.clone());
+    let sys = sys_erro.lock().ok().and_then(|e| e.clone());
+    let juntos = format!("{} {}", mic.clone().unwrap_or_default(), sys.clone().unwrap_or_default());
+
+    if juntos.contains("0x80070005") || juntos.to_lowercase().contains("negad") {
+        return "O Windows não deixou o Dito abrir o microfone. Abra Configurações > \
+                Privacidade e segurança > Microfone, encontre o Dito na lista e ligue o \
+                interruptor."
+            .into();
+    }
+
+    // Sobrou o caso genérico: nenhum microfone plugado, nenhuma saída de áudio
+    // padrão, ou um driver que não respondeu. O detalhe técnico vai junto
+    // porque é o que permite descobrir o resto sem outro teste.
+    match mic.or(sys) {
+        Some(detalhe) => format!(
+            "Não foi possível gravar: nenhum microfone nem áudio do sistema respondeu ({detalhe})."
+        ),
+        None => "Não foi possível gravar: nenhum microfone nem dispositivo de saída de áudio \
+                 respondeu."
+            .into(),
     }
 }
 
@@ -316,6 +416,7 @@ fn mixer_loop(
     pause_flag: Arc<AtomicBool>,
     app: AppHandle,
     max_seconds: Option<u64>,
+    teve_som: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let spec = WavSpec {
         channels: CHANNELS,
@@ -393,6 +494,9 @@ fn mixer_loop(
             let sys_sample = sys_samples.get(i).copied().unwrap_or(0.0);
             let mixed = (mic_sample + sys_sample).clamp(-1.0, 1.0);
             level_peak = level_peak.max(mixed.abs());
+            if mixed.abs() > LIMIAR_SILENCIO {
+                teve_som.store(true, Ordering::SeqCst);
+            }
             let sample_i16 = (mixed * i16::MAX as f32) as i16;
             writer
                 .write_sample(sample_i16)

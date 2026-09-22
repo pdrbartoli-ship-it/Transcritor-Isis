@@ -54,8 +54,18 @@ pub fn start_recording(
     Ok(())
 }
 
+/// O que volta ao JS quando a gravação termina. Era só o caminho do arquivo;
+/// `teve_som` entrou porque um .wav mudo não pode seguir para a transcrição —
+/// o Whisper inventa frases em cima de silêncio, e a pessoa recebia uma
+/// conversa inteira escrita como "Thank you. Thank you.".
+#[derive(serde::Serialize)]
+pub struct FimDaGravacao {
+    pub caminho: String,
+    pub teve_som: bool,
+}
+
 #[tauri::command]
-pub fn stop_recording(state: State<RecordingState>) -> Result<String, String> {
+pub fn stop_recording(state: State<RecordingState>) -> Result<FimDaGravacao, String> {
     let handle = {
         let mut guard = state
             .0
@@ -66,9 +76,10 @@ pub fn stop_recording(state: State<RecordingState>) -> Result<String, String> {
             .ok_or_else(|| "nenhuma gravação em andamento".to_string())?
     };
 
-    let path = handle.output_path().to_string_lossy().to_string();
+    let caminho = handle.output_path().to_string_lossy().to_string();
+    let teve_som = handle.teve_som();
     handle.stop()?;
-    Ok(path)
+    Ok(FimDaGravacao { caminho, teve_som })
 }
 
 /// Pausa/retoma a gravação em andamento. Devolve o estado resultante, para o

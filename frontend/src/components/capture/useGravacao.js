@@ -64,6 +64,10 @@ export function useGravacao({ userId, convidado = false } = {}) {
   // como estado arrastaria a árvore inteira do painel de captura junto a cada
   // quadro. Quem desenha a onda lê daqui no próprio ritmo (ver MiniRecorder).
   const levelRef = useRef(0)
+  // O maior nível visto na gravação inteira. É o que separa "gravou baixinho"
+  // de "não gravou nada": em cima de silêncio puro o Whisper inventa frases, e
+  // era daí que saía a conversa transcrita como "Thank you. Thank you.".
+  const picoRef = useRef(0)
   const audioCtxRef = useRef(null)
   const levelRafRef = useRef(null)
   const unlistenLevelRef = useRef(null)
@@ -112,6 +116,7 @@ export function useGravacao({ userId, convidado = false } = {}) {
         let peak = 0
         for (const v of buffer) peak = Math.max(peak, Math.abs(v - 128) / 128)
         levelRef.current = peak
+        picoRef.current = Math.max(picoRef.current, peak)
       }
       read()
       levelRafRef.current = setInterval(read, 40)
@@ -255,6 +260,7 @@ export function useGravacao({ userId, convidado = false } = {}) {
     const tetoInformado = opcoes && typeof opcoes === 'object' && 'tetoS' in opcoes
     setErro(null)
     resetRecording()
+    picoRef.current = 0
 
     if (isTauriApp()) {
       try {
@@ -286,12 +292,20 @@ export function useGravacao({ userId, convidado = false } = {}) {
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       recorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
-        // O tipo sai do próprio gravador: fixar 'audio/webm' aqui rotulava
-        // errado o arquivo no Safari/Firefox, onde o container é ogg.
-        setRecordedBlob(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }))
         clearInterval(timerRef.current)
         stopLevelMeter()
         setIsFinalizing(false)
+        // Microfone mudo (abafado, desligado na tecla do headset, entrada
+        // errada) grava um arquivo de silêncio, e silêncio faz o Whisper
+        // inventar frase. Melhor dizer que não entrou som do que devolver uma
+        // transcrição que ninguém falou.
+        if (picoRef.current < PICO_SILENCIO && elapsedSeconds() >= MIN_S_PARA_ACUSAR_SILENCIO) {
+          setErro(SEM_SOM)
+          return
+        }
+        // O tipo sai do próprio gravador: fixar 'audio/webm' aqui rotulava
+        // errado o arquivo no Safari/Firefox, onde o container é ogg.
+        setRecordedBlob(new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' }))
       }
       // Com fatia de tempo o áudio chega em pedaços ao longo da gravação, em
       // vez de um único blob gigante materializado só no stop. Numa reunião
@@ -323,8 +337,17 @@ export function useGravacao({ userId, convidado = false } = {}) {
       stopLevelMeter()
       soltarOuvintes()
       try {
-        const path = await invoke('stop_recording')
-        const bytes = await readFile(path)
+        const fim = await invoke('stop_recording')
+        // Instaladores antigos devolvem só o caminho, em vez do objeto: o site
+        // novo chega ao app antes do executável novo, e por um tempo os dois
+        // convivem.
+        const caminho = typeof fim === 'string' ? fim : fim.caminho
+        const teveSom = typeof fim === 'string' ? true : fim.teve_som !== false
+        if (!teveSom && finalSeconds >= MIN_S_PARA_ACUSAR_SILENCIO) {
+          setErro(SEM_SOM)
+          return
+        }
+        const bytes = await readFile(caminho)
         setRecordedBlob(new Blob([bytes], { type: 'audio/wav' }))
       } catch (err) {
         setErro(typeof err === 'string' ? err : 'Não foi possível finalizar a gravação.')
@@ -366,6 +389,20 @@ export function useGravacao({ userId, convidado = false } = {}) {
 // Whisper precisa ouvir. O padrão do MediaRecorder (~128 kbps estéreo) fazia
 // uma hora de reunião pesar ~57 MB sem transcrever nada melhor — e 8 horas
 // estourariam qualquer teto de upload.
+// Abaixo deste pico a gravação inteira foi silêncio digital: nem o rumor da
+// sala entrou. Não é "gravou baixinho", é "não gravou". Vale para o medidor do
+// navegador; no app nativo quem decide isso é o Rust, com as amostras na mão.
+const PICO_SILENCIO = 0.004
+
+// Abaixo disto não há evidência suficiente para acusar silêncio: numa
+// gravação de um segundo o medidor pode não ter visto nem uma sílaba, e
+// recusar uma gravação boa é pior que deixar passar um clipe mudo de um
+// segundo. O estrago que motivou tudo isto (uma reunião inteira transcrita
+// como "Thank you.") vive bem acima deste limite.
+const MIN_S_PARA_ACUSAR_SILENCIO = 2
+
+const SEM_SOM = 'Não entrou som nenhum nesta gravação. Confira se o microfone certo está escolhido no Windows e se ele não está no mudo, e tente de novo.'
+
 const RECORDING_BITS_PER_SECOND = 32_000
 
 // Um canal, na taxa que o Whisper usa. Pedir estéreo em 48 kHz era gravar o

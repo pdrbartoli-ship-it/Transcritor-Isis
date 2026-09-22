@@ -57,13 +57,19 @@ pub fn run() {
       }
     })
     .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
+      // O log existe em release também, e num arquivo. Antes só existia em
+      // desenvolvimento: quando a gravação saiu muda na versão da Store, não
+      // havia uma linha em lugar nenhum dizendo o que o Windows respondeu.
+      // Fica em %LOCALAPPDATA%\\com.dito.app\\logs (Configurações não expõe
+      // isso; o caminho é para quando alguém precisar mandar o arquivo).
+      app.handle().plugin(
+        tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .target(tauri_plugin_log::Target::new(
+            tauri_plugin_log::TargetKind::LogDir { file_name: Some("dito".into()) },
+          ))
+          .build(),
+      )?;
 
       montar_bandeja(app.handle())?;
 
