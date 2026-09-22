@@ -2414,6 +2414,27 @@ def supadata_segments(content) -> list[dict]:
     return segments
 
 
+async def _supadata_legenda(video_id: str, lang: str | None) -> dict | None:
+    """A legenda de um vídeo na Supadata, ou None quando ela não tem essa.
+
+    `text=false` devolve a legenda em pedaços com tempo. Pedindo texto corrido,
+    o vídeo entrava sem segmento nenhum e a conversa perdia o resumo minuto a
+    minuto e os recortes de cada tópico."""
+    params = {"videoId": video_id, "text": "false"}
+    if lang:
+        params["lang"] = lang
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.supadata.ai/v1/youtube/transcript",
+            headers={"x-api-key": SUPADATA_API_KEY},
+            params=params,
+            timeout=20.0,
+        )
+    if resp.status_code != 200:
+        return None
+    return resp.json()
+
+
 def legenda_imprestavel(
     segments: list[dict], lang_veio: str | None, lang_alvo: str | None,
     duracao_s: float | None,
@@ -2477,22 +2498,15 @@ async def build_url_result(
             if SUPADATA_API_KEY:
                 comecou = time()
                 try:
-                    params = {"videoId": video_id, "text": "false"}
-                    if lang_alvo:
-                        params["lang"] = lang_alvo
-                    async with httpx.AsyncClient() as sup_client:
-                        resp = await sup_client.get(
-                            "https://api.supadata.ai/v1/youtube/transcript",
-                            headers={"x-api-key": SUPADATA_API_KEY},
-                            # text=false devolve a legenda em pedaços com tempo.
-                            # Pedindo texto corrido, o vídeo entrava sem
-                            # segmento nenhum e a conversa perdia o resumo
-                            # minuto a minuto e os recortes de cada tópico.
-                            params=params,
-                            timeout=20.0,
-                        )
-                    if resp.status_code == 200:
-                        dados = resp.json()
+                    dados = await _supadata_legenda(video_id, lang_alvo)
+                    # Pedir uma língua que o vídeo não tem volta vazio. Aí vale
+                    # mais a legenda que existe do que nenhuma: pergunta-se de
+                    # novo sem dizer a língua, e a conferência abaixo decide se
+                    # o que veio serve.
+                    if dados is None and lang_alvo:
+                        logger.info("Sem legenda em %s; perguntando sem escolher a língua", lang_alvo)
+                        dados = await _supadata_legenda(video_id, None)
+                    if dados is not None:
                         content = dados.get("content")
                         segments = supadata_segments(content)
                         full_transcript = (
