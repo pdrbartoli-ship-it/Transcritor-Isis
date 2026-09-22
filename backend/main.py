@@ -2480,14 +2480,17 @@ async def build_url_result(
             duration_str = "–"
             audio_seconds = 0.0
 
-            # Qual legenda pedir. Sem dizer, a Supadata escolhe entre as
-            # faixas do vídeo (que incluem traduções automáticas para dezenas
-            # de línguas) e a escolha não é a do vídeo — ver _idioma_do_youtube.
-            lang_alvo = None
-            if idioma != IDIOMA_AUTO:
-                lang_alvo = idioma
-            elif YOUTUBE_API_KEY:
-                lang_alvo = await _idioma_do_youtube(video_id)
+            # Qual legenda pedir: a da língua em que o vídeo foi falado. Sem
+            # dizer, a Supadata escolhe entre todas as faixas (traduções
+            # automáticas para dezenas de línguas inclusive) e a escolha não é
+            # a do vídeo — ver _idioma_do_youtube.
+            #
+            # O `idioma` que a pessoa escolheu na tela NÃO entra aqui: ele diz
+            # em que língua escrever o resumo e os tópicos, não em que língua
+            # ouvir. Usá-lo aqui fazia o Dito recusar a legenda certa de um
+            # vídeo em inglês só porque a análise ia sair em português, e
+            # baixar o áudio inteiro para ouvir o mesmo inglês de novo.
+            lang_alvo = await _idioma_do_youtube(video_id) if YOUTUBE_API_KEY else None
 
             # Legenda que chegou mas não serve (língua errada, ou cobrindo só
             # um pedaço do vídeo). Fica guardada: se não houver como baixar o
