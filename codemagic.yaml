@@ -41,12 +41,12 @@ workflows:
       node: 20
       xcode: latest
 
-      ios_signing:
-        # `app_store` é o tipo de assinatura de quem publica na loja. O
-        # Codemagic cria e renova o certificado e o perfil sozinho, a partir da
-        # chave do passo 2 — não há nada para guardar à mão.
-        distribution_type: app_store
-        bundle_identifier: br.com.albiecloud.dito
+      # Aqui NÃO entra um bloco `ios_signing`. Ele é o caminho automático do
+      # Codemagic, e faz uma verificação própria antes dos scripts rodarem —
+      # uma verificação que só procura perfil já existente e nunca cria um.
+      # Num app que nunca foi publicado isso falha sempre, e falha cedo demais
+      # para os comandos abaixo terem chance de resolver. Os dois caminhos são
+      # excludentes; ficamos com o manual, que sabe criar o que falta.
 
     scripts:
       - name: Instalar as dependências do site
