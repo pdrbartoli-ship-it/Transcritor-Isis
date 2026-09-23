@@ -59,8 +59,25 @@ workflows:
           cd frontend
           npm run ios:sync
 
-      - name: Aplicar o certificado e o perfil ao projeto
-        script: xcode-project use-profiles
+      # Os quatro passos da assinatura. O `ios_signing` lá em cima diz QUAL
+      # assinatura queremos; estes comandos é que vão buscá-la de fato.
+      #
+      # O `--create` é o que faltava na primeira tentativa: sem ele, o comando
+      # só procura um perfil que já exista, e num app que nunca foi publicado
+      # não existe nenhum. Daí o erro "No matching profiles found".
+      - name: Preparar o cofre de chaves da máquina
+        script: keychain initialize
+
+      - name: Buscar (ou criar) o certificado e o perfil na Apple
+        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+
+      - name: Instalar o certificado no cofre
+        script: keychain add-certificates
+
+      - name: Aplicar o perfil ao projeto
+        script: |
+          cd frontend/ios/App
+          xcode-project use-profiles
 
       - name: Numerar esta build
         # A Apple recusa duas entregas com o mesmo número. Em vez de guardar
