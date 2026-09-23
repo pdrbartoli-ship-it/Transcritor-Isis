@@ -38,6 +38,7 @@ Sucedido nos testes.
 - `e2e-aviso-travado.mjs` (a janelinha com o Windows simulado): 4 de 4 ok. Com a resposta chegando antes da hora, o texto aparece; com a principal muda, fecha sozinha em 7,5 s; o × fecha nos dois casos. O mesmo teste contra o código antigo **reproduz o defeito** (janela fica em branco).
 - `e2e-deteccao-reuniao.mjs`: todos os casos antigos e os 3 novos ok (duas detecções juntas geram um aviso só; fim da reunião fecha o convite; o fim de outra reunião não fecha o convite errado).
 - Build de produção: ok.
+- Em produção, depois do deploy (commit `61be60a`): o mesmo `e2e-aviso-travado.mjs` rodado contra o site publicado, 4 de 4 ok.
 
 ### O que faltou
 - A reprodução exata (entrar e sair de uma chamada do Meet no Windows) só dá para fazer no próprio Windows. A causa foi deduzida pelo código e confirmada na simulação, não na máquina onde aconteceu.
