@@ -82,7 +82,14 @@ export async function fecharAviso() {
   if (!isTauriApp()) return
   const { WebviewWindow } = await tauriWebviewWindow()
   const aviso = await WebviewWindow.getByLabel(AVISO_LABEL)
-  await aviso?.close()
+  if (!aviso) return
+  try {
+    await aviso.close()
+  } catch {
+    // Se o fechar falhar, ao menos some da tela: uma janelinha presa por cima
+    // de tudo, sem botão, é o que não pode acontecer.
+    await aviso.hide().catch(() => {})
+  }
 }
 
 export async function avisoEstaAberto() {

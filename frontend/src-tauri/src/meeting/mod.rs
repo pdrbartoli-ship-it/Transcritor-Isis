@@ -96,9 +96,9 @@ fn rodar(app: AppHandle, ligado: Arc<AtomicBool>) {
                     let _ = app.emit("meeting-started", InicioDeReuniao { id, app: qual, titulo });
                 }
                 Evento::Ended { id } => {
-                    // Ninguém escuta este evento ainda. Ele existe porque o
-                    // "a reunião terminou, quer parar?" é a próxima etapa, e
-                    // sair daqui já pronto custa nada.
+                    // A principal fecha o convite que ainda estiver na tela
+                    // (ver useDeteccaoReuniao): quem sai da chamada antes de
+                    // responder não precisa mais da pergunta.
                     let _ = app.emit("meeting-ended", FimDeReuniao { id });
                 }
             }

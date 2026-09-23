@@ -100,6 +100,16 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     if (tratadasRef.current.has(id)) return null
     tratadasRef.current.add(id)
 
+    // A vaga é reservada antes de ler o saldo: duas detecções seguidas (sair e
+    // entrar na chamada) passavam juntas pela checagem acima enquanto a
+    // leitura corria, e as duas tentavam abrir a mesma janela.
+    const reserva = { tipo: 'lendo', reuniaoId: id }
+    pendenteRef.current = reserva
+    const desistir = () => {
+      if (pendenteRef.current === reserva) pendenteRef.current = null
+      return null
+    }
+
     track('reuniao_detectada', { app })
 
     let saldo
@@ -108,18 +118,33 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     } catch {
       // Sem saber o saldo não sugerimos: prometer uma gravação que o plano não
       // cobre é pior do que ficar calado.
-      return null
+      return desistir()
     }
+    // A reunião acabou enquanto o saldo era lido: não há mais o que perguntar.
+    if (pendenteRef.current !== reserva) return null
 
     const variante = variantePorSaldo(saldo.restanteMin)
-    if (!variante) return null
-    if (variante === 'sem-saldo' && !podeAvisarSemSaldo()) return null
+    if (!variante) return desistir()
+    if (variante === 'sem-saldo' && !podeAvisarSemSaldo()) return desistir()
 
     const estado = montarConvite({ variante, app, restanteMin: saldo.restanteMin })
-    pendenteRef.current = { tipo: 'convite', variante, tetoS: tetoPorSaldo(saldo.restanteMin) }
+    pendenteRef.current = { tipo: 'convite', reuniaoId: id, variante, tetoS: tetoPorSaldo(saldo.restanteMin) }
     track('reuniao_aviso', { variante, app })
     await mostrar(estado)
     return estado
+  }
+
+  // Quem sai da chamada antes de responder não precisa mais da pergunta. Sem
+  // isto o convite ficava na tela depois de a reunião acabar.
+  async function tratarFim({ id }) {
+    const pendente = pendenteRef.current
+    if (!pendente || pendente.reuniaoId !== id) return
+    pendenteRef.current = null
+    estadoRef.current = null
+    if (pendente.tipo === 'convite') {
+      track('reuniao_resposta', { resposta: 'reuniao-acabou', variante: pendente.variante })
+    }
+    await fecharAviso()
   }
 
   async function tratarResposta(resposta) {
@@ -163,11 +188,13 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
 
   useEffect(() => {
     if (!isTauriApp()) return
-    let unlisten = null
     let disposed = false
+    const soltar = []
     listen('meeting-started', evento => tratarReuniao(evento.payload || {}))
-      .then(un => { if (disposed) un?.(); else unlisten = un })
-    return () => { disposed = true; unlisten?.() }
+      .then(un => { if (disposed) un?.(); else soltar.push(un) })
+    listen('meeting-ended', evento => tratarFim(evento.payload || {}))
+      .then(un => { if (disposed) un?.(); else soltar.push(un) })
+    return () => { disposed = true; soltar.forEach(un => un?.()) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -215,9 +242,14 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
       return mostrado ? { ...mostrado, pendente: pendenteRef.current } : null
     }
     window.__responderReuniao = resposta => tratarResposta(resposta)
+    window.__simularFimReuniao = async id => {
+      await tratarFim({ id })
+      return pendenteRef.current
+    }
     return () => {
       delete window.__simularReuniao
       delete window.__responderReuniao
+      delete window.__simularFimReuniao
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

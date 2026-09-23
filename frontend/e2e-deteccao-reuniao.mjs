@@ -99,6 +99,29 @@ const repetida = await simular(10)
 console.log('mesma reunião de novo:', repetida === null ? 'nada aparece' : 'ERRO: apareceu')
 if (repetida !== null) throw new Error('a mesma reunião perguntou duas vezes')
 
+// Duas detecções quase juntas (sair e voltar à chamada): só uma pergunta. Antes
+// as duas passavam enquanto o saldo era lido e disputavam a mesma janela.
+const [primeira, segunda] = await p.evaluate(() => Promise.all([
+  window.__simularReuniao({ id: 30, app: 'meet' }),
+  window.__simularReuniao({ id: 31, app: 'meet' }),
+]))
+console.log('duas detecções juntas:', [primeira, segunda].filter(Boolean).length, 'aviso(s)')
+if ([primeira, segunda].filter(Boolean).length !== 1) throw new Error('duas detecções juntas abriram dois avisos')
+
+// Saiu da chamada sem responder: o convite some, e a próxima reunião pergunta.
+const idAberta = primeira ? 30 : 31
+const depoisDoFim = await p.evaluate(id => window.__simularFimReuniao(id), idAberta)
+console.log('reunião acabou sem resposta:', depoisDoFim === null ? 'convite fechado' : 'ERRO: continuou pendente')
+if (depoisDoFim !== null) throw new Error('o convite ficou pendente depois do fim da reunião')
+const seguinte = await simular(32)
+if (!seguinte) throw new Error('depois do fim, a reunião seguinte não perguntou')
+
+// O fim de OUTRA reunião não mexe no convite que está na tela.
+await p.evaluate(() => window.__simularReuniao({ id: 33, app: 'zoom' }))
+const outra = await p.evaluate(() => window.__simularFimReuniao(999))
+if (!outra || outra.reuniaoId !== 33) throw new Error('o fim de outra reunião fechou o convite errado')
+await p.evaluate(() => window.__responderReuniao('nao'))
+
 // Saldo ilegível: não prometemos o que não sabemos.
 await p.route(`${SUPABASE}/rest/v1/uso_mensal*`, route => route.fulfill({ status: 500, body: '{}' }))
 const semLeitura = await simular(20)

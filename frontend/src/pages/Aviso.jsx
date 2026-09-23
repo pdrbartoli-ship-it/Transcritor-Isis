@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { IconMic, IconClock } from '../components/Icons'
+import { IconMic, IconClock, IconClose } from '../components/Icons'
 import { AVISO_W, ouvirAviso, responderAviso } from '../lib/avisoWindow'
 import { getTheme } from '../lib/prefs'
 import { montarConvite, montarAvisoSaldo, montarParouPorSaldo } from '../lib/reuniao'
@@ -28,19 +28,42 @@ export default function Aviso() {
     if (previa) return
     let unlisten = null
     let disposed = false
-    ouvirAviso(payload => {
-      respondidoRef.current = false
-      setEstado(payload)
-    }).then(un => {
-      if (disposed) un?.()
-      else unlisten = un
-    })
-    // A principal emite ao abrir a janela, mas a página pode terminar de
-    // carregar depois disso — então ela também pede.
-    responderAviso('sync')
+    ;(async () => {
+      // O pedido de `sync` só sai depois de o ouvinte estar de pé. Antes os
+      // dois corriam juntos, e quando a resposta da principal chegava primeiro
+      // a janela ficava em branco para sempre: sem texto, sem botão e sem o
+      // prazo que a faz sumir sozinha.
+      const un = await ouvirAviso(payload => {
+        respondidoRef.current = false
+        setEstado(payload)
+      })
+      if (disposed) { un?.(); return }
+      unlisten = un
+      responderAviso('sync')
+    })()
     return () => { disposed = true; unlisten?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Rede lenta ou principal ocupada: o texto pode não vir no primeiro pedido.
+  // Pede de novo algumas vezes e, se nada chegar, a janela se fecha sozinha.
+  // Um retângulo vazio na frente da tela, sem jeito de tirar, é o pior caso.
+  const temEstado = !!estado
+  useEffect(() => {
+    if (previa || temEstado) return
+    let tentativas = 0
+    const id = setInterval(() => {
+      tentativas += 1
+      if (tentativas > VAZIA_TENTATIVAS) {
+        clearInterval(id)
+        fecharEsta()
+        return
+      }
+      responderAviso('sync')
+    }, VAZIA_INTERVALO_MS)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temEstado])
 
   // A janela nasce com uma altura chutada por quem a abriu (ela não sabe o
   // texto ainda). Aqui o texto já está na tela, então dá para medir e ajustar:
@@ -91,7 +114,21 @@ export default function Aviso() {
     responderAviso(id)
   }
 
-  if (!estado) return <div className="aviso-card" />
+  // O × não depende da principal: avisa que foi fechado e fecha a si mesma.
+  // Se a principal não estiver ouvindo, a janela não pode ficar presa na tela.
+  function dispensar() {
+    if (previa) return
+    responder('fechar')
+    fecharEsta()
+  }
+
+  const botaoFechar = (
+    <button className="aviso-fechar" onClick={dispensar} aria-label="Fechar" title="Fechar">
+      <IconClose width={13} height={13} />
+    </button>
+  )
+
+  if (!estado) return <div className="aviso-card">{botaoFechar}</div>
 
   // Duas famílias de aviso, dois ícones: a pergunta sobre gravar (microfone) e
   // o recado sobre o saldo do plano (relógio). É a única coisa que a janelinha
@@ -100,6 +137,7 @@ export default function Aviso() {
 
   return (
     <div className="aviso-card" data-tauri-drag-region>
+      {botaoFechar}
       <div className="aviso-linha" data-tauri-drag-region>
         <span className="aviso-selo" aria-hidden="true">
           {sobreSaldo ? <IconClock width={15} height={15} /> : <IconMic width={15} height={15} />}
@@ -137,6 +175,19 @@ export default function Aviso() {
       ) : null}
     </div>
   )
+}
+
+// Janela vazia: quantas vezes pede o texto de novo, e de quanto em quanto.
+const VAZIA_TENTATIVAS = 4
+const VAZIA_INTERVALO_MS = 1500
+
+async function fecharEsta() {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().close()
+  } catch {
+    // Fora do app nativo não há janela para fechar.
+  }
 }
 
 // #/aviso?variante=convite-saldo-curto&app=teams&restante=42
