@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MiniRecorder from '../components/recorder/MiniRecorder'
-import { listenRecordingState, listenRecordingLevel, sendRecordingCommand } from '../lib/miniRecorder'
+import { listenRecordingState, listenRecordingLevel, sendRecordingCommand, guardarPosicaoMini } from '../lib/miniRecorder'
+import { isTauriApp } from '../lib/platform'
 import { getTheme } from '../lib/prefs'
 
 // O que roda DENTRO da janelinha do app nativo. Ela não grava nada e não fala
@@ -31,6 +32,26 @@ export default function Mini() {
     // bem depois disso, ela pede o estado ao nascer em vez de esperar a
     // próxima mudança — que pode não vir tão cedo.
     sendRecordingCommand('sync')
+    return () => { disposed = true; unlisten?.() }
+  }, [])
+
+  // Guarda onde a pessoa arrastou a janelinha, para ela renascer ali na
+  // próxima minimizada (ver openMiniWindow). O Tauri manda a posição em pixels
+  // físicos; guardamos em lógicos, que é como a janela é criada.
+  useEffect(() => {
+    if (!isTauriApp()) return
+    let unlisten = null
+    let disposed = false
+    ;(async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const un = await win.onMoved(async ({ payload }) => {
+        const scale = (await win.scaleFactor()) || 1
+        guardarPosicaoMini(payload.x / scale, payload.y / scale)
+      })
+      if (disposed) un?.()
+      else unlisten = un
+    })()
     return () => { disposed = true; unlisten?.() }
   }, [])
 

@@ -25,9 +25,10 @@ export function alturaDoAviso(acoes) {
   return acoes?.length ? AVISO_H_COM_BOTOES : AVISO_H_SEM_BOTOES
 }
 
-// `desviarDaJanelinha` empurra o aviso para cima da janelinha de gravação —
-// os dois moram no mesmo canto, e durante uma gravação (o aviso de saldo
-// acabando) estariam um em cima do outro.
+// `desviarDaJanelinha` empurra o aviso para cima da altura da janelinha de
+// gravação. Ela nasce no centro, mas pode ter sido arrastada para este canto,
+// e durante uma gravação (o aviso de saldo acabando) os dois ficariam um em
+// cima do outro.
 export async function abrirAviso(estado, { desviarDaJanelinha = false } = {}) {
   if (!isTauriApp()) return
   const { WebviewWindow } = await tauriWebviewWindow()
