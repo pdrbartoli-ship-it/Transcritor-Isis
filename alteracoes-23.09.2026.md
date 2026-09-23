@@ -33,9 +33,9 @@ Sucedido.
 Sucedido.
 - `e2e-perguntar-rodape.mjs`: 9 de 9 verificações ok no computador (1280px) e no celular (380px), contra o servidor local: sem "Nova pergunta", sem bandeira no topo, uma bandeira por resposta, bandeira discreta, abre o modal, clicar em Perguntar volta à tela inicial, sem entrada nova no histórico, sem erro de página.
 - Capturas de tela conferidas nos dois tamanhos.
+- Em produção (commit d3a592c, após o deploy): mesmo teste, 9 de 9 ok.
 
 ### O que faltou
-- Conferir em produção depois do deploy (ainda não houve commit).
 - As telas de cada conversa (visão geral, tarefas, chat etc.) continuam com o botão "Sinalizar conteúdo da IA" grande no topo (`ConversaHeader.jsx`). Não foi mexido porque o pedido era sobre o Perguntar.
 
 ## 3. Tela Perguntar: perguntas anteriores na hora e busca preparada em segundo plano
