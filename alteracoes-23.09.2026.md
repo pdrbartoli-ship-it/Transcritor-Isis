@@ -20,6 +20,43 @@ Sucedido.
 - O teste simula o Windows no navegador. A conferência final, arrastando a janelinha de verdade durante uma chamada no Teams, só dá para fazer no próprio Windows.
 - A janelinha do navegador (picture-in-picture do Chrome/Edge) não mudou: ali quem decide a posição é o navegador, e o site não consegue escolher.
 
+## 2. Tela Perguntar: "Nova pergunta" e "Sinalizar conteúdo da IA"
+
+### O que foi alterado
+- Saiu o botão **"Nova pergunta"**. Para começar outra pergunta, basta clicar de novo em **Perguntar** na barra lateral (no celular, pelo menu): a tela volta ao início, com a barra no meio. O "voltar" do navegador continua levando à página anterior de verdade, sem passos repetidos.
+- **"Sinalizar conteúdo da IA"** saiu do topo da tela. Virou uma bandeira pequena e quase transparente embaixo de cada resposta, à direita da linha "Procurei em N conversas…". Ganha cor ao passar o mouse e mostra o texto "Sinalizar conteúdo da IA"; o clique abre o mesmo formulário de antes. Na tela inicial, sem resposta, ela não aparece.
+- Conserto encontrado no teste: no celular o texto do Perguntar encostava na borda da tela (defeito anterior). A página ganhou margem lateral.
+- Arquivos: `frontend/src/pages/Perguntar.jsx`, `frontend/src/components/Layout.jsx`, `frontend/src/index.css`; ajuste de uma verificação em `frontend/e2e-perguntar.mjs`.
+- Teste novo: `frontend/e2e-perguntar-rodape.mjs` (não gasta pergunta do saldo: abre uma pergunta já feita).
+
+### Resultado
+Sucedido.
+- `e2e-perguntar-rodape.mjs`: 9 de 9 verificações ok no computador (1280px) e no celular (380px), contra o servidor local: sem "Nova pergunta", sem bandeira no topo, uma bandeira por resposta, bandeira discreta, abre o modal, clicar em Perguntar volta à tela inicial, sem entrada nova no histórico, sem erro de página.
+- Capturas de tela conferidas nos dois tamanhos.
+
+### O que faltou
+- Conferir em produção depois do deploy (ainda não houve commit).
+- As telas de cada conversa (visão geral, tarefas, chat etc.) continuam com o botão "Sinalizar conteúdo da IA" grande no topo (`ConversaHeader.jsx`). Não foi mexido porque o pedido era sobre o Perguntar.
+
+## 3. Tela Perguntar: perguntas anteriores na hora e busca preparada em segundo plano
+
+### O que foi alterado
+- As **perguntas anteriores** aparecem quase na hora. A última lista fica guardada no aparelho, cifrada com a chave do usuário, e é mostrada antes de o banco responder; quando ele responde, a lista é atualizada. Ao sair da conta ela fica ilegível junto com o resto.
+- O aviso **"Preparando a busca (x de y)" saiu da tela inicial**. A preparação continua acontecendo em segundo plano. Os avisos de falha ("Não consegui preparar a busca neste aparelho" e "Busca por palavra por enquanto") continuam aparecendo.
+- Uma **pergunta nova espera a busca ficar pronta** antes de responder, para sair sempre com a busca completa. Durante a espera, a resposta mostra "Preparando a busca (x de y)". Se passar de 60 segundos, responde com o que já houver. Abrir uma pergunta anterior não espera nada.
+- Arquivo: `frontend/src/pages/Perguntar.jsx`. Teste novo: `frontend/e2e-perguntar-espera.mjs` (gasta 1 pergunta do saldo).
+- Commit `7407c25`, publicado. É mudança só de site: vale para o site, o Android (atualização automática, versão 1.0.176) e o app de Windows (abre o site), sem instalador novo.
+
+### Resultado
+Sucedido.
+- `e2e-perguntar-espera.mjs`, no servidor local: 10 de 10 verificações ok. Pergunta feita com a busca ainda sendo preparada esperou (de "1 de 17" a "17 de 17") e respondeu com 172 de 172 trechos prontos, citando as fontes certas. A lista guardada está cifrada. A tela inicial não mostrou o aviso em momento nenhum.
+- Em produção, depois do deploy: lista apareceu em 0,98 s na primeira visita e em 0,23 s ao voltar à tela; nenhum aviso de preparação na tela inicial; sem erro de página. O site e o pacote do Android foram conferidos com o código novo.
+
+### O que faltou
+- Não foi testado no celular nem no app de Windows de verdade, só no navegador. Como é mudança só de site, deve chegar igual na próxima abertura.
+- Num acervo bem maior, a primeira pergunta pode passar dos 60 segundos de espera. Nesse caso ela responde com a busca por palavra, que acerta menos.
+- Num aparelho novo, a primeira visita ainda espera o banco para mostrar a lista, porque não há nada guardado.
+
 ## 4. Aviso de reunião (app de Windows): janela em branco presa na tela
 
 ### O que foi alterado

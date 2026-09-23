@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { askAcervo, embeddar, entenderPergunta } from '../lib/api'
@@ -7,7 +7,7 @@ import { track } from '../lib/analytics'
 import ChatTextarea from '../components/chat/ChatTextarea'
 import MarkdownText from '../components/chat/MarkdownText'
 import FeedbackModal from '../components/FeedbackModal'
-import { IconClock, IconFlag, IconPlus, IconSend } from '../components/Icons'
+import { IconClock, IconFlag, IconSend } from '../components/Icons'
 import { cifrarMensagem, cifrarTextos, decifrarMensagens, decifrarTextos } from '../lib/cofre'
 import { displayTitle, listConversations } from '../lib/conversas'
 import { textoPerguntasRestantes } from './conversa/perguntas'
@@ -248,6 +248,15 @@ export default function Perguntar() {
     setError(null); setErrorStatus(null)
   }
 
+  // Clicar de novo em "Perguntar" na barra lateral volta para a tela inicial,
+  // no lugar de um botão "Nova pergunta" na própria página. Cada navegação
+  // gera uma chave nova, mesmo para a rota em que já se está.
+  const { key: navKey } = useLocation()
+  const primeiraChave = useRef(navKey)
+  useEffect(() => {
+    if (navKey !== primeiraChave.current) novaPergunta()
+  }, [navKey])
+
   async function enviar(e, texto) {
     e?.preventDefault()
     const pergunta = (texto ?? question).trim()
@@ -426,18 +435,7 @@ export default function Perguntar() {
     : null
 
   return (
-    <div className={`conversa chat-page${vazio ? ' chat-page-vazia' : ''}`}>
-      <div className="conversa-topbar">
-        <button className="btn-ghost btn-sm btn-reportar-ia" onClick={() => setReportando(true)}>
-          <IconFlag width={14} height={14} /> <span>Sinalizar<span className="reportar-ia-extra"> conteúdo da IA</span></span>
-        </button>
-        {!vazio && (
-          <button className="btn-ghost btn-sm" onClick={novaPergunta}>
-            <IconPlus width={14} height={14} /> Nova pergunta
-          </button>
-        )}
-      </div>
-
+    <div className={`conversa chat-page perguntar-page${vazio ? ' chat-page-vazia' : ''}`}>
       {vazio ? (
         // Em repouso a tela é uma pergunta só: o convite, a barra no meio da
         // altura e, embaixo, as últimas perguntas já feitas. O título da
@@ -495,9 +493,23 @@ export default function Perguntar() {
                           ))}
                         </div>
                       )}
-                      {m.busca && (
-                        <p className="acervo-procura">{textoDaProcura(m.busca, m.fontes)}</p>
-                      )}
+                      {/* A bandeira mora embaixo de cada resposta, que é o que
+                          ela sinaliza, e não no topo da tela como um botão a
+                          mais disputando atenção com a pergunta. */}
+                      <div className="resposta-rodape">
+                        {m.busca && (
+                          <p className="acervo-procura">{textoDaProcura(m.busca, m.fontes)}</p>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-sinalizar-resposta"
+                          onClick={() => setReportando(true)}
+                          title="Sinalizar conteúdo da IA"
+                          aria-label="Sinalizar conteúdo da IA"
+                        >
+                          <IconFlag width={13} height={13} />
+                        </button>
+                      </div>
                     </>
                   ) : m.texto}
                 </div>

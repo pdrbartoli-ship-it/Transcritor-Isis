@@ -1482,6 +1482,10 @@ input::placeholder { color: var(--text-muted); }
 /* Em repouso o centro tem de ser o centro do que se vê: o calc acima chuta a
    altura e deixava um vão embaixo do conjunto no celular. */
 .chat-page-vazia { min-height: 100%; }
+/* O Perguntar não mora dentro da casca da conversa, então precisa da própria
+   margem: sem ela o texto encostava na borda da tela no celular. */
+.perguntar-page { padding: 26px 24px 0; box-sizing: border-box; }
+@media (max-width: 600px) { .perguntar-page { padding: 18px 16px 0; } }
 
 /* Turnos mais espaçados: cada pergunta e resposta precisa de ar em volta para
    não ler como uma pilha de caixas — é isso, mais a resposta sem moldura
@@ -1877,5 +1881,15 @@ input::placeholder { color: var(--text-muted); }
 
 /* "Procurei em 47 conversas e usei 6 trechos de 3 delas": dito baixinho, mas
    dito — é o que separa "não está nas minhas conversas" de "a busca falhou". */
+.resposta-rodape { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.resposta-rodape .acervo-procura { margin-top: 0; }
 .acervo-procura { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+/* Quase some: a bandeira precisa existir em toda resposta, mas não chamar o
+   olho. Só ganha cor quando o ponteiro ou o foco chegam nela. */
+.btn-sinalizar-resposta {
+  margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 6px; background: none;
+  color: var(--text-muted); opacity: .45; cursor: pointer; transition: opacity .15s, background .15s;
+}
+.btn-sinalizar-resposta:hover, .btn-sinalizar-resposta:focus-visible { opacity: 1; background: var(--hover); }
 

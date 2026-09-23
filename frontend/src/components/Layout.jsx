@@ -300,7 +300,7 @@ export default function Layout() {
             da URL. */}
         <button
           className={`sidebar-novo sidebar-perguntar ${location.pathname === '/perguntar' ? 'active' : ''}`}
-          onClick={() => navigate('/perguntar')}
+          onClick={() => navigate('/perguntar', { replace: location.pathname === '/perguntar' })}
         >
           <IconChat width={16} height={16} /> Perguntar
         </button>

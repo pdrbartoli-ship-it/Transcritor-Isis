@@ -44,7 +44,7 @@ await page.waitForURL(/#\/perguntar/, { timeout: 10000 })
 await page.waitForSelector('.conversa-head h1', { timeout: 10000 })
 check('rota /perguntar abre', (await page.locator('.conversa-head h1').textContent()) === 'Perguntar')
 check('estado vazio com 3 exemplos clicáveis', await page.locator('.starter-chips button').count() === 3)
-check('botão de sinalizar conteúdo da IA', await page.locator('.btn-reportar-ia').count() === 1)
+check('sem botão de sinalizar na tela vazia (fica embaixo de cada resposta)', await page.locator('.btn-reportar-ia, .btn-sinalizar-resposta').count() === 0)
 
 console.log('\n== o índice no aparelho ==')
 // Lê o IndexedDB cru, e não os módulos do app: em produção o código vem
