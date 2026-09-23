@@ -8,9 +8,9 @@
 # deles, uma vez só (passo a passo em APPSTORE.md):
 #
 #   1. codemagic.io → entrar com o GitHub → adicionar este repositório.
-#   2. Teams → Integrations → Apple Developer Portal → Connect. Ali se cria uma
-#      chave de App Store Connect; dê a ela o nome `dito-app-store-connect`,
-#      que é o nome usado lá embaixo.
+#   2. Settings → Integrations → Developer Portal → Connect. Ali se cadastra a
+#      chave de App Store Connect. O nome dado a ela lá tem que ser o mesmo
+#      escrito em `integrations` aqui embaixo — hoje é `Dito-API`.
 #   3. App Store Connect → criar o app com o identificador
 #      br.com.albiecloud.dito, pegar o número que aparece na barra de endereço
 #      e guardar como variável APP_STORE_APPLE_ID no grupo `dito`.
@@ -26,10 +26,11 @@ workflows:
     max_build_duration: 60
 
     integrations:
-      # O nome dado à chave no passo 2 acima. Se você usar outro nome lá,
-      # troque aqui também, senão a montagem para dizendo que não achou a
-      # chave.
-      app_store_connect: dito-app-store-connect
+      # Exatamente o nome da chave em Settings → Integrations → Developer
+      # Portal → Manage keys, com as mesmas maiúsculas. Um nome diferente do
+      # que está lá derruba a montagem logo no começo, com "App Store Connect
+      # integration ... does not exist".
+      app_store_connect: Dito-API
 
     environment:
       groups:
@@ -59,8 +60,7 @@ workflows:
           cd frontend
           npm run ios:sync
 
-      # Os quatro passos da assinatura. O `ios_signing` lá em cima diz QUAL
-      # assinatura queremos; estes comandos é que vão buscá-la de fato.
+      # Os quatro passos da assinatura, na ordem do exemplo oficial deles.
       #
       # O `--create` é o que faltava na primeira tentativa: sem ele, o comando
       # só procura um perfil que já exista, e num app que nunca foi publicado
