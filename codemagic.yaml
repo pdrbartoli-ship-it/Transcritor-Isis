@@ -39,7 +39,10 @@ workflows:
         XCODE_PROJECT: "frontend/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "br.com.albiecloud.dito"
-      node: 20
+      # 22 é o piso do Capacitor 8 (`cap sync` recusa o 20 com "The Capacitor
+      # CLI requires NodeJS >=22.0.0"). Fica pinado em vez de `latest` para a
+      # montagem de hoje ser igual à de daqui a seis meses.
+      node: 22
       xcode: latest
 
       # Aqui NÃO entra um bloco `ios_signing`. Ele é o caminho automático do
