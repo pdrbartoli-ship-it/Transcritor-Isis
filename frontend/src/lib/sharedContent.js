@@ -3,6 +3,10 @@ import { isNative } from './platform'
 
 const SharedContent = registerPlugin('SharedContent')
 
+// O plugin é só do Android. No iPhone, ouvir por ele gerava um erro de
+// "plugin não implementado" a cada abertura do app.
+const temPlugin = () => isNative() && Capacitor.isPluginAvailable('SharedContent')
+
 // O YouTube compartilha título e link juntos ("Vídeo tal\nhttps://youtu.be/x"),
 // e o WhatsApp às vezes acrescenta texto. Só a URL interessa ao /process-url.
 function extractUrl(text) {
@@ -36,6 +40,7 @@ function fromQueryString() {
 
 export async function consumeSharedContent() {
   if (!isNative()) return fromQueryString()
+  if (!temPlugin()) return null
   try {
     return normalize(await SharedContent.consume())
   } catch {
@@ -45,7 +50,7 @@ export async function consumeSharedContent() {
 
 // Dispara quando um compartilhamento chega com o app já aberto.
 export function onSharedContent(callback) {
-  if (!isNative()) return () => {}
+  if (!temPlugin()) return () => {}
   const handle = SharedContent.addListener('sharedContent', shared => {
     const normalized = normalize(shared)
     if (normalized) callback(normalized)
