@@ -31,13 +31,17 @@ mesmo e-mail com `+` ou ponto não valem; cada amigo conta uma vez.
 - **App (web, Android, Windows, iPhone):** "Convidar amigos" na barra lateral,
   aviso no canto quando o prêmio chega, "+25" ao lado do relógio de minutos e
   selo "Apoiador" ao lado do e-mail.
-- **E-mail:** aviso a quem ganhou, com o app fechado (precisa da `RESEND_API_KEY`
-  no Render).
+- **Notificação:** no celular (Android e iPhone), quando o prêmio chega. O
+  pedido de permissão sai quando a pessoa compartilha o link. No computador não
+  há notificação: o aviso aparece ao abrir o app. Sem e-mail.
 
 ## Onde mora
 
 - Regras: `backend/main.py` (`LIMITES_PLANO`, `CONVITE_*`).
-- Banco: `supabase/convites.sql`.
+- Banco: `supabase/convites.sql` e `supabase/dispositivos.sql`.
+- Notificação: `frontend/src/lib/notificacoes.js`; credenciais no Render
+  (`FCM_SERVICE_ACCOUNT` para o Android, `APNS_KEY`, `APNS_KEY_ID` e
+  `APNS_TEAM_ID` para o iPhone) e `google-services.json` no app Android.
 - App: `frontend/src/lib/convite.js`, `ConviteModal.jsx`, `PremioAviso.jsx`.
 - Testes: `backend/teste-convite.py`, `frontend/e2e-convite-local.mjs`.
 

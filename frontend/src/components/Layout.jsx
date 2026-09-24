@@ -21,6 +21,7 @@ import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
 import { podeVender } from '../lib/platform'
 import { useConvite, useSeloNovo } from '../lib/convite'
+import { iniciarNotificacoes, esquecerAparelho } from '../lib/notificacoes'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
   IconSearch, IconClose, IconCard, IconArrowRight, IconWhatsapp, IconYoutube, IconPlus, IconPin, IconMenu,
@@ -93,6 +94,13 @@ export default function Layout() {
   const { convite, atualizar: atualizarConvite, marcarVisto: marcarConviteVisto } = useConvite(user)
   const [seloNovo, dispensarSelo] = useSeloNovo(convite, user?.id)
   const avisoPremio = avisoDoConvite(convite, seloNovo)
+
+  // No celular, o aviso do prêmio também chega como notificação. Quando ela
+  // chega com o app aberto (ou é tocada), o convite é relido e o aviso do
+  // próprio app aparece.
+  useEffect(() => {
+    if (user?.id && !convidado) iniciarNotificacoes(atualizarConvite)
+  }, [user?.id, convidado, atualizarConvite])
   // O interruptor de "Avisar quando uma reunião começar". O estado mora no
   // provedor, com o detector; aqui só se desenha.
   const { disponivel: deteccaoDisponivel, avisar: avisarReuniao, definirAvisar } = useReuniao()
@@ -248,6 +256,9 @@ export default function Layout() {
   }
 
   async function handleLogout() {
+    // Antes de tudo, com a sessão ainda valendo: este celular deixa de
+    // receber os avisos desta conta.
+    await esquecerAparelho()
     // Invisível para o usuário: só limpa a chave local, sem tela nenhuma.
     // Deixá-la num computador compartilhado seria deixar o cofre destrancado
     // para o próximo que logar ali.

@@ -11,6 +11,9 @@
       "autoUpdate": true,
       "directUpdate": false,
       "resetWhenUpdate": true
+    },
+    "PushNotifications": {
+      "presentationOptions": []
     }
   }
 }

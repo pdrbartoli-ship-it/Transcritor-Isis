@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone pequeno das notificações: o "D." do Dito em branco sobre
+     transparente. O Android pinta de branco tudo que não é transparente, então
+     o ícone colorido do app viraria um quadrado. A cor vem de
+     default_notification_color. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3,4H9A8,8 0,0 1,9 20H3Z M6,7V17H9A5,5 0,0 0,9 7Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20.5,16.7A1.8,1.8 0,1 1,20.5 20.3A1.8,1.8 0,1 1,20.5 16.7Z" />
+</vector>

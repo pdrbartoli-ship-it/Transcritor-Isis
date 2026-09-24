@@ -444,3 +444,12 @@ export async function marcarConviteVisto() {
 export async function aceitarConvite(codigo) {
   return postJson('/convite/aceitar', { codigo })
 }
+
+// O celular que recebe o aviso do prêmio (ver notificacoes.js).
+export async function registrarAparelho(token, plataforma) {
+  return postJson('/push/registrar', { token, plataforma })
+}
+
+export async function removerAparelho(token) {
+  return postJson('/push/remover', { token })
+}

@@ -14,3 +14,7 @@ yt-dlp[default]>=2024.12.13
 deno
 trafilatura
 stripe>=11.1.0
+# Notificação no celular: assinar as credenciais do Firebase e da Apple, e o
+# HTTP/2 que a Apple exige.
+cryptography>=42
+h2>=4

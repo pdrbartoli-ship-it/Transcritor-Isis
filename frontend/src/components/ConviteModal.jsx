@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconClose, IconSelo } from './Icons'
 import { TEXTO_CONVITE, linkCurto } from '../lib/convite'
+import { pedirNotificacoes } from '../lib/notificacoes'
 
 // "Convidar amigos": o que se ganha, o link e o botão de mandar. Lido de cima
 // para baixo em poucos segundos, sem parágrafo nenhum.
@@ -34,11 +35,16 @@ export default function ConviteModal({ convite, onAtualizar, onClose }) {
       // para o Ctrl+C.
       linkRef.current?.select()
     }
+    pedirNotificacoes()
   }
 
+  // O pedido de notificação vem depois do link sair, e não antes: é quando
+  // "avisar quando um amigo entrar" tem sentido para quem lê. No computador
+  // não faz nada.
   async function compartilhar() {
     try {
       await navigator.share({ title: 'Dito', text: TEXTO_CONVITE, url: convite.link })
+      pedirNotificacoes()
     } catch (err) {
       if (err?.name !== 'AbortError') copiar()
     }

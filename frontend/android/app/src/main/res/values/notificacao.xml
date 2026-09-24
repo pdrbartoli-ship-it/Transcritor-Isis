@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- O verde-pinho da marca, no círculo do ícone da notificação. -->
+    <color name="notificacao">#1A5C4E</color>
+    <!-- O mesmo id que o servidor manda (main.py: CANAL_ANDROID). -->
+    <string name="canal_notificacao">convites</string>
+</resources>

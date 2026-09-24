@@ -6,6 +6,7 @@ import socket
 import logging
 import hashlib
 import secrets
+import base64
 import asyncio
 import contextvars
 import datetime
@@ -3682,12 +3683,6 @@ async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -
 ALFABETO_CODIGO = "abcdefghjkmnpqrstuvwxyz23456789"
 TAMANHO_CODIGO = 7
 
-# O aviso por e-mail de quem ganhou o prêmio. Sem a chave, o prêmio sai do
-# mesmo jeito e só o e-mail fica de fora; o app mostra a novidade quando a
-# pessoa abrir. O domínio de envio é o mesmo do Auth (ver Resend).
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "Dito <nao-responda@email.albiecloud.com>")
-
 # Tarefas soltas precisam de uma referência forte: o asyncio só guarda uma
 # fraca, e sem esta o coletor de lixo pode matar a tarefa no meio.
 _tarefas_soltas: set[asyncio.Task] = set()
@@ -3943,7 +3938,8 @@ async def contar_captura_para_convite(user_id: str) -> None:
         if resp.status_code != 200:
             logger.error("Falha ao contar a captura do convite de %s: %s %s", user_id, resp.status_code, resp.text)
             return
-        dono = resp.json()
+        # O banco responde `null` quando esta captura não completou a meta.
+        dono = resp.json() if resp.content else None
         if dono:
             await premiar_convite(dono, user_id)
     except Exception:
@@ -3986,61 +3982,255 @@ async def premiar_convite(dono: str, convidado: str) -> None:
                 {"apoiador_desde": _agora_iso()},
             ))
 
-    await avisar_premio_por_email(dono, premio, virou_apoiador, faltam)
+    await avisar_premio_no_celular(dono, premio, virou_apoiador, faltam)
 
 
-async def avisar_premio_por_email(dono: str, premio: str, virou_apoiador: bool, faltam: int | None) -> None:
-    """O aviso que chega com o app fechado. O app mostra a mesma novidade na
-    próxima abertura, então um e-mail que falhar não deixa ninguém sem saber."""
-    if not RESEND_API_KEY:
-        return
-    if premio == "progresso" and faltam == 0 and not virou_apoiador:
-        # Já era apoiador: mais um amigo não é notícia que valha um e-mail.
-        return
-    email = await _email_do_usuario(dono)
-    if not email:
-        return
-
+def texto_do_aviso(premio: str, virou_apoiador: bool, faltam: int | None) -> tuple[str, str] | None:
+    """Título e corpo da notificação, nas mesmas palavras do aviso que o app
+    mostra ao abrir (PremioAviso.jsx). None quando não há notícia: a pessoa
+    já tinha o selo, e mais um amigo não vale tirar o celular do bolso."""
     if premio == "minutos":
-        assunto = f"Você ganhou {CONVITE_PREMIO_MIN} minutos no Dito"
-        texto = (
-            f"Um amigo começou a usar o Dito pelo seu convite. Você ganhou {CONVITE_PREMIO_MIN} minutos "
-            f"e {CONVITE_PREMIO_PERGUNTAS} perguntas para usar neste mês."
+        return (
+            f"Você ganhou {CONVITE_PREMIO_MIN} minutos e {CONVITE_PREMIO_PERGUNTAS} perguntas",
+            "Um amigo começou a usar o Dito pelo seu convite.",
         )
-    elif virou_apoiador:
-        assunto = "Você ganhou o selo de apoiador do Dito"
-        texto = (
-            f"{CONVITE_META_APOIADOR} amigos já usam o Dito pelo seu convite. Com o selo, "
-            "você recebe as novidades do Dito antes de todo mundo. Obrigado."
+    if virou_apoiador:
+        return (
+            "Você ganhou o selo de apoiador",
+            "Você usa as novidades do Dito antes de todo mundo. Obrigado.",
         )
-    else:
-        assunto = "Mais um amigo no Dito"
-        texto = (
-            "Um amigo começou a usar o Dito pelo seu convite. "
-            f"{'Falta' if faltam == 1 else 'Faltam'} {faltam} para o selo de apoiador."
+    if premio == "progresso" and faltam:
+        return (
+            "Um amigo entrou pelo seu convite",
+            f"{'Falta' if faltam == 1 else 'Faltam'} {faltam} para o selo de apoiador.",
+        )
+    return None
+
+
+async def avisar_premio_no_celular(dono: str, premio: str, virou_apoiador: bool, faltam: int | None) -> None:
+    """Notificação nos celulares em que a pessoa entrou no Dito e deixou
+    avisar. No computador não há notificação: lá o aviso aparece quando ela
+    abre o app, e o app do celular também mostra o aviso ao abrir."""
+    texto = texto_do_aviso(premio, virou_apoiador, faltam)
+    if not texto:
+        return
+    aparelhos = await supabase_service_get(
+        "dispositivos", {"user_id": f"eq.{dono}", "select": "token,plataforma"},
+    )
+    for aparelho in aparelhos:
+        await enviar_notificacao(aparelho["token"], aparelho["plataforma"], *texto)
+
+
+# ── Notificação no celular ────────────────────────────────────────────────
+# Android pelo Firebase (FCM), iPhone direto pela Apple (APNs). Cada lado tem
+# a sua credencial, nas variáveis do Render; sem ela, aquele lado fica mudo e
+# nada mais muda. O aparelho se cadastra pelo app (`/push/registrar`), depois
+# de a pessoa permitir as notificações.
+
+# O JSON inteiro da conta de serviço do Firebase (Configurações do projeto →
+# Contas de serviço → Gerar nova chave privada).
+FCM_SERVICE_ACCOUNT = os.environ.get("FCM_SERVICE_ACCOUNT", "")
+# A chave .p8 da Apple (Certificates, Identifiers & Profiles → Keys), com o id
+# dela e o do time. O tópico é o identificador do app.
+APNS_KEY = os.environ.get("APNS_KEY", "")
+APNS_KEY_ID = os.environ.get("APNS_KEY_ID", "")
+APNS_TEAM_ID = os.environ.get("APNS_TEAM_ID", "")
+APNS_TOPIC = os.environ.get("APNS_TOPIC", "br.com.albiecloud.dito")
+# O app que sai pelo TestFlight e pela App Store fala com o servidor de
+# produção da Apple. "sandbox" só para uma build rodada direto do Xcode.
+APNS_HOST = (
+    "https://api.sandbox.push.apple.com"
+    if os.environ.get("APNS_AMBIENTE", "").strip().lower() == "sandbox"
+    else "https://api.push.apple.com"
+)
+
+# O canal de notificação do Android (criado pelo app, ver notificacoes.js).
+CANAL_ANDROID = "convites"
+COR_ANDROID = "#1a5c4e"
+
+# Os dois lados pedem um token assinado. Ele vale por uma hora (Google) ou é
+# aceito por até uma hora (Apple); renovar antes disso poupa uma assinatura
+# por notificação.
+_credenciais_push: dict[str, tuple[float, str]] = {}
+CREDENCIAL_PUSH_S = 50 * 60
+
+
+def _b64url(dados: bytes) -> str:
+    return base64.urlsafe_b64encode(dados).rstrip(b"=").decode()
+
+
+def _jwt(cabecalho: dict, corpo: dict, assinar) -> str:
+    parte = _b64url(json.dumps(cabecalho, separators=(",", ":")).encode()) + "." + \
+        _b64url(json.dumps(corpo, separators=(",", ":")).encode())
+    return parte + "." + _b64url(assinar(parte.encode()))
+
+
+async def _token_do_fcm() -> tuple[str, str] | None:
+    """(token de acesso, id do projeto) do Firebase, a partir da conta de
+    serviço. Sem a variável, None: o Android fica sem notificação."""
+    if not FCM_SERVICE_ACCOUNT:
+        return None
+    conta = json.loads(FCM_SERVICE_ACCOUNT)
+    em_cache = _credenciais_push.get("fcm")
+    if em_cache and em_cache[0] > time():
+        return em_cache[1], conta["project_id"]
+
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    chave = serialization.load_pem_private_key(conta["private_key"].encode(), password=None)
+    agora = int(time())
+    assinatura = _jwt(
+        {"alg": "RS256", "typ": "JWT"},
+        {
+            "iss": conta["client_email"],
+            "scope": "https://www.googleapis.com/auth/firebase.messaging",
+            "aud": conta.get("token_uri", "https://oauth2.googleapis.com/token"),
+            "iat": agora,
+            "exp": agora + 3600,
+        },
+        lambda dados: chave.sign(dados, padding.PKCS1v15(), hashes.SHA256()),
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            conta.get("token_uri", "https://oauth2.googleapis.com/token"),
+            data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assinatura},
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        logger.error("Google recusou a conta de serviço do Firebase: %s %s", resp.status_code, resp.text)
+        return None
+    acesso = resp.json()["access_token"]
+    _credenciais_push["fcm"] = (time() + CREDENCIAL_PUSH_S, acesso)
+    return acesso, conta["project_id"]
+
+
+def _token_da_apple() -> str | None:
+    if not (APNS_KEY and APNS_KEY_ID and APNS_TEAM_ID):
+        return None
+    em_cache = _credenciais_push.get("apns")
+    if em_cache and em_cache[0] > time():
+        return em_cache[1]
+
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+    # A variável costuma chegar com "\n" escritos em vez de quebras de linha.
+    chave = serialization.load_pem_private_key(APNS_KEY.replace("\\n", "\n").encode(), password=None)
+
+    def assinar(dados: bytes) -> bytes:
+        # A Apple quer a assinatura crua (r e s, 32 bytes cada), não o DER.
+        r, s = decode_dss_signature(chave.sign(dados, ec.ECDSA(hashes.SHA256())))
+        return r.to_bytes(32, "big") + s.to_bytes(32, "big")
+
+    token = _jwt({"alg": "ES256", "kid": APNS_KEY_ID}, {"iss": APNS_TEAM_ID, "iat": int(time())}, assinar)
+    _credenciais_push["apns"] = (time() + CREDENCIAL_PUSH_S, token)
+    return token
+
+
+async def _esquecer_aparelho(token: str) -> None:
+    """Token que o Google ou a Apple dizem não existir mais (app desinstalado,
+    permissão retirada): sai da lista, para não ser tentado de novo."""
+    async with httpx.AsyncClient() as client:
+        await client.delete(
+            f"{SUPABASE_URL}/rest/v1/dispositivos",
+            params={"token": f"eq.{token}"},
+            headers=_cabecalhos_service(),
+            timeout=10.0,
         )
 
-    html = (
-        '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:480px;'
-        'margin:0 auto;padding:32px 24px;color:#141a18">'
-        '<p style="font-family:Georgia,serif;font-size:22px;font-weight:700;margin:0 0 24px">'
-        'Dito<span style="color:#1a5c4e">.</span></p>'
-        f'<p style="font-size:16px;font-weight:600;margin:0 0 8px">{assunto}</p>'
-        f'<p style="font-size:14px;line-height:1.6;color:#5b6763;margin:0 0 24px">{texto}</p>'
-        f'<a href="{FRONTEND_URL}" style="display:inline-block;background:#1a5c4e;color:#ffffff;'
-        'text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:999px">'
-        'Abrir o Dito</a></div>'
-    )
+
+async def enviar_notificacao(token: str, plataforma: str, titulo: str, corpo: str) -> None:
+    """Uma notificação para um aparelho. Nunca levanta: é o último passo de um
+    prêmio que já foi dado."""
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.resend.com/emails",
-                json={"from": EMAIL_REMETENTE, "to": [email], "subject": assunto,
-                      "text": f"{texto}\n\nAbrir o Dito: {FRONTEND_URL}", "html": html},
-                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
-                timeout=10.0,
-            )
-        if resp.status_code >= 300:
-            logger.error("Resend recusou o aviso de prêmio para %s: %s %s", dono, resp.status_code, resp.text)
+        if plataforma == "android":
+            credencial = await _token_do_fcm()
+            if not credencial:
+                return
+            acesso, projeto = credencial
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"https://fcm.googleapis.com/v1/projects/{projeto}/messages:send",
+                    json={"message": {
+                        "token": token,
+                        "notification": {"title": titulo, "body": corpo},
+                        "android": {"notification": {"channel_id": CANAL_ANDROID, "color": COR_ANDROID}},
+                        "data": {"tipo": "convite"},
+                    }},
+                    headers={"Authorization": f"Bearer {acesso}"},
+                    timeout=10.0,
+                )
+            if resp.status_code in (400, 404) and ("UNREGISTERED" in resp.text or "INVALID_ARGUMENT" in resp.text):
+                await _esquecer_aparelho(token)
+            elif resp.status_code >= 300:
+                logger.error("FCM recusou a notificação: %s %s", resp.status_code, resp.text)
+
+        elif plataforma == "ios":
+            credencial = _token_da_apple()
+            if not credencial:
+                return
+            # A Apple só atende por HTTP/2.
+            async with httpx.AsyncClient(http2=True) as client:
+                resp = await client.post(
+                    f"{APNS_HOST}/3/device/{token}",
+                    json={"aps": {"alert": {"title": titulo, "body": corpo}, "sound": "default"}, "tipo": "convite"},
+                    headers={
+                        "authorization": f"bearer {credencial}",
+                        "apns-topic": APNS_TOPIC,
+                        "apns-push-type": "alert",
+                        "apns-priority": "10",
+                    },
+                    timeout=10.0,
+                )
+            if resp.status_code == 410 or (resp.status_code == 400 and "BadDeviceToken" in resp.text):
+                await _esquecer_aparelho(token)
+            elif resp.status_code >= 300:
+                logger.error("APNs recusou a notificação: %s %s", resp.status_code, resp.text)
     except Exception:
-        logger.exception("Falha ao mandar o aviso de prêmio para %s", dono)
+        logger.exception("Falha ao mandar notificação para um aparelho %s", plataforma)
+
+
+class DispositivoRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=4096)
+    plataforma: str = Field(pattern="^(android|ios)$")
+
+
+@app.post("/push/registrar")
+async def push_registrar(req: DispositivoRequest, request: Request):
+    """O app do celular, com a notificação permitida, diz para onde mandar.
+    O mesmo aparelho com outra conta passa a ser dessa conta: o token é a
+    chave, e quem entrou por último é quem recebe."""
+    user_id, _, _ = await _conta_que_chama(request)
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/dispositivos",
+            json={"token": req.token, "user_id": user_id, "plataforma": req.plataforma,
+                  "atualizado_em": _agora_iso()},
+            headers=_cabecalhos_service({"Prefer": "resolution=merge-duplicates,return=minimal"}),
+            timeout=10.0,
+        )
+    if resp.status_code >= 300:
+        logger.error("Falha ao cadastrar aparelho de %s: %s %s", user_id, resp.status_code, resp.text)
+        raise HTTPException(status_code=503, detail="Não conseguimos ligar as notificações agora.")
+    return {"ok": True}
+
+
+class DispositivoRemoverRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=4096)
+
+
+@app.post("/push/remover")
+async def push_remover(req: DispositivoRemoverRequest, request: Request):
+    """Chamado ao sair da conta: o próximo que entrar neste celular não recebe
+    o aviso do prêmio de outra pessoa. Só apaga o token se for de quem chama."""
+    user_id, _, _ = await _conta_que_chama(request)
+    async with httpx.AsyncClient() as client:
+        await client.delete(
+            f"{SUPABASE_URL}/rest/v1/dispositivos",
+            params={"token": f"eq.{req.token}", "user_id": f"eq.{user_id}"},
+            headers=_cabecalhos_service(),
+            timeout=10.0,
+        )
+    return {"ok": True}

@@ -1,2 +1,6 @@
 /build/*
 !/build/.npmkeep
+
+# Configuração do Firebase (notificação do Android). Fica só na máquina que
+# monta o app, como a chave de assinatura.
+google-services.json
