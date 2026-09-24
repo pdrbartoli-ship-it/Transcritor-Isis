@@ -1893,3 +1893,122 @@ input::placeholder { color: var(--text-muted); }
 }
 .btn-sinalizar-resposta:hover, .btn-sinalizar-resposta:focus-visible { opacity: 1; background: var(--hover); }
 
+
+/* ── Convite premiado ───────────────────────────────────────────────────── */
+/* O "+25" ao lado do relógio: o limite mudou, e é isto que diz por quê. */
+.contador-bonus {
+  padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-weight: 600;
+}
+.contador-infinito { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* O selo ao lado do e-mail, no rodapé da barra lateral. */
+.selo-apoiador {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 2px 8px 2px 6px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-weight: 600;
+}
+
+.convite-modal { max-width: 420px; }
+.convite-carregando { display: flex; justify-content: center; padding: 36px 0; }
+/* O que se ganha, em números grandes e poucas palavras: é a primeira coisa
+   que o olho encontra ao abrir. */
+.convite-topo { text-align: center; padding: 4px 0 18px; }
+.convite-ganhos { display: flex; justify-content: center; gap: 12px; }
+.convite-ganhos > div {
+  flex: 1; max-width: 150px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 16px 10px 14px; border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.convite-ganhos strong { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.convite-ganhos span { font-size: 13px; color: var(--text-muted); }
+.convite-titulo { font-size: 16px; font-weight: 600; margin-top: 14px; text-wrap: balance; }
+.convite-sub { font-size: 13px; color: var(--text-muted); margin-top: 6px; text-wrap: pretty; }
+.convite-ganhos + .convite-sub { margin-top: 10px; }
+.convite-selo {
+  width: 52px; height: 52px; border-radius: 50%; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+/* Os cinco amigos do selo, em cinco pontos: o progresso se lê sem número. */
+.convite-passos { display: flex; justify-content: center; gap: 8px; padding-top: 6px; }
+.convite-passos span {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border); background: transparent;
+}
+.convite-passos span.on { border-color: var(--accent); background: var(--accent); }
+.convite-regra {
+  font-size: 12px; line-height: 1.5; color: var(--text-muted); text-align: center; text-wrap: pretty;
+  padding: 12px 0 16px; border-top: 1px solid var(--border);
+}
+.convite-link { display: flex; gap: 8px; }
+.convite-link input {
+  flex: 1; min-width: 0; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit;
+}
+.convite-link .btn-ghost { flex-shrink: 0; min-width: 84px; justify-content: center; }
+.convite-enviar { width: 100%; justify-content: center; margin-top: 10px; padding: 11px 18px; }
+.convite-contagem { margin-top: 14px; text-align: center; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* O aviso de prêmio: no canto, por cima de nada importante, até a pessoa
+   fechar. Acima do conteúdo e abaixo da barra lateral do celular (55/60) e
+   dos modais (100): aberto o menu, o aviso fica atrás dele. */
+.premio-aviso {
+  position: fixed; right: 24px; bottom: 24px; z-index: 50;
+  width: min(340px, calc(100vw - 32px));
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 12px 14px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  animation: toast-in .22s ease-out;
+}
+.premio-aviso-icone {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.premio-aviso-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.premio-aviso-texto strong { font-size: 14px; font-weight: 600; line-height: 1.35; }
+.premio-aviso-texto span { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.premio-aviso-link {
+  align-self: flex-start; margin-top: 6px; padding: 0;
+  background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--accent);
+}
+.premio-aviso-link:hover { text-decoration: underline; }
+.premio-aviso-fechar { flex-shrink: 0; margin: -4px -2px 0 0; }
+/* No celular, embaixo e na largura toda. Em cima ele cobriria o relógio de
+   minutos, que é onde o prêmio aparece. */
+@media (max-width: 760px) {
+  .premio-aviso { right: 16px; left: 16px; width: auto; bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
+
+/* Landing: a faixa de quem chegou por convite e a seção do convite. */
+.lp-convite-faixa {
+  display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--accent); color: var(--accent-text);
+  font-size: 14px; text-align: center;
+}
+.lp-convite-faixa button {
+  border: 1px solid currentColor; background: transparent; color: inherit;
+  font: inherit; font-size: 13px; font-weight: 600;
+  padding: 5px 14px; border-radius: 999px; cursor: pointer;
+}
+.lp-convite-faixa button:hover { background: rgba(255, 255, 255, 0.12); }
+.lp-convite-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.lp-convite-grade > div {
+  padding: 26px 24px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+}
+.lp-convite-grade strong {
+  display: block; font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+  color: var(--accent); margin-bottom: 8px; line-height: 1.15;
+}
+.lp-convite-grade h3 { font-size: 16px; margin-bottom: 6px; }
+.lp-convite-grade p { font-size: 14px; line-height: 1.5; color: var(--text-muted); text-wrap: pretty; }
+@media (max-width: 900px) {
+  .lp-convite-grade { grid-template-columns: 1fr; }
+}

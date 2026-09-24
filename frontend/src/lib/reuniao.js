@@ -118,7 +118,8 @@ export function montarParouPorSaldo() {
 // devolve null, que no Rust vale como "sem teto": falha de leitura não pode
 // virar gravação que não acontece.
 export function tetoPorSaldo(restanteMin) {
-  if (restanteMin == null) return null
+  // Plano sem limite (Infinity) grava sem teto, como o saldo ilegível.
+  if (restanteMin == null || !Number.isFinite(restanteMin)) return null
   const segundos = Math.floor(restanteMin * 60) - MARGEM_PARADA_S
   return segundos > 0 ? segundos : 1
 }

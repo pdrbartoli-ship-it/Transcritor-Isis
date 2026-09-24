@@ -4,7 +4,7 @@ import { getIdioma } from './prefs'
 // Importação circular de propósito e sem risco: planos.js só lê API_URL daqui
 // dentro de uma função, e este arquivo só chama planoPorId dentro de outra —
 // nenhum dos dois precisa do outro no instante em que o módulo é avaliado.
-import { planoPorId } from './planos'
+import { planoPorId, minutosDoPlano } from './planos'
 
 export const API_URL = 'https://transcritor-backend.onrender.com'
 
@@ -275,7 +275,7 @@ export async function generateInsights(transcript, segments = []) {
 export async function lerSaldo(userId) {
   const { data, error } = await supabase
     .from('uso_mensal')
-    .select('minutos_usados, perguntas_usadas, periodo_fim')
+    .select('minutos_usados, perguntas_usadas, periodo_fim, minutos_extra, perguntas_extra, extra_ate')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -286,11 +286,16 @@ export async function lerSaldo(userId) {
   if (error) throw new Error(error.message || 'não foi possível ler o saldo')
 
   const vencido = !data?.periodo_fim || new Date(data.periodo_fim) <= new Date()
+  // O bônus dos convites vale até o fim do ciclo em que foi ganho. Passada a
+  // virada, ele simplesmente deixa de contar (supabase/convites.sql).
+  const bonus = !!data?.extra_ate && new Date(data.extra_ate) > new Date()
   return {
     minutosUsados: vencido ? 0 : Number(data.minutos_usados || 0),
     // As perguntas do mês moram na mesma linha e viram junto com os minutos.
     perguntasUsadas: vencido ? 0 : Number(data.perguntas_usadas || 0),
     periodoFim: vencido ? null : data.periodo_fim,
+    minutosExtra: bonus ? Number(data.minutos_extra || 0) : 0,
+    perguntasExtra: bonus ? Number(data.perguntas_extra || 0) : 0,
   }
 }
 
@@ -307,13 +312,19 @@ export async function lerSaldoAtual(userId) {
   ])
   if (error) throw new Error(error.message || 'não foi possível ler o plano')
   const plano = data?.plano || 'gratuito'
-  const limite = planoPorId(plano).minutos
+  // `limite` null é o plano sem limite. `restanteMin` vira Infinity, e não
+  // null: null já quer dizer "saldo ilegível", e com ele o convite de reunião
+  // deixaria de aparecer justamente para quem pode gravar à vontade.
+  const base = minutosDoPlano(planoPorId(plano))
+  const limite = base == null ? null : base + uso.minutosExtra
   return {
     plano,
     usados: uso.minutosUsados,
     limite,
+    minutosExtra: base == null ? 0 : uso.minutosExtra,
     perguntasUsadas: uso.perguntasUsadas,
-    restanteMin: Math.max(0, limite - uso.minutosUsados),
+    perguntasExtra: uso.perguntasExtra,
+    restanteMin: limite == null ? Infinity : Math.max(0, limite - uso.minutosUsados),
   }
 }
 
@@ -418,4 +429,18 @@ export async function askConversation(question, conversation, { history = [], ma
     history,
     make_title: makeTitle,
   })
+}
+
+// Convite premiado. O estado traz o link, os amigos que já valeram, o selo de
+// apoiador e o prêmio que ainda não foi mostrado; o resto é só marcar.
+export async function lerConvite() {
+  return postJson('/convite/estado', {})
+}
+
+export async function marcarConviteVisto() {
+  return postJson('/convite/visto', {})
+}
+
+export async function aceitarConvite(codigo) {
+  return postJson('/convite/aceitar', { codigo })
 }

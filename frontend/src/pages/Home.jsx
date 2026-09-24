@@ -69,7 +69,7 @@ export default function Home({ mode = 'record' }) {
       {/* O lugar do relógio existe antes de o saldo chegar: sem ele, o título
           desceria alguns pixels sozinho quando o contador aparecesse. */}
       <div className="home-topo">
-        {saldo && <ContadorMinutos usados={saldo.usados} limite={saldo.limite} convidado={convidado} />}
+        {saldo && <ContadorMinutos usados={saldo.usados} limite={saldo.limite} extra={saldo.minutosExtra} convidado={convidado} />}
       </div>
 
       <div className="home-capture">

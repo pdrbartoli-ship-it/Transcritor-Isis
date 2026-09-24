@@ -8,6 +8,8 @@ import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
+import ConviteModal from './ConviteModal'
+import PremioAviso, { avisoDoConvite } from './PremioAviso'
 import ConversaMenu, { useConversaMenu } from './ConversaMenu'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
@@ -18,10 +20,11 @@ import { planoPorId } from '../lib/planos'
 import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
 import { podeVender } from '../lib/platform'
+import { useConvite, useSeloNovo } from '../lib/convite'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
   IconSearch, IconClose, IconCard, IconArrowRight, IconWhatsapp, IconYoutube, IconPlus, IconPin, IconMenu,
-  IconChat,
+  IconChat, IconGift, IconSelo,
 } from './Icons'
 
 // De onde veio a captura. São os mesmos três ícones das abas da home
@@ -80,7 +83,16 @@ export default function Layout() {
   // botão fica na tela sem fazer nada.
   const vendeAqui = podeVender()
   const [saldo, setSaldo] = useState(null)
+  // Sobe quando o saldo muda por fora de uma captura: o bônus de um convite
+  // chega com a pessoa parada na tela, e o relógio precisa mostrar o limite novo.
+  const [saldoVersao, setSaldoVersao] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [showConvite, setShowConvite] = useState(false)
+  // O convite premiado: o link, os amigos e o prêmio que ainda não foi
+  // mostrado. Quem entrou sem conta não tem convite (o hook devolve null).
+  const { convite, atualizar: atualizarConvite, marcarVisto: marcarConviteVisto } = useConvite(user)
+  const [seloNovo, dispensarSelo] = useSeloNovo(convite, user?.id)
+  const avisoPremio = avisoDoConvite(convite, seloNovo)
   // O interruptor de "Avisar quando uma reunião começar". O estado mora no
   // provedor, com o detector; aqui só se desenha.
   const { disponivel: deteccaoDisponivel, avisar: avisarReuniao, definirAvisar } = useReuniao()
@@ -135,12 +147,28 @@ export default function Layout() {
       .then(atual => { if (ativo) setSaldo(atual) })
       .catch(() => { /* o aviso é um extra: sem saldo lido, não aparece */ })
     return () => { ativo = false }
-  }, [user?.id, conversations.length])
+  }, [user?.id, conversations.length, saldoVersao])
+
+  // Prêmio em minutos chegou: relê o saldo para o relógio já mostrar o limite
+  // com o bônus, junto do aviso.
+  const minutosGanhos = convite?.novidade?.minutos || 0
+  useEffect(() => {
+    if (minutosGanhos > 0) setSaldoVersao(v => v + 1)
+  }, [minutosGanhos])
+
+  function fecharAvisoPremio() {
+    if (avisoPremio?.tipo === 'selo') dispensarSelo()
+    // O selo costuma vir junto do quinto amigo: fechar o aviso dele dá os
+    // dois por vistos. Já o prêmio em minutos, fechado, deixa o selo (se
+    // houver) aparecer em seguida.
+    if (convite?.novidade) marcarConviteVisto()
+  }
 
   // Perguntas que ainda cabem no mês, para o chat de qualquer conversa. null =
   // plano sem limite, ou dado ainda não lido: nos dois casos a tela não mostra
-  // contagem nenhuma.
-  const limitePerguntas = saldo ? planoPorId(saldo.plano).perguntas : null
+  // contagem nenhuma. O bônus dos convites entra na conta.
+  const perguntasDoPlano = saldo ? planoPorId(saldo.plano).perguntas : null
+  const limitePerguntas = perguntasDoPlano == null ? null : perguntasDoPlano + (saldo.perguntasExtra || 0)
   const perguntasRestantes = limitePerguntas == null || saldo?.perguntasUsadas == null
     ? null
     : Math.max(0, limitePerguntas - saldo.perguntasUsadas)
@@ -361,6 +389,12 @@ export default function Layout() {
         </div>
 
         <div className="sidebar-foot">
+          {/* Primeiro do rodapé: é o único dos quatro que dá algo à pessoa. */}
+          {!convidado && (
+            <button className="nav-item" onClick={() => setShowConvite(true)}>
+              <IconGift /> Convidar amigos
+            </button>
+          )}
           <button className="nav-item" onClick={() => setShowSettings(true)}>
             <IconSettings /> Configurações
           </button>
@@ -393,6 +427,11 @@ export default function Layout() {
             <div className="foot-user">
               <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
               <span className="email">{user?.email}</span>
+              {convite?.apoiador && (
+                <span className="selo-apoiador" title="Selo de apoiador: você usa as novidades do Dito antes de todo mundo">
+                  <IconSelo width={12} height={12} /> Apoiador
+                </span>
+              )}
               <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
             </div>
           )}
@@ -414,7 +453,7 @@ export default function Layout() {
           <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
         </div>
         <div className="content">
-          {saldo && ROTAS_DE_CAPTURA.includes(location.pathname) &&
+          {saldo?.limite != null && ROTAS_DE_CAPTURA.includes(location.pathname) &&
             saldo.usados >= saldo.limite * AVISO_A_PARTIR_DE && saldo.usados < saldo.limite && (
             <div className="aviso-saldo">
               <span>
@@ -425,7 +464,9 @@ export default function Layout() {
           )}
           {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
               gravar falharia e o que já existe apareceria bloqueado. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
+          {/* `apoiador` é a chave do acesso antecipado: função nova em teste
+              aparece para quem tem o selo antes de ir para todo mundo. */}
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, apoiador: !!convite?.apoiador, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
         </div>
       </div>
 
@@ -450,6 +491,16 @@ export default function Layout() {
         />
       )}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showConvite && (
+        <ConviteModal convite={convite} onAtualizar={atualizarConvite} onClose={() => setShowConvite(false)} />
+      )}
+      {!showConvite && (
+        <PremioAviso
+          aviso={avisoPremio}
+          onFechar={fecharAvisoPremio}
+          onAbrir={() => { fecharAvisoPremio(); setShowConvite(true) }}
+        />
+      )}
       {showPlan && vendeAqui && (
         <PlanModal
           inicial={typeof showPlan === 'string' ? showPlan : null}

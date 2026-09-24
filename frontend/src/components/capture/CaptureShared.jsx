@@ -159,7 +159,8 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
 // depois de esperar o upload e a transcrição era o pior jeito de saber.
 export function LinhaConsumo({ duracaoSec, calculando }) {
   const { saldo, abrirPlano } = useOutletContext() || {}
-  if (!saldo) return null
+  // Plano sem limite: não há conta a fazer nem aviso a dar.
+  if (!saldo || saldo.limite == null) return null
 
   const restam = Math.max(0, Math.round(saldo.limite - saldo.usados))
   const minutos = minutosDaCaptura(duracaoSec)
@@ -325,8 +326,9 @@ function useDuracaoDoLink(url, ativa = true) {
 
 export function UrlForm({ url, setUrl, onSubmit, loading }) {
   const { saldo, abrirPlano } = useOutletContext() || {}
-  const semSaldo = !!saldo && saldo.usados >= saldo.limite
-  const restam = saldo ? Math.max(0, Math.round(saldo.limite - saldo.usados)) : null
+  const comLimite = saldo?.limite != null
+  const semSaldo = comLimite && saldo.usados >= saldo.limite
+  const restam = comLimite ? Math.max(0, Math.round(saldo.limite - saldo.usados)) : null
   // Sem saldo nenhuma duração muda o resultado: nem consulta, o que ainda
   // poupa a cota da API.
   const { duracao: duracaoSec, calculando, aoColar, esperarDuracao } = useDuracaoDoLink(url, !semSaldo)

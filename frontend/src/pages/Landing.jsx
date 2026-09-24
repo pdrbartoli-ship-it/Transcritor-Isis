@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 import { PLANOS, formatarPreco, precoMensalNoAnual } from '../lib/planos'
+import { conviteGuardado } from '../lib/convite'
 
 // A demonstração roda sozinha em cinco tempos, na ordem em que a pessoa vive o
 // produto: já está gravando, finaliza, sobe, vira texto, vira resumo. O último
@@ -157,6 +158,9 @@ export default function Landing() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const entrar = () => navigate('/auth')
+  // Chegou pelo link de um amigo (?c=, guardado no boot): o caminho que vale
+  // o convite é criar a conta, então ele vem antes de tudo, numa faixa só.
+  const [convidadoPorAmigo] = useState(() => !user && !!conviteGuardado())
 
   // "Entrar" e "Instalar grátis" são duas promessas diferentes, e por muito
   // tempo os dois botões faziam a mesma coisa: abrir o login no navegador.
@@ -211,6 +215,13 @@ export default function Landing() {
 
   return (
     <div className="lp">
+      {convidadoPorAmigo && (
+        <div className="lp-convite-faixa">
+          <span>Um amigo convidou você para o Dito.</span>
+          <button type="button" onClick={entrar}>Criar conta grátis</button>
+        </div>
+      )}
+
       {/* ── Barra: só Produto e Preços, como no Notion ─────── */}
       <header className="lp-nav">
         <span className="brand">Dito<span className="dot">.</span></span>
@@ -414,6 +425,31 @@ export default function Landing() {
             Cancele quando quiser, direto no seu plano. O pagamento é processado pelo Stripe
             e o Dito nunca vê o número do seu cartão.
           </p>
+        </section>
+
+        {/* ── Convite: o que se ganha trazendo alguém ─────────── */}
+        {/* Os números são os mesmos que o servidor aplica (main.py: CONVITE_*).
+            Mudou lá, muda aqui. */}
+        <section className="lp-section" id="convite">
+          <h2>Convide amigos</h2>
+          <div className="lp-convite-grade">
+            <div>
+              <strong>+25 min</strong>
+              <h3>No Grátis e no Iniciante</h3>
+              <p>E mais 2 perguntas, a cada amigo que entra pelo seu link.</p>
+            </div>
+            <div>
+              <strong>5 amigos</strong>
+              <h3>No Avançado</h3>
+              <p>Você ganha o selo de apoiador e usa as novidades antes de todo mundo.</p>
+            </div>
+            <div>
+              <strong>3 transcrições</strong>
+              <h3>Quando vale</h3>
+              <p>O amigo cria a conta pelo seu link e faz 3 transcrições.</p>
+            </div>
+          </div>
+          <p className="lp-precos-nota">Seu link fica em Convidar amigos, dentro do app.</p>
         </section>
 
         {/* ── CTA final ────────────────────────────────────── */}

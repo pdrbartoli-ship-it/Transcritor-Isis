@@ -3,7 +3,7 @@ import { IconClose, IconCheck } from './Icons'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { criarCheckout, lerSaldo, wakeBackend, abrirPortalAssinatura } from '../lib/api'
-import { PLANOS, formatarPreco, precoMensalNoAnual, economiaAnual } from '../lib/planos'
+import { PLANOS, formatarPreco, precoMensalNoAnual, economiaAnual, minutosDoPlano } from '../lib/planos'
 
 // O "Meu plano" em dois tempos, no desenho do Notion.
 //
@@ -161,7 +161,11 @@ export default function PlanModal({ onClose, inicial = null }) {
                   <span className="plano-saldo">
                     {ativo && saldo && (
                       <>
-                        <span>{Math.round(saldo.minutosUsados)} de {p.minutos} min usados</span>
+                        <span>
+                          {minutosDoPlano(p) == null
+                            ? `${Math.round(saldo.minutosUsados)} min usados`
+                            : `${Math.round(saldo.minutosUsados)} de ${minutosDoPlano(p) + saldo.minutosExtra} min usados`}
+                        </span>
                         {saldo.periodoFim && (
                           <span>renova em {new Date(saldo.periodoFim).toLocaleDateString('pt-BR')}</span>
                         )}

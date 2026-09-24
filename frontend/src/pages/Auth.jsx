@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
 import { temChave, criarChave, abrirComSenha } from '../lib/chaves'
 import { siteUrl } from '../lib/platform'
+import { conviteGuardado } from '../lib/convite'
 import useTemaClaro from '../lib/useTemaClaro'
 
 const MIN_PASSWORD = 8
@@ -118,12 +119,19 @@ export default function Auth() {
         // O hold precisa estar ativo antes da sessão nascer, senão o
         // PublicRoute redireciona no mesmo instante e a confirmação não aparece.
         setHoldRedirect(true)
+        // O código do convite vai junto do cadastro, e não só no navegador:
+        // quem confirma o e-mail no celular e entra pelo app do Windows chega
+        // ao primeiro login num aparelho que nunca viu o link.
+        const convite = conviteGuardado()
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail(email),
           password,
           // No app empacotado a origem é localhost, que não serve como
           // destino do link enviado por e-mail — daí o siteUrl().
-          options: { emailRedirectTo: `${siteUrl()}/confirm.html` },
+          options: {
+            emailRedirectTo: `${siteUrl()}/confirm.html`,
+            ...(convite ? { data: { convite } } : {}),
+          },
         })
         if (error) { setHoldRedirect(false); throw error }
         // Com a confirmação de e-mail ligada, o Supabase não acusa erro em

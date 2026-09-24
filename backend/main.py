@@ -5,6 +5,7 @@ import ipaddress
 import socket
 import logging
 import hashlib
+import secrets
 import asyncio
 import contextvars
 import datetime
@@ -270,7 +271,18 @@ async def supabase_service_upsert(table: str, dados: dict) -> None:
 # números em frontend/src/lib/planos.js, mas só como desenho inicial enquanto
 # esta resposta não chega — quem vale é aqui. Antes era o contrário, e um
 # reajuste de preço só chegava ao app de Windows recompilando o instalador.
-LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": 800}
+#
+# None é sem limite (o Avançado, desde 24/09/2026). Os minutos dele continuam
+# sendo contados em `uso_mensal`: é o que deixa ligar um teto de uso justo
+# depois, se for preciso, sem migrar nada.
+LIMITES_PLANO = {"gratuito": 100, "iniciante": 250, "avancado": None}
+
+# O que GET /planos manda no campo `minutos` de um plano sem limite. Só existe
+# para as versões do app anteriores a 24/09/2026, que não conhecem o campo
+# `ilimitado` e fariam conta com o que viesse ali: com null elas travavam o
+# envio e cortavam a gravação no primeiro segundo. As versões novas leem
+# `ilimitado` e ignoram este número.
+MINUTOS_PARA_APP_ANTIGO = 100_000
 
 # O convidado (signInAnonymously, sem senha, sem chave de criptografia) tem
 # direito a UMA captura, de até 90 min — não é um teto mensal como os planos
@@ -308,25 +320,42 @@ VITRINE_PLANO = {
         "cta": "Começar grátis",
         "destaque": False,
     },
+    # O Iniciante é a âncora de preço; o selo de recomendado fica no Avançado,
+    # que é o plano para onde o Dito quer levar quem assina.
     "iniciante": {
         "resumo": "Para quem grava toda semana.",
         "cta": "Assinar Iniciante",
-        "destaque": True,
+        "destaque": False,
     },
     "avancado": {
         "resumo": "Para quem vive dentro de conversas.",
         "cta": "Assinar Avançado",
-        "destaque": False,
+        "destaque": True,
     },
 }
+
+# ── Convite premiado ──────────────────────────────────────────────────────
+# O convite vale quando o amigo entra pelo link, cria a conta e faz esta
+# quantidade de transcrições. Uma conta só "entra pelo link" se foi criada há
+# pouco: sem a janela, qualquer conta antiga podia colar o código de alguém.
+CONVITE_META_CAPTURAS = 3
+CONVITE_JANELA_DIAS = 7
+# O que quem convidou ganha, por amigo, nos planos com limite. Vale no ciclo
+# em curso, somado ao limite do plano (supabase/convites.sql).
+CONVITE_PREMIO_MIN = 25
+CONVITE_PREMIO_PERGUNTAS = 2
+# No Avançado não há minuto a ganhar: com esta quantidade de amigos a pessoa
+# vira apoiadora, com acesso antecipado às novidades.
+CONVITE_META_APOIADOR = 5
 
 
 def _itens_do_plano(plano: str) -> list[str]:
     """A lista de marcadores do cartão, montada a partir dos mesmos limites que
     barram de verdade — assim ela não pode prometer o que o código não cumpre."""
     perguntas = PERGUNTAS_POR_MES[plano]
+    minutos = LIMITES_PLANO[plano]
     return [
-        f"{LIMITES_PLANO[plano]} minutos por mês",
+        f"{minutos} minutos por mês" if minutos is not None else "Minutos ilimitados",
         "Transcrição simples e completa" if plano in PLANOS_COM_COMPLETA else "Transcrição simples",
         f"{perguntas} perguntas por mês" if perguntas is not None else "Perguntas ilimitadas",
         "Criptografia de ponta a ponta",
@@ -338,7 +367,8 @@ def montar_planos() -> list[dict]:
         {
             "id": plano,
             "nome": NOMES_PLANO[plano],
-            "minutos": LIMITES_PLANO[plano],
+            "minutos": LIMITES_PLANO[plano] if LIMITES_PLANO[plano] is not None else MINUTOS_PARA_APP_ANTIGO,
+            "ilimitado": LIMITES_PLANO[plano] is None,
             "perguntas": PERGUNTAS_POR_MES[plano],
             "completa": plano in PLANOS_COM_COMPLETA,
             "mensal": PRECOS_PLANO[plano]["mensal"],
@@ -386,6 +416,32 @@ async def ler_plano(user_id: str) -> str:
     return (await ler_plano_e_assinatura(user_id))[0]
 
 
+def _bonus_vale(uso: dict) -> bool:
+    """O bônus de convite vale até o fim do ciclo em que foi ganho (`extra_ate`).
+    Na virada ele deixa de valer sozinho, sem ninguém precisar zerá-lo."""
+    ate = uso.get("extra_ate")
+    if not ate:
+        return False
+    try:
+        return datetime.datetime.fromisoformat(ate) > datetime.datetime.now(tz=datetime.timezone.utc)
+    except ValueError:
+        return False
+
+
+async def limite_de_perguntas(user_id: str, plano: str) -> int | None:
+    """Perguntas do mês para este usuário: as do plano mais o bônus dos
+    convites. None é sem limite, e aí nem vale ler o bônus."""
+    base = PERGUNTAS_POR_MES.get(plano, PERGUNTAS_POR_MES["gratuito"])
+    if base is None:
+        return None
+    usos = await supabase_service_get(
+        "uso_mensal",
+        {"user_id": f"eq.{user_id}", "select": "perguntas_extra,extra_ate", "limit": 1},
+    )
+    uso = usos[0] if usos else {}
+    return base + (int(uso.get("perguntas_extra") or 0) if _bonus_vale(uso) else 0)
+
+
 async def ler_saldo(user_id: str, convidado: bool = False) -> dict:
     """Plano do usuário e quanto ele já gastou no ciclo corrente.
 
@@ -402,7 +458,7 @@ async def ler_saldo(user_id: str, convidado: bool = False) -> dict:
 
     usos = await supabase_service_get(
         "uso_mensal",
-        {"user_id": f"eq.{user_id}", "select": "minutos_usados,periodo_fim", "limit": 1},
+        {"user_id": f"eq.{user_id}", "select": "minutos_usados,periodo_fim,minutos_extra,extra_ate", "limit": 1},
     )
     uso = usos[0] if usos else {}
     vencido = True
@@ -416,6 +472,11 @@ async def ler_saldo(user_id: str, convidado: bool = False) -> dict:
             # captura e o limite deixaria de existir.
             logger.warning("periodo_fim ilegível para %s: %r", user_id, uso["periodo_fim"])
             vencido = False
+
+    # O bônus dos convites soma ao limite do mês. O convidado não tem conta,
+    # então não tem convite; e o plano sem limite não tem a que somar.
+    if minutos_limite is not None and not convidado and _bonus_vale(uso):
+        minutos_limite += float(uso.get("minutos_extra") or 0)
 
     return {
         "plano": plano,
@@ -542,11 +603,11 @@ async def guarda_de_captura(request: Request) -> str | None:
             status_code=402,
             detail="Sua captura de teste já foi usada. Crie uma conta para continuar gravando.",
         )
-    if saldo["minutos_usados"] >= saldo["minutos_limite"]:
+    if saldo["minutos_limite"] is not None and saldo["minutos_usados"] >= saldo["minutos_limite"]:
         raise HTTPException(
             status_code=402,
             detail=(
-                f"Você usou os {saldo['minutos_limite']} minutos do seu plano neste mês. "
+                f"Você usou os {saldo['minutos_limite']:.0f} minutos do seu plano neste mês. "
                 "Abra \"Meu plano\" para assinar um plano maior."
             ) if not convidado else (
                 f"Esta captura passaria dos {saldo['minutos_limite']} min do modo convidado. "
@@ -1991,6 +2052,11 @@ async def _cobrar_do_saldo(user_id: str | None, minutos: float, saldo: dict | No
     recebeu um erro não deve pagar minutos por isso."""
     if user_id and saldo:
         await registrar_uso(user_id, round(minutos, 2), saldo["periodo_fim_stripe"])
+        # A captura que deu certo também conta para o convite de quem trouxe
+        # esta pessoa. Em segundo plano: premiar lê o plano de outra conta,
+        # grava o bônus e manda e-mail, e quem esperou a transcrição não
+        # precisa esperar por nada disso.
+        _em_segundo_plano(contar_captura_para_convite(user_id))
 
 
 def duracao_cobravel(segments: list[dict], audio_seconds: float) -> float:
@@ -2010,7 +2076,7 @@ def recusar_se_nao_cabe(saldo: dict | None, minutos: float) -> None:
     """402 quando esta captura passaria do que resta no mês. Um só texto e uma
     só regra para os dois momentos em que se confere: na entrada, com a duração
     do vídeo, e no fim, com a duração medida."""
-    if saldo and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
+    if saldo and saldo["minutos_limite"] is not None and saldo["minutos_usados"] + minutos > saldo["minutos_limite"]:
         restam = saldo["minutos_limite"] - saldo["minutos_usados"]
         raise HTTPException(
             status_code=402,
@@ -2745,7 +2811,7 @@ REGRAS OBRIGATÓRIAS:
     contou = False
     if user_id:
         plano, assinatura = await ler_plano_e_assinatura(user_id)
-        limite = PERGUNTAS_POR_MES.get(plano, PERGUNTAS_POR_MES["gratuito"])
+        limite = await limite_de_perguntas(user_id, plano)
         usadas = await consumir_pergunta(user_id, plano, limite, assinatura.get("current_period_end"))
         if usadas is not None:
             contou = True
@@ -3157,7 +3223,7 @@ async def chat_acervo(request: ChatAcervoRequest, user_id: str | None = Depends(
     contou = False
     if user_id:
         plano, assinatura = await ler_plano_e_assinatura(user_id)
-        limite = PERGUNTAS_POR_MES.get(plano, PERGUNTAS_POR_MES["gratuito"])
+        limite = await limite_de_perguntas(user_id, plano)
         usadas = await consumir_pergunta(user_id, plano, limite, assinatura.get("current_period_end"))
         if usadas is not None:
             contou = True
@@ -3601,3 +3667,380 @@ async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -
     })
 
 
+
+
+# ── Convite premiado ──────────────────────────────────────────────────────
+# As regras (quantas transcrições, quanto se ganha) moram lá em cima, junto da
+# régua dos planos. Aqui fica o mecanismo: o código de cada pessoa, o amigo
+# que entrou por ele, a contagem das transcrições e o prêmio.
+#
+# Tudo passa pelo backend com a service role: as duas tabelas não têm policy
+# nenhuma (supabase/convites.sql), para ninguém forjar um convite válido pelo
+# navegador nem ver quem entrou pelo link de outra pessoa.
+
+# Sem 0/o nem 1/l/i: o código aparece no link e às vezes é lido em voz alta.
+ALFABETO_CODIGO = "abcdefghjkmnpqrstuvwxyz23456789"
+TAMANHO_CODIGO = 7
+
+# O aviso por e-mail de quem ganhou o prêmio. Sem a chave, o prêmio sai do
+# mesmo jeito e só o e-mail fica de fora; o app mostra a novidade quando a
+# pessoa abrir. O domínio de envio é o mesmo do Auth (ver Resend).
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "Dito <nao-responda@email.albiecloud.com>")
+
+# Tarefas soltas precisam de uma referência forte: o asyncio só guarda uma
+# fraca, e sem esta o coletor de lixo pode matar a tarefa no meio.
+_tarefas_soltas: set[asyncio.Task] = set()
+
+
+def _em_segundo_plano(coro) -> None:
+    tarefa = asyncio.create_task(coro)
+    _tarefas_soltas.add(tarefa)
+    tarefa.add_done_callback(_tarefas_soltas.discard)
+
+
+def _cabecalhos_service(extra: dict | None = None) -> dict:
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        **(extra or {}),
+    }
+
+
+async def _service_insert(table: str, dados: dict, ignorar_repetido: bool = False) -> httpx.Response:
+    prefer = "return=minimal"
+    if ignorar_repetido:
+        prefer = "resolution=ignore-duplicates," + prefer
+    async with httpx.AsyncClient() as client:
+        return await client.post(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            json=dados,
+            headers=_cabecalhos_service({"Prefer": prefer}),
+            timeout=10.0,
+        )
+
+
+async def _service_patch(table: str, filtro: dict, dados: dict) -> list[dict]:
+    """Atualiza e devolve as linhas que mudaram — é assim que se sabe se uma
+    marca de "uma vez só" (apoiador, visto) acabou de ser posta ou já estava."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            params=filtro,
+            json=dados,
+            headers=_cabecalhos_service({"Prefer": "return=representation"}),
+            timeout=10.0,
+        )
+    if resp.status_code >= 300:
+        logger.error("Falha ao atualizar %s no Supabase: %s %s", table, resp.status_code, resp.text)
+        return []
+    return resp.json() or []
+
+
+def _agora_iso() -> str:
+    return datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+
+
+def _caixa_de_email(email: str) -> str:
+    """O mesmo endereço escrito de jeitos diferentes. Sem isto, fulano+1@gmail.com
+    e f.ulano@gmail.com seriam "amigos" de fulano@gmail.com, e o convite viraria
+    um jeito de ganhar minutos convidando a si mesmo."""
+    local, _, dominio = (email or "").strip().lower().partition("@")
+    local = local.split("+", 1)[0]
+    if dominio in ("gmail.com", "googlemail.com"):
+        local, dominio = local.replace(".", ""), "gmail.com"
+    return f"{local}@{dominio}"
+
+
+async def _email_do_usuario(user_id: str) -> str | None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            headers=_cabecalhos_service(),
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        logger.warning("Não foi possível ler o e-mail de %s: %s", user_id, resp.status_code)
+        return None
+    return (resp.json() or {}).get("email")
+
+
+async def _conta_que_chama(request: Request) -> tuple[str, str, str]:
+    """(id, e-mail, token) de quem chama. O convite é coisa de conta: quem
+    entrou sem conta (convidado) não tem link para compartilhar nem pode ser
+    o amigo que entrou por um."""
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
+    if not identidade or identidade[2]:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito para convidar amigos.")
+    # Chave própria no freio de chamadas: abrir a tela de convite não pode
+    # gastar a cota de quem está transcrevendo.
+    aplicar_limite(f"convite:{identidade[0]}")
+    return identidade[0], identidade[1], token
+
+
+async def _codigo_do_usuario(user_id: str) -> dict:
+    """A linha do código de convite da pessoa, criada na primeira vez que ela
+    abre a tela. Um código repetido (raro: 31^7 combinações) só faz tentar de
+    novo com outro."""
+    for _ in range(5):
+        linhas = await supabase_service_get(
+            "convite_codigos",
+            {"user_id": f"eq.{user_id}", "select": "codigo,apoiador_desde", "limit": 1},
+        )
+        if linhas:
+            return linhas[0]
+        codigo = "".join(secrets.choice(ALFABETO_CODIGO) for _ in range(TAMANHO_CODIGO))
+        resp = await _service_insert(
+            "convite_codigos", {"user_id": user_id, "codigo": codigo}, ignorar_repetido=True,
+        )
+        if resp.status_code >= 300 and resp.status_code != 409:
+            logger.error("Falha ao criar o código de convite de %s: %s %s", user_id, resp.status_code, resp.text)
+            break
+    raise HTTPException(status_code=503, detail="Não conseguimos criar seu link de convite agora. Tente de novo em instantes.")
+
+
+def link_de_convite(codigo: str) -> str:
+    return f"{FRONTEND_URL}/?c={codigo}"
+
+
+@app.post("/convite/estado")
+async def convite_estado(request: Request):
+    """Tudo o que a tela de convite e o aviso de prêmio precisam, numa chamada:
+    o link, quantos amigos já valeram, o status de apoiador e o que ainda não
+    foi mostrado."""
+    user_id, _, _ = await _conta_que_chama(request)
+    linha = await _codigo_do_usuario(user_id)
+    plano = await ler_plano(user_id)
+    ilimitado = LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"]) is None
+
+    convites = await supabase_service_get(
+        "convites", {"dono_id": f"eq.{user_id}", "select": "valido_em,premio,visto_em"},
+    )
+    validos = [c for c in convites if c.get("valido_em")]
+    novos = [c for c in validos if not c.get("visto_em")]
+
+    # A conquista é conferida aqui também, e não só na hora do prêmio: quem
+    # juntou os cinco amigos no Grátis e depois assinou o Avançado vira
+    # apoiador na primeira vez que o app perguntar.
+    apoiador = bool(linha.get("apoiador_desde"))
+    if not apoiador and ilimitado and len(validos) >= CONVITE_META_APOIADOR:
+        await _service_patch(
+            "convite_codigos",
+            {"user_id": f"eq.{user_id}", "apoiador_desde": "is.null"},
+            {"apoiador_desde": _agora_iso()},
+        )
+        apoiador = True
+
+    novidade = None
+    if novos:
+        com_minutos = sum(1 for c in novos if c.get("premio") == "minutos")
+        novidade = {
+            "amigos": len(novos),
+            "minutos": com_minutos * CONVITE_PREMIO_MIN,
+            "perguntas": com_minutos * CONVITE_PREMIO_PERGUNTAS,
+        }
+
+    return {
+        "codigo": linha["codigo"],
+        "link": link_de_convite(linha["codigo"]),
+        "plano": plano,
+        "ilimitado": ilimitado,
+        "validos": len(validos),
+        "pendentes": len(convites) - len(validos),
+        "apoiador": apoiador,
+        "novidade": novidade,
+        "regras": {
+            "capturas": CONVITE_META_CAPTURAS,
+            "minutos": CONVITE_PREMIO_MIN,
+            "perguntas": CONVITE_PREMIO_PERGUNTAS,
+            "apoiador": CONVITE_META_APOIADOR,
+        },
+    }
+
+
+@app.post("/convite/visto")
+async def convite_visto(request: Request):
+    """O app mostrou o aviso de prêmio: ele não volta a aparecer."""
+    user_id, _, _ = await _conta_que_chama(request)
+    await _service_patch(
+        "convites",
+        {"dono_id": f"eq.{user_id}", "valido_em": "not.is.null", "visto_em": "is.null"},
+        {"visto_em": _agora_iso()},
+    )
+    return {"ok": True}
+
+
+class ConviteAceitarRequest(BaseModel):
+    codigo: str = Field(min_length=4, max_length=16)
+
+
+@app.post("/convite/aceitar")
+async def convite_aceitar(req: ConviteAceitarRequest, request: Request):
+    """Liga a conta nova de quem chama ao dono do código. O app chama isto uma
+    vez, logo depois do primeiro login de quem se cadastrou pelo link.
+
+    A recusa não é erro para o app: ele não mostra nada ao amigo em nenhum dos
+    casos, então a resposta só diz o motivo para quem estiver depurando."""
+    user_id, email, token = await _conta_que_chama(request)
+    codigo = req.codigo.strip().lower()
+
+    donos = await supabase_service_get(
+        "convite_codigos", {"codigo": f"eq.{codigo}", "select": "user_id", "limit": 1},
+    )
+    if not donos:
+        return {"aceito": False, "motivo": "codigo"}
+    dono = donos[0]["user_id"]
+    if dono == user_id:
+        return {"aceito": False, "motivo": "proprio"}
+
+    # Só conta nova entra por convite. A data vem do próprio Supabase, pelo
+    # token de quem chama, e não do corpo do pedido.
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
+            timeout=10.0,
+        )
+    criada = None
+    if resp.status_code == 200:
+        try:
+            criada = datetime.datetime.fromisoformat((resp.json() or {}).get("created_at") or "")
+        except ValueError:
+            criada = None
+    agora = datetime.datetime.now(tz=datetime.timezone.utc)
+    if not criada or agora - criada > datetime.timedelta(days=CONVITE_JANELA_DIAS):
+        return {"aceito": False, "motivo": "conta_antiga"}
+
+    email_do_dono = await _email_do_usuario(dono)
+    if email_do_dono and _caixa_de_email(email_do_dono) == _caixa_de_email(email):
+        return {"aceito": False, "motivo": "proprio"}
+
+    # Quem já entrou pelo convite de alguém fica com o primeiro.
+    resp = await _service_insert("convites", {"convidado_id": user_id, "dono_id": dono}, ignorar_repetido=True)
+    if resp.status_code >= 300:
+        logger.error("Falha ao gravar o convite de %s: %s %s", user_id, resp.status_code, resp.text)
+        raise HTTPException(status_code=503, detail="Não conseguimos registrar o convite agora.")
+    return {"aceito": True}
+
+
+async def contar_captura_para_convite(user_id: str) -> None:
+    """Soma uma transcrição ao convite pelo qual esta pessoa entrou, se houver
+    um. Quem não entrou por convite custa uma chamada ao banco e nada mais.
+    Nunca levanta: roda solta, depois de a captura já ter sido entregue."""
+    try:
+        resp = await _rpc_service(
+            "contar_captura_convite", {"p_convidado": user_id, "p_meta": CONVITE_META_CAPTURAS},
+        )
+        if resp.status_code != 200:
+            logger.error("Falha ao contar a captura do convite de %s: %s %s", user_id, resp.status_code, resp.text)
+            return
+        dono = resp.json()
+        if dono:
+            await premiar_convite(dono, user_id)
+    except Exception:
+        logger.exception("Falha ao contar a captura do convite de %s", user_id)
+
+
+async def premiar_convite(dono: str, convidado: str) -> None:
+    """O amigo acabou de completar a meta. Nos planos com limite, quem convidou
+    ganha o bônus do mês; no Avançado, o amigo conta para os cinco do apoiador."""
+    plano, assinatura = await ler_plano_e_assinatura(dono)
+    if LIMITES_PLANO.get(plano, LIMITES_PLANO["gratuito"]) is None:
+        premio = "progresso"
+    else:
+        resp = await _rpc_service("premiar_convite_minutos", {
+            "p_user_id": dono,
+            "p_minutos": CONVITE_PREMIO_MIN,
+            "p_perguntas": CONVITE_PREMIO_PERGUNTAS,
+            "p_periodo_fim": assinatura.get("current_period_end"),
+        })
+        if resp.status_code >= 300:
+            # O convite fica válido e sem prêmio registrado: é o rastro para
+            # conceder à mão, em vez de a falha sumir num log.
+            logger.error("Falha ao dar o bônus do convite a %s: %s %s", dono, resp.status_code, resp.text)
+            return
+        premio = "minutos"
+
+    await _service_patch("convites", {"convidado_id": f"eq.{convidado}"}, {"premio": premio})
+
+    virou_apoiador = False
+    faltam = None
+    if premio == "progresso":
+        validos = await supabase_service_get(
+            "convites", {"dono_id": f"eq.{dono}", "valido_em": "not.is.null", "select": "convidado_id"},
+        )
+        faltam = max(0, CONVITE_META_APOIADOR - len(validos))
+        if faltam == 0:
+            virou_apoiador = bool(await _service_patch(
+                "convite_codigos",
+                {"user_id": f"eq.{dono}", "apoiador_desde": "is.null"},
+                {"apoiador_desde": _agora_iso()},
+            ))
+
+    await avisar_premio_por_email(dono, premio, virou_apoiador, faltam)
+
+
+async def avisar_premio_por_email(dono: str, premio: str, virou_apoiador: bool, faltam: int | None) -> None:
+    """O aviso que chega com o app fechado. O app mostra a mesma novidade na
+    próxima abertura, então um e-mail que falhar não deixa ninguém sem saber."""
+    if not RESEND_API_KEY:
+        return
+    if premio == "progresso" and faltam == 0 and not virou_apoiador:
+        # Já era apoiador: mais um amigo não é notícia que valha um e-mail.
+        return
+    email = await _email_do_usuario(dono)
+    if not email:
+        return
+
+    if premio == "minutos":
+        assunto = f"Você ganhou {CONVITE_PREMIO_MIN} minutos no Dito"
+        texto = (
+            f"Um amigo começou a usar o Dito pelo seu convite. Você ganhou {CONVITE_PREMIO_MIN} minutos "
+            f"e {CONVITE_PREMIO_PERGUNTAS} perguntas para usar neste mês."
+        )
+    elif virou_apoiador:
+        assunto = "Você ganhou o selo de apoiador do Dito"
+        texto = (
+            f"{CONVITE_META_APOIADOR} amigos já usam o Dito pelo seu convite. Com o selo, "
+            "você recebe as novidades do Dito antes de todo mundo. Obrigado."
+        )
+    else:
+        assunto = "Mais um amigo no Dito"
+        texto = (
+            "Um amigo começou a usar o Dito pelo seu convite. "
+            f"{'Falta' if faltam == 1 else 'Faltam'} {faltam} para o selo de apoiador."
+        )
+
+    html = (
+        '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:480px;'
+        'margin:0 auto;padding:32px 24px;color:#141a18">'
+        '<p style="font-family:Georgia,serif;font-size:22px;font-weight:700;margin:0 0 24px">'
+        'Dito<span style="color:#1a5c4e">.</span></p>'
+        f'<p style="font-size:16px;font-weight:600;margin:0 0 8px">{assunto}</p>'
+        f'<p style="font-size:14px;line-height:1.6;color:#5b6763;margin:0 0 24px">{texto}</p>'
+        f'<a href="{FRONTEND_URL}" style="display:inline-block;background:#1a5c4e;color:#ffffff;'
+        'text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:999px">'
+        'Abrir o Dito</a></div>'
+    )
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                json={"from": EMAIL_REMETENTE, "to": [email], "subject": assunto,
+                      "text": f"{texto}\n\nAbrir o Dito: {FRONTEND_URL}", "html": html},
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                timeout=10.0,
+            )
+        if resp.status_code >= 300:
+            logger.error("Resend recusou o aviso de prêmio para %s: %s %s", dono, resp.status_code, resp.text)
+    except Exception:
+        logger.exception("Falha ao mandar o aviso de prêmio para %s", dono)

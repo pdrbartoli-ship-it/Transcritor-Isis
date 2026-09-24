@@ -38,7 +38,6 @@ export const PLANOS = [
     completa: false,
     mensal: 20,
     anual: 216,
-    destaque: true,
     resumo: 'Para quem grava toda semana.',
     cta: 'Assinar Iniciante',
     itens: [
@@ -51,15 +50,17 @@ export const PLANOS = [
   {
     id: 'avancado',
     nome: 'Avançado',
-    minutos: 800,
+    minutos: null,
+    ilimitado: true,
     perguntas: null,
     completa: true,
     mensal: 40,
     anual: 432,
+    destaque: true,
     resumo: 'Para quem vive dentro de conversas.',
     cta: 'Assinar Avançado',
     itens: [
-      '800 minutos por mês',
+      'Minutos ilimitados',
       'Transcrição simples e completa',
       'Perguntas ilimitadas',
       'Criptografia de ponta a ponta',
@@ -70,6 +71,11 @@ export const PLANOS = [
 // Plano desconhecido (sem assinatura, id antigo) vale como o grátis — é o que o
 // backend também faz.
 export const planoPorId = id => PLANOS.find(p => p.id === id) || PLANOS[0]
+
+// Minutos do mês de um plano, ou null quando ele não tem limite. Vale sempre
+// o `ilimitado`, e não o número: o servidor manda um número alto no plano sem
+// limite só para as versões antigas do app, que não conhecem este campo.
+export const minutosDoPlano = plano => (plano.ilimitado ? null : plano.minutos)
 
 // `PLANOS` é trocado por dentro, e não reatribuído, para que todo mundo que já
 // importou a lista (são sete telas) enxergue os valores novos sem precisar de
