@@ -5,7 +5,8 @@ import {
   IconArrowRight, IconStopCircle, IconPlay,
 } from '../components/Icons'
 import InstalarModal from '../components/InstalarModal'
-import { INSTALLER_URL, STORE_URL } from '../lib/instalar'
+import BaixarWindows from '../components/BaixarWindows'
+import { STORE_URL, aparelhoDoVisitante } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 import { setTheme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
@@ -167,6 +168,7 @@ export default function Landing() {
   // Instalar abre o fluxo de download; entrar continua indo direto para o app.
   const [instalando, setInstalando] = useState(false)
   const instalar = () => setInstalando(true)
+  const [aparelho] = useState(aparelhoDoVisitante)
 
   // Sem conta, sem senha, sem chave de criptografia possível — é o
   // `signInAnonymously` do Supabase: nasce um usuário de verdade (o resto do
@@ -350,23 +352,22 @@ export default function Landing() {
               <strong> você e quem está do outro lado</strong>, com uma janela flutuante que
               fica por cima de tudo durante a conversa.
             </p>
-            {/* Desde 22/09/2026 o caminho é a Microsoft Store: o pacote de
-                lá é assinado pela Microsoft e instala sem a tela azul "O
-                Windows protegeu seu PC", que o .exe sem assinatura mostrava a
-                todo mundo. O .exe continua logo abaixo, em letra miúda, para
-                quem tem a Store bloqueada no computador do trabalho. */}
-            <a
-              className="btn-ghost lp-btn-lg lp-split-btn"
-              href={STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <IconDownload width={16} height={16} />
-              Baixar na Microsoft Store
-            </a>
-            <p className="lp-split-foot">
-              Sem acesso à Store? <a href={INSTALLER_URL}>Baixe o instalador direto</a>.
-            </p>
+            {/* No Windows o clique baixa direto o instalador da Microsoft, sem
+                abrir a loja. Quem lê a landing em outro aparelho continua com
+                o link para a página da Store, para instalar depois no PC. */}
+            {aparelho === 'windows' ? (
+              <BaixarWindows origem="landing" className="btn-ghost lp-btn-lg lp-split-btn" />
+            ) : (
+              <a
+                className="btn-ghost lp-btn-lg lp-split-btn"
+                href={STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <IconDownload width={16} height={16} />
+                Baixar na Microsoft Store
+              </a>
+            )}
           </div>
         </section>
 

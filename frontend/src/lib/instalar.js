@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 
-// Instalador do app nativo Windows, publicado pelo CI numa GitHub Release a
-// cada push na main (ver .github/workflows/build-desktop.yml). Tag fixa
-// "desktop-latest" e nome de arquivo fixo "Dito-setup.exe": antes o nome
-// carregava a versão do app, então subir a versão quebrava este botão em
-// silêncio. Não dá para usar /releases/latest/ porque a release é prerelease.
-export const INSTALLER_URL = 'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
-
-// A Microsoft Store é a porta de entrada do Windows desde 22/09/2026. É o
-// mesmo app do instalador acima, com uma diferença que decidia desistências: o
-// pacote da Store é assinado pela Microsoft, então some a tela azul "O Windows
-// protegeu seu PC" que aparecia no .exe sem assinatura. O id 9pdvg213q755 é o
-// do produto no Partner Center e não muda; o link https funciona em qualquer
-// navegador e, no Windows, entrega a pessoa ao app da Store.
+// A Microsoft Store é a porta de entrada do Windows desde 22/09/2026. O pacote
+// dela é assinado pela Microsoft, então não aparece a tela azul "O Windows
+// protegeu seu PC" nem o bloqueio do Defender que o .exe sem assinatura tomou
+// em 24/09/2026. O id 9pdvg213q755 é o do produto no Partner Center e não
+// muda; este link abre a página do Dito na loja em qualquer navegador.
 export const STORE_URL = 'https://apps.microsoft.com/detail/9pdvg213q755'
+
+// Instalador pequeno gerado pela Microsoft: baixa o Dito da Store e abre, sem a
+// pessoa passar pela loja. Não funciona com conta de trabalho ou de escola (o
+// próprio instalador avisa que não conseguiu verificar a qualificação e manda
+// para a Store, que também não aceita essas contas). O `cid` só diz de onde
+// veio o clique.
+const INSTALADOR_STORE_URL = 'https://get.microsoft.com/installer/download/9PDVG213Q755'
+
+// Para conta de trabalho ou de escola. O winget instala da Store sem usar a
+// conta do Windows (testado em 24/09/2026 num PC com conta corporativa, onde o
+// instalador acima falhou). Os dois `--accept` evitam as perguntas de Y/N.
+export const COMANDO_WINGET = 'winget install --id 9PDVG213Q755 --source msstore --accept-package-agreements --accept-source-agreements'
 
 export function abrirLojaWindows() {
   // Aba nova, e não a página inteira: quem clica pode estar lendo a landing no
@@ -34,17 +38,13 @@ export function aparelhoDoVisitante() {
   return 'outro'
 }
 
-// O caminho de fora da Store, que continua existindo: PC de empresa com a
-// Store bloqueada, Windows sem a Store instalada, ou quem simplesmente prefere
-// um arquivo. Não é mais o caminho principal, e por isso na tela ele aparece
-// como link, não como botão.
-export function baixarInstaladorWindows() {
+export function baixarInstaladorWindows(origem) {
   // Um <a download> em vez de window.location: trocar a URL da página inteira
   // por um .exe faz alguns navegadores mostrarem uma tela em branco no meio do
   // caminho, e a landing sumia enquanto o arquivo baixava.
   const link = document.createElement('a')
-  link.href = INSTALLER_URL
-  link.download = 'Dito-setup.exe'
+  link.href = `${INSTALADOR_STORE_URL}?cid=${origem}`
+  link.download = ''
   document.body.appendChild(link)
   link.click()
   link.remove()

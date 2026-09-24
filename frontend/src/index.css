@@ -1807,9 +1807,10 @@ input::placeholder { color: var(--text-muted); }
 
 .instalar-modal { max-width: 420px; }
 .instalar-ok {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 13px; color: var(--accent); margin-bottom: 12px;
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: 13px; line-height: 1.5; color: var(--accent); margin: 12px 0 0;
 }
+.instalar-ok svg { flex: none; margin-top: 2px; }
 .instalar-lead { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin-bottom: 14px; }
 .instalar-lead strong { color: var(--text); }
 .instalar-passos {
@@ -1819,15 +1820,29 @@ input::placeholder { color: var(--text-muted); }
 }
 .instalar-passos strong { color: var(--text); font-weight: 600; }
 .instalar-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
-/* A saída de quem não consegue usar a Microsoft Store. Peso de link, e não de
-   botão: é o caminho de exceção, e o de cima é o que se quer que a pessoa siga. */
-.instalar-refazer {
-  display: block; width: 100%; margin-top: 12px; padding: 4px 0;
-  background: none; border: none; cursor: pointer;
-  font-family: inherit; font-size: 13px; color: var(--text-muted);
-  text-align: center; text-decoration: underline;
+/* A saída de quem usa conta de trabalho ou de escola. Fechada e com peso de
+   link: é o caminho de exceção, e o botão de cima é o que se quer que a pessoa
+   siga. */
+.instalar-trabalho { margin-top: 14px; font-size: 13px; color: var(--text-muted); }
+.instalar-trabalho summary {
+  cursor: pointer; list-style: none; text-decoration: underline;
 }
-.instalar-refazer:hover { color: var(--text); }
+.instalar-trabalho summary::-webkit-details-marker { display: none; }
+.instalar-trabalho summary:hover { color: var(--text); }
+.instalar-trabalho p { margin: 10px 0 0; font-size: 13px; line-height: 1.55; }
+.instalar-comando {
+  display: block; margin-top: 10px; padding: 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--text); overflow-wrap: anywhere; user-select: all;
+}
+.instalar-copiar {
+  margin-top: 8px; padding: 6px 12px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 13px; color: var(--text);
+}
+.instalar-copiar:hover { background: var(--surface-2); }
+.instalar-modal .instalar-trabalho summary { text-align: center; }
 /* A saída secundária: quem só quer experimentar agora não precisa instalar
    nada. Fica com peso de link, não de botão, para não competir com o de cima. */
 .instalar-web {
