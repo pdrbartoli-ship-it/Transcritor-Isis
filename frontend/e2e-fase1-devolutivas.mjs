@@ -44,94 +44,109 @@ const navegador = await chromium.launch()
   await ctx.close()
 }
 
-// ── Item 2: no Windows, o botão baixa o instalador da Microsoft ──────────
-// Até 24/09/2026 o botão abria a página da Store numa aba nova e o .exe era o
-// plano B. O .exe foi barrado pelo Defender como vírus e saiu da tela. O que
-// precisa valer agora: um clique baixa o instalador da Microsoft sem tirar a
-// pessoa da página, e quem usa conta de trabalho ou de escola (onde esse
-// instalador não funciona) encontra o comando do winget.
+// ── Item 2: no Windows, um clique baixa e abre o guia de instalação ──────
+// Desde 25/09/2026 o "Instalar grátis" no Windows não abre mais modal: o clique
+// já baixa o instalador da Microsoft e cobre a landing com o guia de
+// InstalarWindows.jsx. Quem vê o instalador da Microsoft falhar (computador de
+// empresa ou de escola) baixa ali mesmo o instalador do Dito, e o guia mostra
+// onde clicar nos avisos do Windows.
 {
-  const COMANDO = 'winget install --id 9PDVG213Q755 --source msstore --accept-package-agreements --accept-source-agreements'
+  const INSTALADOR_DITO = 'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
   const ctx = await navegador.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+    viewport: { width: 1366, height: 768 },
     acceptDownloads: true,
-    permissions: ['clipboard-read', 'clipboard-write'],
   })
-  // O instalador de verdade não interessa: só que o clique peça o arquivo
+  // Os instaladores de verdade não interessam: só que o clique peça o arquivo
   // certo, e que a resposta seja tratada como download.
-  await ctx.route('https://get.microsoft.com/**', rota => rota.fulfill({
+  const baixar = nome => rota => rota.fulfill({
     status: 200,
-    headers: {
-      'content-type': 'application/octet-stream',
-      'content-disposition': 'attachment; filename="Dito. Installer.exe"',
-    },
+    headers: { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename="${nome}"` },
     body: 'MZ',
-  }))
+  })
+  await ctx.route('https://get.microsoft.com/**', baixar('Dito. Installer.exe'))
+  await ctx.route(`${INSTALADOR_DITO}*`, baixar('Dito-setup.exe'))
   const page = await ctx.newPage()
   await page.goto(BASE, { waitUntil: 'networkidle' })
 
-  // Pela seção "No Windows, grave os dois lados", sem abrir o modal.
+  // "Instalar grátis" do topo: baixa na hora, sem modal no meio.
+  const abasAntes = ctx.pages().length
+  const [baixou] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: /Instalar gr[áa]tis/i }).first().click(),
+  ])
+  checar(
+    'Instalar grátis baixa o instalador da Microsoft no primeiro clique',
+    baixou.url() === 'https://get.microsoft.com/installer/download/9PDVG213Q755?cid=landing',
+    baixou.url(),
+  )
+  checar('O arquivo chega com o nome do instalador', baixou.suggestedFilename() === 'Dito. Installer.exe', baixou.suggestedFilename())
+  checar('Nenhum modal no caminho', (await page.locator('.instalar-modal').count()) === 0)
+
+  const guia = page.getByRole('dialog', { name: /Abra o arquivo para instalar o Dito/i })
+  await guia.waitFor()
+  const caixa = await guia.boundingBox()
+  checar('O guia cobre a tela inteira', caixa.width === 1366 && caixa.height === 768, JSON.stringify(caixa))
+  checar('A pessoa não sai da página nem ganha aba nova', page.url().startsWith(BASE) && ctx.pages().length === abasAntes, page.url())
+  checar('O título ganha o foco', await page.evaluate(() => document.activeElement?.id === 'iw-titulo'))
+  checar('A landing por trás fica inerte', await page.evaluate(() => document.getElementById('root').inert === true))
+
+  const passosLoja = await guia.locator('.iw-passos li').allTextContents()
+  checar('Três passos, a começar pelo arquivo baixado', passosLoja.length === 3 && /Dito\. Installer\.exe/.test(passosLoja[0]), `${passosLoja.length} passos`)
+  const textoLoja = await guia.textContent()
+  checar('O guia não fala de conta de trabalho ou de escola', !/conta de trabalho|conta corporativa|conta de escola|qualifica/i.test(textoLoja))
+  checar('O plano B aparece logo de cara', /Deu erro ou abriu a Microsoft Store\?/.test(textoLoja))
+
+  // O palco anda sozinho: a legenda narra o clique da vez e o cursor vai até o
+  // "Abrir arquivo".
+  await page.waitForTimeout(1900)
+  checar('A legenda narra a cena', /Clique em Abrir arquivo/.test(await guia.locator('.iw-legenda').textContent()))
+  const cursor = await guia.locator('.iw-cursor').boundingBox()
+  const alvo = await guia.locator('[data-alvo="abrir"]').boundingBox()
+  checar(
+    'O cursor clica em cima do Abrir arquivo',
+    cursor.x >= alvo.x - 4 && cursor.x <= alvo.x + alvo.width + 4 && cursor.y >= alvo.y - 4 && cursor.y <= alvo.y + alvo.height + 4,
+    `cursor ${Math.round(cursor.x)},${Math.round(cursor.y)} alvo ${Math.round(alvo.x)},${Math.round(alvo.y)}`,
+  )
+  await page.screenshot({ path: `${OUT}fase1-instalar-loja.png` })
+
+  // Plano B: o instalador do Dito, com o guia dos avisos do Windows.
+  const [baixouDito] = await Promise.all([
+    page.waitForEvent('download'),
+    guia.getByRole('button', { name: /Baixar o instalador do Dito/i }).click(),
+  ])
+  checar('O plano B baixa o instalador do Dito', baixouDito.url() === INSTALADOR_DITO, baixouDito.url())
+  const guiaDito = page.getByRole('dialog', { name: /O Windows vai pedir sua confirmação/i })
+  await guiaDito.waitFor()
+  const textoDito = await guiaDito.textContent()
+  checar('Mostra onde clicar no aviso do navegador', /Manter assim mesmo/.test(textoDito))
+  checar('Mostra onde clicar no aviso do Windows', /Mais informações/.test(textoDito) && /Executar assim mesmo/.test(textoDito))
+  checar('Diz que o aviso não é vírus', /não quer dizer que o Windows encontrou vírus/.test(textoDito))
+  checar(
+    'Aponta a Microsoft Store como prova',
+    /apps\.microsoft\.com\/detail\/9pdvg213q755/i.test(await guiaDito.getByRole('link', { name: /Ver na Microsoft Store/i }).getAttribute('href')),
+  )
+  checar('Todo texto do guia sem travessão', !/[—–]/.test(textoLoja + textoDito))
+
+  // Escolher um passo mostra aquele passo no palco.
+  await guiaDito.locator('.iw-passos li').nth(1).locator('button').click()
+  await page.waitForTimeout(1800)
+  checar('Escolher o passo 2 mostra a tela azul do Windows', (await guiaDito.locator('.iw-smart').count()) === 1)
+  await page.screenshot({ path: `${OUT}fase1-instalar-dito.png` })
+
+  await page.keyboard.press('Escape')
+  checar('Esc fecha o guia e devolve a landing', (await page.locator('.iw').count()) === 0 && await page.evaluate(() => !document.getElementById('root').inert))
+
+  // Pela seção "No Windows, grave os dois lados": o mesmo caminho.
   const botaoSecao = page.locator('.lp-split-btn')
   await botaoSecao.scrollIntoViewIfNeeded()
-  checar('Seção do Windows tem o botão de baixar', /Baixar para Windows/i.test(await botaoSecao.textContent()))
+  const [baixouSecao] = await Promise.all([page.waitForEvent('download'), botaoSecao.click()])
   checar(
-    'Seção do Windows não leva mais à página da Store nem ao .exe',
-    (await page.locator('a[href*="apps.microsoft.com"], a[href$=".exe"]').count()) === 0,
+    'O botão da seção também baixa e abre o guia',
+    baixouSecao.url().startsWith('https://get.microsoft.com/installer/download/9PDVG213Q755') && (await page.locator('.iw').count()) === 1,
   )
-  const abasAntes = ctx.pages().length
-  const [baixouSecao] = await Promise.all([
-    page.waitForEvent('download'),
-    botaoSecao.click(),
-  ])
-  checar(
-    'Um clique na seção baixa o instalador da Microsoft',
-    baixouSecao.url() === 'https://get.microsoft.com/installer/download/9PDVG213Q755?cid=landing',
-    baixouSecao.url(),
-  )
-  checar('O arquivo chega com o nome do instalador', baixouSecao.suggestedFilename() === 'Dito. Installer.exe', baixouSecao.suggestedFilename())
-  checar('A pessoa não sai da página nem ganha aba nova', page.url().startsWith(BASE) && ctx.pages().length === abasAntes, page.url())
-  const avisoSecao = await page.locator('.lp-split .instalar-ok').textContent()
-  checar('A seção diz o que fazer com o arquivo', /download começou/i.test(avisoSecao) && /abre sozinho/i.test(avisoSecao), avisoSecao)
-  await page.screenshot({ path: `${OUT}fase1-instalar-secao.png` })
-
-  // Pelo modal de "Instalar grátis".
-  await page.getByRole('button', { name: /Instalar gr[áa]tis/i }).first().click()
-  await page.waitForSelector('.instalar-modal')
-  await page.waitForTimeout(600)
-
-  const botaoPrimario = await page.$$eval('.instalar-modal .btn-primary', bs => bs.map(b => b.textContent.trim()))
-  checar('Botão principal do modal é baixar para Windows', botaoPrimario.some(t => /Baixar para Windows/i.test(t)), `primários: ${JSON.stringify(botaoPrimario)}`)
-
-  const passos = await page.$$eval('.instalar-passos li', ls => ls.map(l => l.textContent.trim()))
-  checar('Passos falam do arquivo baixado', passos.some(p => /arquivo baixado/i.test(p)), `${passos.length} passos`)
-  checar('Passos não assustam com o aviso do Windows', !passos.some(p => /O Windows protegeu seu PC/i.test(p)))
-
-  const htmlModal = await page.$eval('.instalar-modal', el => el.innerHTML)
-  checar('O modal não oferece mais o .exe do GitHub', !/github\.com|Baixar o instalador/i.test(htmlModal))
-
-  const [baixouModal] = await Promise.all([
-    page.waitForEvent('download'),
-    page.locator('.instalar-modal .btn-primary').click(),
-  ])
-  checar(
-    'Um clique no modal baixa o instalador da Microsoft',
-    baixouModal.url() === 'https://get.microsoft.com/installer/download/9PDVG213Q755?cid=modal',
-    baixouModal.url(),
-  )
-  const avisoModal = await page.locator('.instalar-modal .instalar-ok').textContent()
-  checar('O modal diz o que fazer com o arquivo', /download começou/i.test(avisoModal), avisoModal)
-
-  // A saída de quem usa conta de trabalho ou de escola.
-  const detalhes = page.locator('.instalar-modal .instalar-trabalho')
-  checar('A saída de conta de trabalho começa fechada', !(await detalhes.evaluate(el => el.open)))
-  await detalhes.locator('summary').click()
-  checar('Ao abrir, mostra o comando do winget com o id do Dito', (await detalhes.locator('.instalar-comando').textContent()) === COMANDO)
-  await detalhes.getByRole('button', { name: /Copiar comando/i }).click()
-  const copiado = await page.evaluate(() => navigator.clipboard.readText())
-  checar('Copiar comando põe o comando na área de transferência', copiado === COMANDO, copiado)
-  checar('O botão confirma que copiou', /Copiado/i.test(await detalhes.locator('.instalar-copiar').textContent()))
-
-  await page.screenshot({ path: `${OUT}fase1-instalar.png` })
+  await page.getByRole('button', { name: 'Fechar' }).click()
+  checar('Fechar devolve a landing', (await page.locator('.iw').count()) === 0)
   await ctx.close()
 
   // Fora do Windows o instalador seria um .exe inútil: a seção continua só
@@ -146,8 +161,10 @@ const navegador = await chromium.launch()
     'Fora do Windows a seção só leva à página da Store',
     (await linkStore.count()) === 1 &&
       /apps\.microsoft\.com\/detail\/9pdvg213q755/i.test(await linkStore.getAttribute('href')) &&
-      (await pagCelular.locator('.instalar-trabalho, button.lp-split-btn').count()) === 0,
+      (await pagCelular.locator('button.lp-split-btn').count()) === 0,
   )
+  await pagCelular.getByRole('button', { name: /Instalar gr[áa]tis/i }).first().click()
+  checar('Fora do Windows, Instalar grátis continua abrindo o modal', (await pagCelular.locator('.instalar-modal').count()) === 1)
   await celular.close()
 }
 

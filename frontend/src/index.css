@@ -1806,11 +1806,6 @@ input::placeholder { color: var(--text-muted); }
 /* ---------- Caixa de instalar (landing) ---------- */
 
 .instalar-modal { max-width: 420px; }
-.instalar-ok {
-  display: flex; align-items: flex-start; gap: 7px;
-  font-size: 13px; line-height: 1.5; color: var(--accent); margin: 12px 0 0;
-}
-.instalar-ok svg { flex: none; margin-top: 2px; }
 .instalar-lead { font-size: 14px; line-height: 1.6; color: var(--text-muted); margin-bottom: 14px; }
 .instalar-lead strong { color: var(--text); }
 .instalar-passos {
@@ -1820,29 +1815,6 @@ input::placeholder { color: var(--text-muted); }
 }
 .instalar-passos strong { color: var(--text); font-weight: 600; }
 .instalar-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
-/* A saída de quem usa conta de trabalho ou de escola. Fechada e com peso de
-   link: é o caminho de exceção, e o botão de cima é o que se quer que a pessoa
-   siga. */
-.instalar-trabalho { margin-top: 14px; font-size: 13px; color: var(--text-muted); }
-.instalar-trabalho summary {
-  cursor: pointer; list-style: none; text-decoration: underline;
-}
-.instalar-trabalho summary::-webkit-details-marker { display: none; }
-.instalar-trabalho summary:hover { color: var(--text); }
-.instalar-trabalho p { margin: 10px 0 0; font-size: 13px; line-height: 1.55; }
-.instalar-comando {
-  display: block; margin-top: 10px; padding: 10px 12px;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
-  color: var(--text); overflow-wrap: anywhere; user-select: all;
-}
-.instalar-copiar {
-  margin-top: 8px; padding: 6px 12px; cursor: pointer;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  font-family: inherit; font-size: 13px; color: var(--text);
-}
-.instalar-copiar:hover { background: var(--surface-2); }
-.instalar-modal .instalar-trabalho summary { text-align: center; }
 /* A saída secundária: quem só quer experimentar agora não precisa instalar
    nada. Fica com peso de link, não de botão, para não competir com o de cima. */
 .instalar-web {
@@ -1852,6 +1824,387 @@ input::placeholder { color: var(--text-muted); }
   font-family: inherit; font-size: 13px; color: var(--text-muted);
 }
 .instalar-web:hover { color: var(--text); }
+
+/* ---------- Guia de instalação no Windows (InstalarWindows.jsx) ---------- */
+/* Cobre a landing inteira: o download já começou, e o que se faz com o arquivo
+   é a única coisa que importa naquele momento. Texto e passos à esquerda, a
+   encenação à direita; numa janela estreita, a encenação sobe para logo
+   depois do título. */
+.iw {
+  position: fixed; inset: 0; z-index: 200;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); color: var(--text);
+  animation: iw-aparece 0.22s ease both;
+}
+@keyframes iw-aparece { from { opacity: 0; } }
+
+.iw-topo {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  max-width: 1180px; margin: 0 auto; padding: 18px 32px;
+}
+.iw-topo .brand { cursor: default; }
+.iw-fechar {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; color: var(--text-muted);
+  padding: 7px 12px; border-radius: var(--radius-sm);
+}
+.iw-fechar:hover { background: var(--hover); color: var(--text); }
+
+.iw-corpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  grid-template-areas: "cabeca palco" "passos palco" "extra palco";
+  grid-template-rows: auto auto 1fr;
+  column-gap: 64px;
+  max-width: 1180px; margin: 0 auto; padding: 8px 32px 64px;
+}
+.iw-cabeca { grid-area: cabeca; padding-top: 16px; }
+.iw-passos { grid-area: passos; }
+.iw-extra { grid-area: extra; }
+.iw-cabeca, .iw-passos, .iw-extra { max-width: 520px; }
+
+.iw-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 500; color: var(--accent);
+  background: var(--accent-soft); padding: 5px 12px 5px 10px; border-radius: 999px;
+}
+.iw-cabeca h1 {
+  font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em;
+  font-size: clamp(30px, 3.3vw, 42px); line-height: 1.1;
+  margin: 18px 0 26px; text-wrap: balance; outline: none;
+}
+
+/* Os passos são botões: escolher um mostra aquele passo no palco e para a
+   troca automática. O da vez sobe como um cartão, e a linha embaixo dele anda
+   no tempo da cena, como a barra de um áudio tocando. */
+.iw-passos { list-style: none; display: grid; gap: 4px; }
+.iw-passos button {
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; align-items: start;
+  width: 100%; padding: 12px 14px; text-align: left; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+  font-family: inherit; color: inherit;
+  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+.iw-passos button:hover { background: var(--hover); }
+.iw-passos li.on button { background: var(--surface); border-color: var(--border); box-shadow: var(--shadow); }
+.iw-passos.auto li.on button::after {
+  content: ''; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: var(--accent); transform-origin: left;
+  animation: iw-tempo var(--dur) linear both;
+}
+@keyframes iw-tempo { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.iw-num {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+  background: var(--surface-2); color: var(--text-muted);
+  transition: background 0.3s, color 0.3s;
+}
+.iw-passos li.on .iw-num { background: var(--accent); color: var(--accent-text); }
+.iw-passo-texto { padding-top: 4px; }
+.iw-passo-texto strong { display: block; font-size: 16px; font-weight: 600; line-height: 1.35; }
+.iw-passo-texto span { display: block; font-size: 14px; line-height: 1.5; color: var(--text-muted); margin-top: 3px; }
+
+.iw-denovo { margin: 18px 0 0 14px; font-size: 14px; color: var(--text-muted); }
+.iw-denovo button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 500; color: var(--accent);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+
+.iw-cartao {
+  margin-top: 24px; padding: 20px 22px;
+  background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.iw-cartao h2 { font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; }
+.iw-cartao > p { font-size: 14px; line-height: 1.55; color: var(--text-muted); margin-top: 6px; }
+.iw-cartao-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 16px; padding: 10px 18px; border-radius: 999px; background: var(--surface);
+}
+.iw-provas { list-style: none; display: grid; gap: 10px; margin-top: 14px; }
+.iw-provas li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; font-size: 14px; line-height: 1.5; }
+.iw-provas svg { color: var(--accent); margin-top: 3px; }
+.iw-provas a { color: var(--accent); font-weight: 500; text-underline-offset: 3px; }
+
+.iw-navegador {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 20px 0 0 14px; padding: 0; cursor: pointer;
+  background: none; border: none; font-family: inherit; font-size: 14px; color: var(--text-muted);
+}
+.iw-navegador:hover { color: var(--text); }
+
+/* ── O palco ── */
+/* Tudo lá dentro é medido em em, e o em vale 1/34 da largura do palco (16px
+   quando ele tem 544px). É o que faz o desenho inteiro encolher junto numa
+   janela estreita, sem nenhum media query. O mundo tem 32,5 x 28em: a janela
+   do navegador em cima e a legenda embaixo. */
+.iw-palco {
+  grid-area: palco; align-self: start;
+  position: sticky; top: 16px;
+  aspect-ratio: 34 / 29.5; overflow: hidden; border-radius: 24px;
+  container-type: inline-size;
+  background:
+    radial-gradient(90% 70% at 12% 0%, rgba(255, 255, 255, 0.12), transparent 62%),
+    linear-gradient(160deg, #23705f 0%, #1a5c4e 46%, #123f35 100%);
+  box-shadow: 0 30px 60px -34px rgba(18, 63, 53, 0.6);
+}
+.iw-mundo {
+  position: absolute; left: 50%; top: 50%;
+  font-size: calc(100cqw / 34); line-height: 1.3;
+  width: 32.5em; height: 28em; margin: -14em 0 0 -16.25em;
+  color: #1f2321; user-select: none;
+}
+.iw-legenda { position: absolute; left: 0; right: 0; top: 24.4em; text-align: center; }
+.iw-legenda span {
+  display: inline-block; padding: 0.4em 0.95em; border-radius: 0.45em;
+  font-size: 0.86em; font-weight: 500; line-height: 1.35; color: #fff;
+  background: rgba(6, 26, 21, 0.5);
+  animation: iw-legenda 0.3s ease-out both;
+}
+.iw-legenda span:empty { display: none; }
+@keyframes iw-legenda { from { opacity: 0; transform: translateY(0.3em); } }
+.iw-mundo p { margin: 0; }
+
+.iw-jan {
+  position: absolute; background: #fff; border-radius: 0.5em;
+  box-shadow: 0 0 0 0.0625em rgba(0, 0, 0, 0.08), 0 1.2em 2.6em -0.9em rgba(0, 0, 0, 0.55);
+}
+.iw-entra { animation: iw-entra 0.26s ease-out both; }
+@keyframes iw-entra { from { opacity: 0; transform: translateY(0.5em) scale(0.985); } }
+
+/* O navegador da pessoa, com a própria landing aberta. */
+.iw-nav { left: 1.5em; top: 1.5em; width: 29.5em; height: 22em; transition: filter 0.3s; }
+.iw-nav.apagado { filter: brightness(0.9) saturate(0.7); }
+.iw-nav-barra {
+  display: flex; align-items: center; gap: 0.75em; height: 2.4em; padding: 0 0.8em;
+  background: #f2f4f3; border-bottom: 0.0625em solid #e2e6e4; border-radius: 0.5em 0.5em 0 0;
+}
+.iw-nav-setas { display: flex; gap: 0.45em; }
+.iw-nav-setas i { width: 0.6em; height: 0.6em; border-radius: 50%; background: #cdd3d0; }
+.iw-nav-end {
+  flex: 1; display: flex; align-items: center; height: 1.5em; padding: 0 0.8em;
+  background: #fff; border: 0.0625em solid #e0e4e2; border-radius: 1em;
+}
+.iw-nav-end span { font-size: 0.64em; color: #5b6763; }
+.iw-nav-baixar {
+  display: grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 0.4em;
+  color: #1a5c4e; background: rgba(26, 92, 78, 0.13);
+}
+.iw-nav-pagina {
+  position: absolute; top: 2.4em; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.55em;
+  padding: 2.3em 2.2em;
+}
+.iw-pg-h {
+  font-family: var(--font-serif); font-weight: 600; font-size: 1.75em; line-height: 1.05;
+  letter-spacing: -0.02em; color: #141a18;
+}
+.iw-pg-h.em { font-style: italic; color: #1a5c4e; margin-top: -0.3em; }
+.iw-pg-linha { height: 0.5em; border-radius: 1em; background: #e7ecea; }
+.iw-pg-linha:first-of-type { margin-top: 0.7em; }
+.iw-pg-botao { width: 7em; height: 1.9em; border-radius: 1em; background: #1a5c4e; margin-top: 0.7em; }
+
+/* A lista de downloads que abre embaixo do ícone do navegador. */
+.iw-baix {
+  position: absolute; top: 2.2em; right: 0.55em; width: 15.5em; padding: 0.75em 0 0.55em;
+  background: #fff; border-radius: 0.5em;
+  box-shadow: 0 0 0 0.0625em rgba(0, 0, 0, 0.08), 0 0.9em 2em -0.6em rgba(0, 0, 0, 0.42);
+}
+.iw-baix-titulo { font-size: 0.76em; font-weight: 600; padding: 0 1.2em 0.5em; }
+.iw-baix-item {
+  display: flex; align-items: flex-start; gap: 0.65em;
+  margin: 0 0.3em; padding: 0.55em 0.6em; border-radius: 0.4em; transition: background 0.25s;
+}
+.iw-baix-item.ativo { background: #eef3f1; }
+.iw-baix-nome { font-size: 0.72em; font-weight: 500; line-height: 1.35; }
+.iw-baix-link {
+  display: inline-block; margin: 0.15em 0 0 -0.25em; padding: 0.05em 0.25em;
+  font-size: 0.68em; color: #0f6cbd; text-decoration: underline; border-radius: 0.3em;
+}
+.iw-baix-aviso { font-size: 0.62em; line-height: 1.45; color: #474d4a; }
+.iw-baix-aviso b { font-weight: 600; color: #1f2321; }
+.iw-baix-mais {
+  flex: none; display: grid; place-items: center; width: 1.6em; height: 1.6em;
+  margin-left: auto; border-radius: 0.35em; font-size: 0.9em; color: #3a3f3d;
+}
+.iw-baix-mais.on { background: #e6e9e8; }
+.iw-menu {
+  position: absolute; top: 4.4em; right: 0.9em; width: 10.5em; padding: 0.3em;
+  background: #fff; border-radius: 0.45em;
+  box-shadow: 0 0 0 0.0625em rgba(0, 0, 0, 0.08), 0 0.8em 1.6em -0.5em rgba(0, 0, 0, 0.42);
+}
+.iw-menu span { display: block; padding: 0.6em 0.9em; border-radius: 0.45em; font-size: 0.66em; }
+
+/* A confirmação do Edge depois do Manter. O botão azul é o Excluir, que é
+   justamente o que a pessoa não deve apertar. */
+.iw-confirma { left: 4.5em; top: 6.4em; width: 20.5em; padding: 1.1em 1.2em 1em; }
+.iw-confirma-titulo { font-size: 0.8em; font-weight: 600; line-height: 1.3; }
+.iw-confirma-texto { font-size: 0.6em; line-height: 1.5; color: #4a4f4d; margin-top: 0.7em; }
+.iw-confirma-link {
+  display: block; width: fit-content; margin: 0.8em 0 0 -0.3em; padding: 0.15em 0.3em;
+  font-size: 0.62em; color: #0f6cbd; border-radius: 0.3em;
+}
+.iw-confirma-link.sub { margin-top: 0.4em; text-decoration: underline; }
+.iw-confirma-botoes { display: flex; justify-content: flex-end; gap: 0.5em; margin-top: 1em; }
+.iw-confirma-botoes span {
+  font-size: 0.62em; padding: 0.5em 1.3em; border-radius: 0.35em; border: 0.08em solid #d0d4d2;
+}
+.iw-confirma-botoes .primario { background: #0f6cbd; border-color: #0f6cbd; color: #fff; }
+
+/* O instalador da Microsoft, com a barra que enche no tempo da cena. */
+.iw-loja { left: 6.75em; top: 5.2em; width: 19em; overflow: hidden; }
+.iw-loja-barra { display: flex; align-items: center; justify-content: space-between; height: 2.2em; padding: 0 0.9em; }
+.iw-loja-barra span { font-size: 0.64em; color: #3a3f3d; }
+.iw-loja-corpo { display: flex; align-items: center; gap: 0.8em; padding: 0.6em 1.2em 0.8em; }
+.iw-loja-nome { font-size: 1.05em; font-weight: 600; }
+.iw-loja-progresso { padding: 0.2em 1.2em 1.3em; }
+.iw-loja-progresso p { font-size: 0.66em; font-weight: 600; margin-bottom: 0.6em; }
+.iw-barra { display: block; height: 0.28em; overflow: hidden; border-radius: 1em; background: #e4e7e6; }
+.iw-barra i {
+  display: block; width: 100%; height: 100%; background: #0f6cbd; transform-origin: left;
+  animation: iw-enche var(--dur) linear both;
+}
+@keyframes iw-enche { 0%, 8% { transform: scaleX(0.04); } 86%, 100% { transform: scaleX(1); } }
+.iw-loja-rodape {
+  display: flex; justify-content: flex-end; padding: 0.7em 1.2em;
+  background: #f2f4f3; border-top: 0.0625em solid #e4e7e6;
+}
+.iw-botao-win {
+  font-size: 0.64em; padding: 0.45em 1.5em; border-radius: 0.35em;
+  background: #fff; border: 0.08em solid #d0d4d2;
+}
+
+/* A tela azul do SmartScreen. */
+.iw-smart {
+  left: 3.25em; top: 4em; width: 26em; padding: 1.6em 1.7em 1.3em;
+  background: #0b5fbf; color: #fff; border-radius: 0.45em;
+}
+.iw-smart-titulo { font-size: 1.18em; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; white-space: nowrap; }
+.iw-smart-texto { font-size: 0.64em; line-height: 1.55; margin-top: 2.2em; }
+.iw-smart-link {
+  display: inline-block; margin: 0.9em 0 0 -0.25em; padding: 0.1em 0.25em;
+  font-size: 0.66em; text-decoration: underline; border-radius: 0.3em;
+}
+.iw-smart-info { font-size: 0.64em; line-height: 1.7; margin-top: 0.9em; }
+.iw-smart-botoes { display: flex; justify-content: flex-end; gap: 0.6em; margin-top: 2em; }
+.iw-smart-botao {
+  font-size: 0.64em; padding: 0.55em 1.2em; border: 0.1em solid rgba(255, 255, 255, 0.9);
+  transition: background 0.2s;
+}
+
+/* O instalador do Dito (NSIS, em português). */
+.iw-nsis {
+  left: 5.25em; top: 3.8em; width: 22em; height: 15.5em; overflow: hidden;
+  display: grid; grid-template-rows: 1.9em minmax(0, 1fr) auto;
+}
+.iw-nsis-barra { display: flex; align-items: center; gap: 0.5em; padding: 0 0.7em; border-bottom: 0.0625em solid #e4e7e6; }
+.iw-nsis-barra span:last-child { font-size: 0.6em; }
+.iw-nsis-corpo { display: grid; grid-template-columns: 6.2em minmax(0, 1fr); }
+.iw-nsis-lado { background: linear-gradient(180deg, #23705f, #123f35); }
+.iw-nsis-texto { padding: 1.2em 1.1em; }
+.iw-nsis-texto p { font-size: 0.84em; font-weight: 600; line-height: 1.25; margin-bottom: 0.4em; }
+.iw-nsis-texto span { display: block; height: 0.4em; margin-top: 0.55em; border-radius: 1em; background: #e6e9e8; }
+.iw-nsis-rodape {
+  display: flex; justify-content: flex-end; gap: 0.5em; padding: 0.7em 0.9em;
+  background: #f2f4f3; border-top: 0.0625em solid #e4e7e6;
+}
+.iw-nsis-rodape span {
+  font-size: 0.6em; padding: 0.5em 1.3em; border-radius: 0.35em;
+  background: #fff; border: 0.08em solid #d0d4d2; transition: background 0.2s;
+}
+.iw-nsis-rodape .principal { border-color: #0f6cbd; }
+
+/* O Dito aberto na tela de entrar, com o e-mail sendo digitado. */
+.iw-app { left: 6em; top: 2.3em; width: 20.5em; height: 20.2em; overflow: hidden; background: #f6f8f7; }
+.iw-app-barra {
+  display: flex; align-items: center; gap: 0.5em; height: 1.9em; padding-left: 0.7em;
+  background: #fff; border-bottom: 0.0625em solid #e2e6e4;
+}
+.iw-app-nome { font-size: 0.62em; }
+.iw-app-ctrl { display: flex; align-self: stretch; margin-left: auto; }
+.iw-app-ctrl i { position: relative; width: 2.1em; display: grid; place-items: center; font-style: normal; }
+.iw-app-ctrl .min::after { content: ''; width: 0.6em; height: 0.07em; background: #444; }
+.iw-app-ctrl .max::after { content: ''; width: 0.5em; height: 0.5em; border: 0.07em solid #444; }
+.iw-app-ctrl .fechar { font-size: 0.6em; color: #444; }
+.iw-app-corpo { display: flex; flex-direction: column; padding: 1.15em 3.2em 0; }
+.iw-app-marca { font-family: var(--font-serif); font-size: 1.45em; font-weight: 600; text-align: center; letter-spacing: -0.01em; }
+.iw-app-marca span { color: #1a5c4e; }
+.iw-app-sub { font-size: 0.56em; color: #5b6763; text-align: center; margin-top: 0.15em; }
+.iw-app-abas { display: flex; gap: 0.2em; margin: 0.9em 0 0.5em; padding: 0.2em; background: #e7ecea; border-radius: 0.5em; }
+.iw-app-abas span { flex: 1; padding: 0.35em; text-align: center; font-size: 0.58em; color: #5b6763; border-radius: 0.6em; }
+.iw-app-abas .on { background: #fff; color: #141a18; font-weight: 600; }
+.iw-app-rotulo { font-size: 0.54em; font-weight: 600; margin: 0.9em 0 0.5em; }
+.iw-app-campo {
+  display: flex; align-items: center; height: 1.75em; padding: 0 0.6em;
+  background: #fff; border: 0.0625em solid #d9e0dd; border-radius: 0.4em;
+}
+.iw-app-campo span { font-size: 0.62em; white-space: nowrap; }
+/* Tempo próprio, e não o da cena: a janela entra em momentos diferentes em
+   cada cena, e o e-mail tem de terminar de ser digitado em todas. */
+.iw-digita { display: inline-block; overflow: hidden; vertical-align: bottom; animation: iw-digita 1.3s steps(14, end) 0.6s both; }
+@keyframes iw-digita { from { max-width: 0; } to { max-width: 8em; } }
+.iw-caret { width: 0.07em; height: 0.85em; margin-left: 0.06em; background: #1a5c4e; animation: iw-pisca 1s steps(1) infinite; }
+@keyframes iw-pisca { 50% { opacity: 0; } }
+.iw-senha { letter-spacing: 0.1em; animation: iw-aparece 0.2s 2.1s both; }
+.iw-app-botao {
+  display: block; margin-top: 1em; padding: 0.55em; text-align: center;
+  font-size: 0.64em; font-weight: 600; color: #fff; background: #1a5c4e; border-radius: 0.6em;
+  transition: background 0.2s;
+}
+
+.iw-icone-dito {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  width: 1.75em; height: 1.75em; border-radius: 0.36em;
+  font-family: var(--font-serif); font-size: 1.5em; font-weight: 600; line-height: 1;
+  color: #f7f5ef; background: #1a5c4e;
+}
+.iw-icone-dito i { font-style: normal; }
+.iw-icone-dito.mini { font-size: 0.55em; border-radius: 0.3em; }
+.iw-icone-exe {
+  flex: none; position: relative; width: 1.6em; height: 1.6em; border-radius: 0.35em;
+  background: linear-gradient(145deg, #e9eef8, #cdd9ef);
+}
+.iw-icone-exe::after {
+  content: ''; position: absolute; left: 0.35em; right: 0.35em; top: 0.45em; height: 0.7em;
+  border-radius: 0.12em; background: #fff; border-top: 0.18em solid #0f6cbd;
+}
+.iw-icone-alerta { flex: none; width: 1.5em; height: 1.5em; }
+
+/* O cursor e o clique. O cursor anda pelo transform (o palco o manda para o
+   centro de cada alvo) e afunda quando clica; o anel nasce no ponto do clique. */
+.iw-cursor {
+  position: absolute; left: 0; top: 0; z-index: 5; width: 1.15em;
+  margin: -0.1em 0 0 -0.1em; opacity: 0; pointer-events: none;
+  filter: drop-shadow(0 0.15em 0.2em rgba(0, 0, 0, 0.35));
+  transition: transform 1s cubic-bezier(0.45, 0.05, 0.25, 1), opacity 0.25s;
+}
+.iw-cursor.on { opacity: 1; }
+.iw-cursor svg { display: block; width: 100%; height: auto; transform-origin: 10% 8%; transition: transform 0.12s; }
+.iw-cursor svg.apertado { transform: scale(0.82); }
+.iw-clique {
+  position: absolute; z-index: 4; width: 2.6em; height: 2.6em; margin: -1.3em 0 0 -1.3em;
+  border-radius: 50%; border: 0.16em solid #8fd6bf; pointer-events: none;
+  animation: iw-clique 0.6s ease-out both;
+}
+@keyframes iw-clique { from { transform: scale(0.25); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
+.iw-mundo .tocado { background: rgba(26, 92, 78, 0.16); }
+.iw-smart .tocado { background: rgba(255, 255, 255, 0.24); }
+.iw-app-botao.tocado { background: #134a3f; }
+
+@media (max-width: 900px) {
+  .iw-topo { padding: 14px 16px; }
+  .iw-corpo {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "cabeca" "palco" "passos" "extra";
+    grid-template-rows: none;
+    padding: 0 16px 48px;
+  }
+  .iw-palco { position: relative; top: 0; margin: 0 0 20px; border-radius: 18px; }
+  .iw-cabeca h1 { margin-bottom: 20px; }
+}
 
 /* ── Aviso de saldo baixo ───────────────────────────────────── */
 .aviso-saldo {

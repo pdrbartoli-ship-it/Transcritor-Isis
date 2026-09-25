@@ -19,7 +19,10 @@ import { apagarConta } from '../lib/api'
 // "fale com o suporte" não conta como deixar apagar.
 const CONFIRMACAO = 'APAGAR'
 
-export default function SettingsModal({ onClose, deteccaoDisponivel = false, avisarReuniao = false, onAvisarReuniao }) {
+export default function SettingsModal({
+  onClose, deteccaoDisponivel = false, avisarReuniao = false, onAvisarReuniao,
+  iniciarComWindows = null, onIniciarComWindows,
+}) {
   const [theme, setThemeState] = useState(getTheme())
   const [idioma, setIdiomaState] = useState(getIdioma())
   const { user } = useAuth()
@@ -119,6 +122,27 @@ export default function SettingsModal({ onClose, deteccaoDisponivel = false, avi
               Meet e pergunta se quer gravar. Nada sai do seu computador nessa
               detecção. Avise os participantes antes de gravar.
             </p>
+
+            {/* Só no executável baixado do site (null na versão da Store, onde
+                o início acompanha o aviso) e só com o aviso ligado: sem o
+                detector não há o que abrir sozinho. */}
+            {avisarReuniao && iniciarComWindows !== null && (
+              <>
+                <button
+                  className={`settings-switch ${iniciarComWindows ? 'on' : ''}`}
+                  role="switch"
+                  aria-checked={iniciarComWindows}
+                  onClick={() => onIniciarComWindows?.(!iniciarComWindows)}
+                >
+                  <span className="settings-switch-texto">Abrir o Dito quando o Windows iniciar</span>
+                  <span className="settings-switch-trilho"><span className="settings-switch-bolinha" /></span>
+                </button>
+                <p className="hint">
+                  Assim o aviso de reunião funciona mesmo depois de reiniciar o
+                  computador. O Dito abre escondido, só com o ícone perto do relógio.
+                </p>
+              </>
+            )}
           </div>
         )}
 

@@ -1,12 +1,15 @@
 import { useEffect } from 'react'
 import { IconDownload, IconClose, IconArrowRight } from './Icons'
-import BaixarWindows from './BaixarWindows'
 import { aparelhoDoVisitante, abrirLojaWindows, usePwaPrompt } from '../lib/instalar'
 
 // "Instalar grátis" levava direto para o login — quem clicava querendo o app
 // acabava na versão do navegador sem nunca ver que existe um instalador.
 // Aqui o botão faz o que promete: entrega o app do aparelho de quem clicou, e
 // deixa "usar no navegador" como a saída secundária que ele sempre foi.
+//
+// No Windows este modal não abre: lá o "Instalar grátis" já baixa o instalador
+// e mostra o guia de tela cheia (InstalarWindows). Aqui ficam os aparelhos em
+// que o Dito se instala pelo navegador.
 export default function InstalarModal({ onClose, onUsarNavegador }) {
   const aparelho = aparelhoDoVisitante()
   const { podeInstalarPwa, instalarPwa } = usePwaPrompt()
@@ -27,22 +30,7 @@ export default function InstalarModal({ onClose, onUsarNavegador }) {
           </button>
         </div>
 
-        {aparelho === 'windows' && (
-          <>
-            <p className="instalar-lead">
-              É o app de Windows, o único que grava <strong>as duas vozes</strong> da chamada,
-              com uma janela flutuante por cima da reunião.
-            </p>
-            <ol className="instalar-passos">
-              <li>Clique em <strong>Baixar para Windows</strong> aqui embaixo.</li>
-              <li>Abra o arquivo baixado, na barra de downloads do navegador.</li>
-              <li>Aguarde alguns segundos: o Dito instala e abre sozinho. Entre com seu e-mail e comece a gravar.</li>
-            </ol>
-            <BaixarWindows origem="modal" className="btn-primary instalar-btn" />
-          </>
-        )}
-
-        {aparelho !== 'windows' && podeInstalarPwa && (
+        {podeInstalarPwa && (
           <>
             <p className="instalar-lead">
               O Dito se instala direto pelo navegador: vira um app com ícone próprio,

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Dito",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "br.com.albiecloud.dito.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -38,7 +38,8 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "languages": ["PortugueseBR"]
       }
     }
   }

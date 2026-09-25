@@ -5,8 +5,8 @@ import {
   IconArrowRight, IconStopCircle, IconPlay,
 } from '../components/Icons'
 import InstalarModal from '../components/InstalarModal'
-import BaixarWindows from '../components/BaixarWindows'
-import { STORE_URL, aparelhoDoVisitante } from '../lib/instalar'
+import InstalarWindows from '../components/InstalarWindows'
+import { STORE_URL, aparelhoDoVisitante, baixarInstaladorWindows } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 import { setTheme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
@@ -166,9 +166,22 @@ export default function Landing() {
   // "Entrar" e "Instalar grátis" são duas promessas diferentes, e por muito
   // tempo os dois botões faziam a mesma coisa: abrir o login no navegador.
   // Instalar abre o fluxo de download; entrar continua indo direto para o app.
+  //
+  // No Windows o clique já baixa, sem modal no meio: o instalador da Microsoft
+  // começa a descer na hora e a tela que cobre a landing só diz o que fazer
+  // com ele (ver InstalarWindows). Nos outros aparelhos não há arquivo para
+  // baixar, e o modal explica como o Dito se instala ali.
   const [instalando, setInstalando] = useState(false)
-  const instalar = () => setInstalando(true)
+  const [guiaWindows, setGuiaWindows] = useState(false)
   const [aparelho] = useState(aparelhoDoVisitante)
+  const instalar = () => {
+    if (aparelho === 'windows') {
+      baixarInstaladorWindows('landing')
+      setGuiaWindows(true)
+    } else {
+      setInstalando(true)
+    }
+  }
 
   // Sem conta, sem senha, sem chave de criptografia possível — é o
   // `signInAnonymously` do Supabase: nasce um usuário de verdade (o resto do
@@ -356,7 +369,10 @@ export default function Landing() {
                 abrir a loja. Quem lê a landing em outro aparelho continua com
                 o link para a página da Store, para instalar depois no PC. */}
             {aparelho === 'windows' ? (
-              <BaixarWindows origem="landing" className="btn-ghost lp-btn-lg lp-split-btn" />
+              <button type="button" className="btn-ghost lp-btn-lg lp-split-btn" onClick={instalar}>
+                <IconDownload width={16} height={16} />
+                Baixar para Windows
+              </button>
             ) : (
               <a
                 className="btn-ghost lp-btn-lg lp-split-btn"
@@ -482,6 +498,13 @@ export default function Landing() {
       {instalando && (
         <InstalarModal
           onClose={() => setInstalando(false)}
+          onUsarNavegador={entrar}
+        />
+      )}
+
+      {guiaWindows && (
+        <InstalarWindows
+          onFechar={() => setGuiaWindows(false)}
           onUsarNavegador={entrar}
         />
       )}

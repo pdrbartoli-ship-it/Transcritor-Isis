@@ -20,6 +20,8 @@
     "allow-set-meeting-detection",
     "allow-meeting-detection-available",
     "allow-set-background-mode",
+    "allow-start-with-windows-state",
+    "allow-set-start-with-windows",
     "core:window:allow-set-theme",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",

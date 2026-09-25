@@ -40,6 +40,8 @@ pub fn run() {
       commands::set_meeting_detection,
       commands::meeting_detection_available,
       commands::set_background_mode,
+      commands::start_with_windows_state,
+      commands::set_start_with_windows,
     ])
     // Com o modo de bandeja ligado, o X esconde a janela em vez de encerrar o
     // app — inclusive durante uma gravação, que é quando encerrar seria pior.

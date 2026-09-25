@@ -116,12 +116,28 @@ pub fn meeting_detection_available() -> bool {
 /// Com o modo de bandeja ligado, fechar a janela esconde em vez de encerrar —
 /// inclusive no meio de uma gravação. Sem isto o detector só existiria com o
 /// app aberto na tela, que é justamente quando a pessoa menos precisa dele.
-/// Liga junto o início com o Windows, pelo mesmo interruptor.
+/// Dentro do pacote da Store, liga junto o início com o Windows.
 #[tauri::command]
 pub fn set_background_mode(app: AppHandle, enabled: bool, state: State<BackgroundMode>) {
     state.0.store(enabled, Ordering::SeqCst);
-    // O início com o Windows é feito de dois jeitos (chave do registro fora do
-    // pacote, StartupTask dentro dele) e nenhum deles pode derrubar o modo
-    // bandeja: ver inicio.rs.
-    inicio::ajustar(app, enabled);
+    // Fora do pacote, gravar a chave `Run` sem a pessoa pedir foi o que fez o
+    // Defender barrar o instalador: lá o modo bandeja só a apaga, e quem liga é
+    // o interruptor das Configurações. Ver inicio.rs.
+    inicio::acompanhar_modo_bandeja(app, enabled);
+}
+
+/// "Abrir o Dito quando o Windows iniciar", nas Configurações. `None` quando o
+/// interruptor não existe: dentro do pacote da Store o início acompanha o
+/// detector. Num executável antigo este comando não existe, a chamada falha e
+/// o JS esconde o interruptor.
+#[tauri::command]
+pub fn start_with_windows_state(app: AppHandle) -> Option<bool> {
+    inicio::estado_da_pessoa(&app)
+}
+
+/// Assíncrono para rodar fora da thread da janela: gravar no registro bloqueia,
+/// e a tela espera a resposta para mostrar o estado em que a chave ficou.
+#[tauri::command]
+pub async fn set_start_with_windows(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    inicio::definir_pela_pessoa(&app, enabled)
 }

@@ -19,6 +19,15 @@
 //! Nada aqui pode derrubar o modo bandeja: o detector de reunião funciona com
 //! o Dito aberto mesmo que o início automático seja negado, e é isso que a
 //! pessoa perde — voltar sozinho, não o recurso.
+//!
+//! Os dois também não pedem o mesmo cuidado. No pacote, ligar junto com o
+//! detector é inofensivo: a Microsoft assinou o pacote e o Windows sabe de
+//! onde ele veio. Fora dele, um executável sem assinatura que grava a chave
+//! `Run` logo na primeira abertura se comporta exatamente como um vírus, e foi
+//! assim que o Defender barrou o instalador em 24/09/2026
+//! (`Behavior:Win32/Persistence.A!ml`). Por isso, fora do pacote, a chave só é
+//! gravada quando a pessoa liga "Abrir o Dito quando o Windows iniciar" nas
+//! Configurações (`definir_pela_pessoa`). O modo bandeja sozinho só a apaga.
 
 use tauri::AppHandle;
 
@@ -42,6 +51,37 @@ pub fn ajustar(app: AppHandle, ligado: bool) {
             log::warn!("não foi possível ajustar o início com o Windows: {err}");
         }
     });
+}
+
+/// Acompanha o interruptor do modo bandeja (ver `set_background_mode`). Dentro
+/// do pacote, o início com o Windows vai junto com o detector. Fora dele, só
+/// vai junto para desligar: ligar é pedido da pessoa.
+pub fn acompanhar_modo_bandeja(app: AppHandle, ligado: bool) {
+    if ligado && !empacotado() {
+        return;
+    }
+    ajustar(app, ligado);
+}
+
+/// Estado do interruptor das Configurações. `None` dentro do pacote, onde ele
+/// não existe porque o início acompanha o detector; fora dele, se a chave
+/// `Run` está gravada.
+pub fn estado_da_pessoa(app: &AppHandle) -> Option<bool> {
+    if empacotado() {
+        return None;
+    }
+    use tauri_plugin_autostart::ManagerExt;
+    Some(app.autolaunch().is_enabled().unwrap_or(false))
+}
+
+/// O interruptor das Configurações. Devolve o estado em que a chave ficou, para
+/// a tela mostrar o que de fato aconteceu, e não o que foi pedido.
+pub fn definir_pela_pessoa(app: &AppHandle, ligado: bool) -> Result<bool, String> {
+    if empacotado() {
+        return Err("dentro do pacote o início com o Windows acompanha o detector".into());
+    }
+    aplicar(app, ligado)?;
+    Ok(estado_da_pessoa(app).unwrap_or(false))
 }
 
 fn aplicar(app: &AppHandle, ligado: bool) -> Result<(), String> {
@@ -72,6 +112,12 @@ pub fn empacotado() -> bool {
     let mut tamanho: u32 = 0;
     let erro = unsafe { GetCurrentPackageFullName(&mut tamanho, None) };
     erro != APPMODEL_ERROR_NO_PACKAGE
+}
+
+/// Fora do Windows (o build de desenvolvimento) não existe pacote.
+#[cfg(not(windows))]
+pub fn empacotado() -> bool {
+    false
 }
 
 /// O caminho da Store. `GetAsync` acha a tarefa declarada no manifesto;

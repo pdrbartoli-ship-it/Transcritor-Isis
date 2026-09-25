@@ -14,7 +14,10 @@ const ReuniaoContext = createContext(null)
 
 // Sem provedor (uma tela montada fora do app), o interruptor simplesmente não
 // aparece. É melhor do que derrubar a tela por causa de um ajuste.
-const PADRAO = { disponivel: false, avisar: false, definirAvisar: () => {} }
+const PADRAO = {
+  disponivel: false, avisar: false, definirAvisar: () => {},
+  iniciarComWindows: null, definirIniciarComWindows: () => {},
+}
 
 export function useReuniao() {
   return useContext(ReuniaoContext) || PADRAO
@@ -24,7 +27,7 @@ export function ReuniaoProvider({ children }) {
   const { user } = useAuth()
   const [avisar, setAvisarState] = useState(getAvisarReuniao)
 
-  const { disponivel } = useDeteccaoReuniao({
+  const { disponivel, iniciarComWindows, definirIniciarComWindows } = useDeteccaoReuniao({
     userId: user?.id,
     convidado: !!user?.is_anonymous,
     avisar,
@@ -37,7 +40,9 @@ export function ReuniaoProvider({ children }) {
   }
 
   return (
-    <ReuniaoContext.Provider value={{ disponivel, avisar, definirAvisar }}>
+    <ReuniaoContext.Provider
+      value={{ disponivel, avisar, definirAvisar, iniciarComWindows, definirIniciarComWindows }}
+    >
       {children}
     </ReuniaoContext.Provider>
   )

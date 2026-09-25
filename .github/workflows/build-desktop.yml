@@ -5,17 +5,23 @@ name: Build Desktop (Windows)
 # vira um link de download público e direto (sem exigir login no GitHub e
 # sem baixar um .zip de "artefato de CI"), pronto pra colocar na landing.
 #
-# A tag "desktop-latest" é fixa e sobrescrita a cada build: enquanto o app
-# nativo estiver em teste, é sempre o mesmo link que aponta pro build mais
-# recente. Sem assinatura de código ainda (custa dinheiro, fica pra depois
-# — ver plano de migração): o Windows ainda avisa "protegeu seu PC" na
-# primeira execução, isso é esperado.
+# A tag "desktop-latest" é fixa e sobrescrita a cada build: o link do
+# instalador nunca muda. É o plano B da landing (InstalarWindows.jsx), para os
+# computadores em que o instalador da Microsoft Store falha. Sem assinatura de
+# código (decisão de 25/09/2026): o Windows avisa "O Windows protegeu o
+# computador" na primeira execução, e a landing mostra onde clicar.
+#
+# Só roda quando o executável muda. A janela do app abre o site publicado (ver
+# tauri.conf.json), então mudança de web chega sem instalador novo. E cada
+# build é um arquivo que o SmartScreen nunca viu: rodar a cada push em
+# frontend/** jogava fora, várias vezes por dia, a reputação que o arquivo
+# anterior tinha começado a juntar.
 on:
   workflow_dispatch:
   push:
     branches: [main, app-nativo-windows]
     paths:
-      - 'frontend/**'
+      - 'frontend/src-tauri/**'
       - '.github/workflows/build-desktop.yml'
 
 permissions:
@@ -69,25 +75,26 @@ jobs:
       # O nome que o Tauri gera carrega a versão (Dito_0.1.0_x64-setup.exe), e a
       # landing precisa de um link fixo. Publicar também uma cópia com nome
       # estável evita que subir a versão quebre o botão "Baixar o app" — que já
-      # tinha acontecido, daí o aviso no comentário do Landing.jsx.
+      # tinha acontecido, daí o aviso no comentário do Landing.jsx. O `-t` pega
+      # o mais novo: em ordem alfabética, um instalador de versão anterior que
+      # sobrasse na pasta ganharia do recém-gerado.
       - name: Duplicar instalador com nome estável
         shell: bash
         run: |
           cd frontend/src-tauri/target/release/bundle/nsis
-          cp "$(ls *-setup.exe | head -1)" Dito-setup.exe
+          cp "$(ls -t *-setup.exe | head -1)" Dito-setup.exe
 
       - name: Publicar instalador na Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: desktop-latest
-          name: Dito para Windows (build de teste)
+          name: Dito para Windows
           body: |
-            Build automático a partir do commit ${{ github.sha }}, gerado pelo
-            GitHub Actions — não é uma versão oficial ainda.
+            Instalador do Dito para Windows, gerado a partir do commit ${{ github.sha }}.
 
-            Instalador sem assinatura digital: o Windows vai avisar
-            "O Windows protegeu o computador" na primeira execução — clique em
-            "Mais informações" e depois em "Executar assim mesmo".
+            Instalador sem assinatura digital: na primeira execução o Windows
+            mostra "O Windows protegeu o computador". Clique em "Mais
+            informações" e depois em "Executar assim mesmo".
           prerelease: true
           files: frontend/src-tauri/target/release/bundle/nsis/*.exe
 

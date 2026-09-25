@@ -7,17 +7,21 @@ import { useEffect, useState } from 'react'
 // muda; este link abre a página do Dito na loja em qualquer navegador.
 export const STORE_URL = 'https://apps.microsoft.com/detail/9pdvg213q755'
 
-// Instalador pequeno gerado pela Microsoft: baixa o Dito da Store e abre, sem a
-// pessoa passar pela loja. Não funciona com conta de trabalho ou de escola (o
-// próprio instalador avisa que não conseguiu verificar a qualificação e manda
-// para a Store, que também não aceita essas contas). O `cid` só diz de onde
-// veio o clique.
+// Instalador pequeno gerado pela Microsoft: baixa o Dito da Store, instala e
+// abre, sem a pessoa passar pela loja e sem aviso nenhum do Windows. É o
+// caminho de todo mundo. Não funciona com conta de trabalho ou de escola: ele
+// avisa que não conseguiu verificar a qualificação e abre a Store, que também
+// não aceita essas contas. O `cid` só diz de onde veio o clique.
 const INSTALADOR_STORE_URL = 'https://get.microsoft.com/installer/download/9PDVG213Q755'
 
-// Para conta de trabalho ou de escola. O winget instala da Store sem usar a
-// conta do Windows (testado em 24/09/2026 num PC com conta corporativa, onde o
-// instalador acima falhou). Os dois `--accept` evitam as perguntas de Y/N.
-export const COMANDO_WINGET = 'winget install --id 9PDVG213Q755 --source msstore --accept-package-agreements --accept-source-agreements'
+// O plano B, para quando o de cima falha: o instalador do próprio Dito, gerado
+// pelo CI (.github/workflows/build-desktop.yml). Não passa pela Store, então
+// funciona em qualquer conta, mas não tem assinatura digital e o Windows avisa
+// antes de abrir. O guia de InstalarWindows.jsx mostra onde clicar. A tag e o
+// nome do arquivo são fixos de propósito: o CI sobrescreve o arquivo e o link
+// continua o mesmo.
+export const INSTALADOR_DITO_URL =
+  'https://github.com/pdrbartoli-ship-it/Transcritor-Isis/releases/download/desktop-latest/Dito-setup.exe'
 
 export function abrirLojaWindows() {
   // Aba nova, e não a página inteira: quem clica pode estar lendo a landing no
@@ -39,11 +43,19 @@ export function aparelhoDoVisitante() {
 }
 
 export function baixarInstaladorWindows(origem) {
+  baixar(`${INSTALADOR_STORE_URL}?cid=${origem}`)
+}
+
+export function baixarInstaladorDito() {
+  baixar(INSTALADOR_DITO_URL)
+}
+
+function baixar(url) {
   // Um <a download> em vez de window.location: trocar a URL da página inteira
   // por um .exe faz alguns navegadores mostrarem uma tela em branco no meio do
   // caminho, e a landing sumia enquanto o arquivo baixava.
   const link = document.createElement('a')
-  link.href = `${INSTALADOR_STORE_URL}?cid=${origem}`
+  link.href = url
   link.download = ''
   document.body.appendChild(link)
   link.click()

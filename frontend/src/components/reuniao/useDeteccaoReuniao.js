@@ -58,15 +58,53 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
       .catch(() => setDisponivel(false))
   }, [])
 
+  // "Abrir o Dito quando o Windows iniciar". Só existe no executável baixado
+  // do site: lá, gravar o início com o Windows sem a pessoa pedir foi o que fez
+  // o Defender barrar o instalador, então quem liga é ela (ver inicio.rs). Na
+  // versão da Store o início acompanha o aviso e o Rust responde null. Num
+  // executável antigo o comando nem existe, e o interruptor também some.
+  const [iniciarComWindows, setIniciarComWindows] = useState(null)
+
+  useEffect(() => {
+    if (!disponivel) return
+    // Com o detector simulado em desenvolvimento, o interruptor aparece como
+    // no executável do site, para a tela poder ser conferida sem Windows.
+    if (!isTauriApp()) {
+      if (import.meta.env.DEV) setIniciarComWindows(false)
+      return
+    }
+    invoke('start_with_windows_state')
+      .then(valor => setIniciarComWindows(typeof valor === 'boolean' ? valor : null))
+      .catch(() => setIniciarComWindows(null))
+  }, [disponivel])
+
   // A preferência manda no detector e no modo de bandeja: os dois são o mesmo
   // recurso para quem usa, e separá-los daria um detector que só funciona com
   // a janela aberta.
   useEffect(() => {
-    if (!isTauriApp() || !disponivel) return
+    if (!disponivel) return
     const ligado = !!avisar && !convidado
+    // Desligado, o Rust apaga o início com o Windows junto: sem detector não
+    // há o que abrir sozinho.
+    if (!ligado) setIniciarComWindows(valor => (valor === null ? null : false))
+    if (!isTauriApp()) return
     invoke('set_meeting_detection', { enabled: ligado }).catch(() => {})
     invoke('set_background_mode', { enabled: ligado }).catch(() => {})
   }, [avisar, convidado, disponivel])
+
+  async function definirIniciarComWindows(ligado) {
+    if (!isTauriApp()) {
+      setIniciarComWindows(ligado)
+      return
+    }
+    try {
+      const ficou = await invoke('set_start_with_windows', { enabled: ligado })
+      setIniciarComWindows(!!ficou)
+    } catch {
+      // O Windows recusou (uma política da empresa, por exemplo): o interruptor
+      // continua mostrando o que vale de verdade.
+    }
+  }
 
   async function mostrarPrincipal() {
     try {
@@ -254,7 +292,11 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { disponivel }
+  return {
+    disponivel,
+    iniciarComWindows: convidado ? null : iniciarComWindows,
+    definirIniciarComWindows,
+  }
 }
 
 // O "sem saldo" é um bom momento de venda, e por isso mesmo não pode virar

@@ -103,7 +103,10 @@ export default function Layout() {
   }, [user?.id, convidado, atualizarConvite])
   // O interruptor de "Avisar quando uma reunião começar". O estado mora no
   // provedor, com o detector; aqui só se desenha.
-  const { disponivel: deteccaoDisponivel, avisar: avisarReuniao, definirAvisar } = useReuniao()
+  const {
+    disponivel: deteccaoDisponivel, avisar: avisarReuniao, definirAvisar,
+    iniciarComWindows, definirIniciarComWindows,
+  } = useReuniao()
 
   const [term, setTerm] = useState('')
   const [results, setResults] = useState(null)   // null = não está buscando
@@ -499,6 +502,8 @@ export default function Layout() {
           deteccaoDisponivel={deteccaoDisponivel}
           avisarReuniao={avisarReuniao}
           onAvisarReuniao={definirAvisar}
+          iniciarComWindows={iniciarComWindows}
+          onIniciarComWindows={definirIniciarComWindows}
         />
       )}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
