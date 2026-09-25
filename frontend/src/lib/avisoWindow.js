@@ -5,7 +5,7 @@
 // prontos e devolve o id do que foi clicado.
 
 import { isTauriApp } from './platform'
-import { cantoInferiorDireito, MINI_SIZE } from './miniRecorder'
+import { centroInferior, MINI_SIZE } from './miniRecorder'
 
 const ESTADO_EVENT = 'dito://aviso-estado'
 const RESPOSTA_EVENT = 'dito://aviso-resposta'
@@ -25,36 +25,67 @@ export function alturaDoAviso(acoes) {
   return acoes?.length ? AVISO_H_COM_BOTOES : AVISO_H_SEM_BOTOES
 }
 
+// A janelinha nasce assim que o detector liga, escondida e com a página já
+// carregada. Sem isto, o aviso só aparecia 1 a 3 s depois da reunião começar:
+// era o tempo de criar a janela, baixar o site e montar a página, e tudo isso
+// acontecia justamente no instante em que a pessoa estava entrando na chamada.
+//
+// Escondida ela não aparece na barra de tarefas nem rouba foco, e sem texto
+// não desenha nada. A proteção de "janela vazia presa na tela" continua
+// valendo, mas só quando ela está visível (ver pages/Aviso.jsx).
+export async function prepararAviso() {
+  if (!isTauriApp()) return
+  const { WebviewWindow } = await tauriWebviewWindow()
+  if (await WebviewWindow.getByLabel(AVISO_LABEL)) return
+  await criarAviso({ visivel: false, altura: AVISO_H_COM_BOTOES, posicao: {} })
+}
+
 // `desviarDaJanelinha` empurra o aviso para cima da altura da janelinha de
-// gravação. Ela nasce no centro, mas pode ter sido arrastada para este canto,
-// e durante uma gravação (o aviso de saldo acabando) os dois ficariam um em
-// cima do outro.
+// gravação: durante uma gravação (o aviso de saldo acabando) os dois moram no
+// mesmo lugar e ficariam um em cima do outro.
 export async function abrirAviso(estado, { desviarDaJanelinha = false } = {}) {
   if (!isTauriApp()) return
   const { WebviewWindow } = await tauriWebviewWindow()
   const altura = alturaDoAviso(estado?.acoes)
-
-  // Reaproveitar a janela evita o piscar de fechar e abrir quando um aviso
-  // sucede o outro (o de 5 min e o de 1 min, por exemplo). Ela muda de altura
-  // porque as variantes sem botão são mais baixas.
-  const existente = await WebviewWindow.getByLabel(AVISO_LABEL)
-  if (existente) {
-    try {
-      const { LogicalSize } = await tauriDpi()
-      await existente.setSize(new LogicalSize(AVISO_W, altura))
-    } catch {
-      // Sem permissão ou versão antiga: a janela fica do tamanho que estava.
-    }
-    await existente.show()
-    await emitirAviso(estado)
-    return
-  }
-
-  const posicao = await cantoInferiorDireito(
+  const posicao = await centroInferior(
     AVISO_W,
     altura,
     desviarDaJanelinha ? MINI_SIZE.altura + 12 : 0,
   )
+
+  // Reaproveitar a janela evita o piscar de fechar e abrir quando um aviso
+  // sucede o outro (o de 5 min e o de 1 min, por exemplo), e é o caminho
+  // normal desde a pré-criação. Ela muda de altura porque as variantes sem
+  // botão são mais baixas.
+  const existente = await WebviewWindow.getByLabel(AVISO_LABEL)
+  if (existente) {
+    // O texto vai ANTES de a janela aparecer: mostrar primeiro deixaria o
+    // aviso anterior visível por um quadro, já que a janela guardada ainda
+    // tem na tela o que desenhou da última vez.
+    await emitirAviso(estado)
+    try {
+      const { LogicalSize, LogicalPosition } = await tauriDpi()
+      await existente.setSize(new LogicalSize(AVISO_W, altura))
+      // A posição é refeita a cada aviso: o monitor de agora pode ser outro,
+      // e a janela guardada ficou onde o aviso anterior apareceu.
+      if (Number.isFinite(posicao.x)) {
+        await existente.setPosition(new LogicalPosition(posicao.x, posicao.y))
+      }
+    } catch {
+      // Sem permissão ou versão antiga: fica do tamanho e no lugar em que estava.
+    }
+    await existente.show()
+    return
+  }
+
+  await criarAviso({ visivel: true, altura, posicao })
+  // A janela pede `sync` ao nascer (ver pages/Aviso.jsx); emitir aqui também
+  // cobre o caso de a página carregar depois do evento.
+  await emitirAviso(estado)
+}
+
+async function criarAviso({ visivel, altura, posicao }) {
+  const { WebviewWindow } = await tauriWebviewWindow()
   const aviso = new WebviewWindow(AVISO_LABEL, {
     // Como a janelinha de gravação: a página vem de onde veio a principal (o
     // site publicado), e não da cópia congelada dentro do instalador.
@@ -70,25 +101,27 @@ export async function abrirAviso(estado, { desviarDaJanelinha = false } = {}) {
     // Aparecer no meio de uma reunião já é interromper. Roubar o foco de quem
     // está entrando na chamada seria demais.
     focus: false,
+    visible: visivel,
     ...posicao,
   })
   aviso.once('tauri://error', e => console.error('janelinha de aviso:', e))
-  // A janela pede `sync` ao nascer (ver pages/Aviso.jsx); emitir aqui também
-  // cobre o caso de a página carregar depois do evento.
-  await emitirAviso(estado)
 }
 
+// Esconder, e não fechar: a janela fica de pé para o próximo aviso aparecer na
+// hora (ver prepararAviso). O estado vai a null junto, senão ela guardaria na
+// tela o aviso já respondido.
 export async function fecharAviso() {
   if (!isTauriApp()) return
   const { WebviewWindow } = await tauriWebviewWindow()
   const aviso = await WebviewWindow.getByLabel(AVISO_LABEL)
   if (!aviso) return
   try {
-    await aviso.close()
+    await aviso.hide()
+    await emitirAviso(null)
   } catch {
-    // Se o fechar falhar, ao menos some da tela: uma janelinha presa por cima
-    // de tudo, sem botão, é o que não pode acontecer.
-    await aviso.hide().catch(() => {})
+    // Esconder falhou: fechar é o que garante que ela não fique por cima de
+    // tudo sem botão. A próxima chamada de prepararAviso cria outra.
+    await aviso.close().catch(() => {})
   }
 }
 

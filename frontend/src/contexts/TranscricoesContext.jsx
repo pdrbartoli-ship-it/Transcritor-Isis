@@ -237,7 +237,7 @@ export function TranscricoesProvider({ children }) {
 
       const result = item.url
         ? await processUrl(item.url, item.modo)
-        : await transcribeFile(item.arquivo, item.modo)
+        : await transcribeFile(item.arquivo, item.modo, item.origem)
       await concluir(item, result)
     } catch (err) {
       atualizar(item.id, { estado: 'erro', erro: err.message, erroStatus: err.status || null })

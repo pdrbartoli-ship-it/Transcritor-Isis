@@ -1,4 +1,5 @@
 import { formatTimestamp, sliceSegments, groupBySpeaker, formatRange } from './shared'
+import NomeDoLocutor from './NomeDoLocutor'
 
 // Um pedaço da transcrição, agrupado por quem fala. Sem os segmentos com tempo
 // (conversas antigas, ou legendas de vídeo sem marcação) não há o que recortar
@@ -18,7 +19,7 @@ export default function Trecho({ conversation, start, end, emptyLabel, showRange
         <p key={i} className="fala">
           <span className="fala-head">
             <span className="fala-time">{formatTimestamp(b.start)}</span>
-            {b.speaker && <span className="fala-speaker">{b.speaker}</span>}
+            {b.speaker && <NomeDoLocutor nome={b.speaker} />}
           </span>
           {b.text}
         </p>

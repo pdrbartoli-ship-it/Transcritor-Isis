@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { isTauriApp } from '../../lib/platform'
 import {
-  openMiniWindow, closeMiniWindow,
+  openMiniWindow, closeMiniWindow, esquecerPosicaoMini,
   emitRecordingState, listenRecordingCommands,
 } from '../../lib/miniRecorder'
 
@@ -79,10 +79,12 @@ export function useMiniRecorder({
   }, [])
 
   // Parou de gravar: a janelinha não tem mais o que mostrar, em qualquer
-  // plataforma.
+  // plataforma. O lugar para onde ela foi arrastada morre junto com a
+  // gravação: a próxima nasce no centro, onde não cobre a câmera de ninguém.
   useEffect(() => {
     if (isRecording) return
     dismissedRef.current = false
+    esquecerPosicaoMini()
     setNativeOpen(false)
     closeMiniWindow()
     setPipWindow(prev => { prev?.close(); return null })

@@ -35,7 +35,12 @@ check('tela vazia sem bandeira no topo', await page.locator('.btn-reportar-ia, .
 await page.screenshot({ path: `${OUT}/perguntar-vazia.png` })
 
 await page.waitForSelector('.ask-anteriores button', { timeout: 15000 }).catch(() => {})
-const anterior = page.locator('.ask-anteriores button').first()
+// Desde 25/09/2026 a lista traz também as perguntas feitas DENTRO de uma
+// conversa, e essas abrem o chat daquela conversa, não uma thread aqui. As do
+// acervo são as que não trazem o nome de uma conversa embaixo.
+const anterior = page.locator(
+  '.ask-anteriores button:not(.ask-anteriores-mais):not(:has(.ask-anterior-conversa))'
+).first()
 if (!await anterior.count()) {
   console.log('  sem pergunta anterior na conta: não dá para testar sem gastar pergunta')
 } else {

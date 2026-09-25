@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { formatTime } from './estimate'
 import { MODOS, MODO_SIMPLES, MODO_COMPLETA, modoRecomendado } from './modos'
+import SemSaldo from '../SemSaldo'
 import { planoPorId } from '../../lib/planos'
 import { duracaoDoLink } from '../../lib/api'
 import { useIsTouchInput } from '../../lib/platform'
@@ -323,7 +324,7 @@ export function GravandoAgora({ recordingTime, isPaused, getLevel, onStop, onPau
 // Quando a captura não cabe, ela avisa ANTES do envio — descobrir isso só
 // depois de esperar o upload e a transcrição era o pior jeito de saber.
 export function LinhaConsumo({ duracaoSec, calculando }) {
-  const { saldo, abrirPlano } = useOutletContext() || {}
+  const { saldo, abrirPlano, abrirConvite, premioConvite } = useOutletContext() || {}
   // Plano sem limite: não há conta a fazer nem aviso a dar.
   if (!saldo || saldo.limite == null) return null
 
@@ -334,10 +335,14 @@ export function LinhaConsumo({ duracaoSec, calculando }) {
   // recusaria qualquer captura, então a linha já diz isso em vez de calar.
   if (saldo.usados >= saldo.limite) {
     return (
-      <p className="linha-consumo excede">
-        Você usou os {saldo.limite} minutos do seu mês.
-        {abrirPlano && <> <button type="button" onClick={abrirPlano}>Ver planos</button></>}
-      </p>
+      <SemSaldo
+        texto={`Você usou os ${saldo.limite} minutos do seu mês.`}
+        onConvidar={abrirConvite}
+        onVerPlanos={abrirPlano}
+        premio={premioConvite}
+        origem="sem-minutos"
+        compacto
+      />
     )
   }
 

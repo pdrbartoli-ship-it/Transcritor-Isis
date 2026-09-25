@@ -7,6 +7,7 @@ import { track } from '../lib/analytics'
 import ChatTextarea from '../components/chat/ChatTextarea'
 import MarkdownText from '../components/chat/MarkdownText'
 import FeedbackModal from '../components/FeedbackModal'
+import SemSaldo from '../components/SemSaldo'
 import { IconClock, IconFlag, IconSend } from '../components/Icons'
 import { cifrarMensagem, cifrarTextos, decifrarMensagens, decifrarTextos } from '../lib/cofre'
 import { displayTitle, listConversations } from '../lib/conversas'
@@ -25,9 +26,17 @@ import { buscar, construirBM25 } from '../lib/acervo/busca'
 //   5. as citações viram chips que abrem a conversa no minuto
 
 // Quantas perguntas já feitas cabem embaixo da barra sem virar uma pilha de
-// texto de novo. As mais antigas continuam guardadas; o que se perde é só o
-// atalho para elas.
+// texto de novo. "Ver mais" abre o resto de dez em dez.
 const ANTERIORES_NA_TELA = 5
+const ANTERIORES_POR_VEZ = 10
+// Quantas perguntas são lidas do banco. Depois de tirar as repetidas sobra
+// menos que isto, e passar de uma centena de linhas só para mostrar cinco
+// seria pagar caro por nada.
+const ANTERIORES_BUSCADAS = 60
+// Quantas ficam guardadas no aparelho para a lista aparecer antes de o banco
+// responder. Mais que o visto na primeira tela, para "Ver mais" também vir na
+// hora.
+const ANTERIORES_MAX = 15
 
 const MAX_CHARS_PER_TURN = 2000
 const MAX_HISTORY_MESSAGES = 20
@@ -76,6 +85,7 @@ export default function Perguntar() {
   const navigate = useNavigate()
   const {
     conversations, perguntasRestantes, atualizarPerguntasRestantes, abrirPlano, convidado,
+    abrirConvite, premioConvite,
   } = useOutletContext()
 
   // A barra lateral mostra as 50 mais recentes; aqui a pergunta é sobre o
@@ -87,6 +97,7 @@ export default function Perguntar() {
   const [messages, setMessages] = useState([])
   const [chatId, setChatId] = useState(null)
   const [anteriores, setAnteriores] = useState([])
+  const [quantasAnteriores, setQuantasAnteriores] = useState(ANTERIORES_NA_TELA)
   const [question, setQuestion] = useState('')
   const [sending, setSending] = useState(false)
   const [etapa, setEtapa] = useState('')
@@ -184,38 +195,67 @@ export default function Perguntar() {
     const mostrar = lista => {
       anterioresDaRede.current = true
       setAnteriores(lista)
-      guardarAnterioresNoAparelho(user.id, lista.slice(0, ANTERIORES_NA_TELA))
+      guardarAnterioresNoAparelho(user.id, lista.slice(0, ANTERIORES_MAX))
     }
     try {
-      const { data: chats } = await supabase.from('chats')
-        .select('id, created_at').is('session_id', null)
-        .eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
-      if (!chats?.length) return mostrar([])
-
+      // Toda pergunta que a pessoa escreveu, das duas origens, da mais nova
+      // para a mais antiga. Antes esta lista só trazia as perguntas feitas
+      // NESTA tela (`session_id` nulo) e só a primeira de cada thread: quem
+      // perguntou dentro de uma conversa não encontrava a pergunta em lugar
+      // nenhum depois.
       const { data: msgs } = await supabase.from('chat_messages')
-        .select('chat_id, content, enc_version, created_at')
-        .in('chat_id', chats.map(c => c.id)).eq('role', 'user')
-        .order('created_at')
-      const abertas = await decifrarMensagens(msgs || [])
+        .select('id, chat_id, content, enc_version, created_at')
+        .eq('user_id', user.id).eq('role', 'user')
+        .order('created_at', { ascending: false }).limit(ANTERIORES_BUSCADAS)
+      if (!msgs?.length) return mostrar([])
 
-      const primeira = new Map()
-      for (const m of abertas) if (!primeira.has(m.chat_id)) primeira.set(m.chat_id, m.content)
+      const { data: chats } = await supabase.from('chats')
+        .select('id, session_id')
+        .in('id', [...new Set(msgs.map(m => m.chat_id))])
+      const daConversa = new Map((chats || []).map(c => [c.id, c.session_id]))
+
+      const abertas = await decifrarMensagens(msgs)
       // Perguntar duas vezes a mesma coisa é comum (a resposta não convenceu,
       // a pessoa tentou de novo), e a lista ficava com a linha repetida. Fica
-      // a mais recente, que é a que tem a resposta que ela quis.
+      // a mais recente, que é a que tem a resposta que ela quis. A mesma
+      // pergunta em conversas diferentes são duas perguntas.
       const vistas = new Set()
       const lista = []
-      for (const c of chats) {
-        const pergunta = primeira.get(c.id)
+      for (const m of abertas) {
+        const pergunta = (m.content || '').trim()
         if (!pergunta) continue
-        const chave = pergunta.trim().toLowerCase()
+        const sessionId = daConversa.get(m.chat_id) || null
+        const chave = `${sessionId || ''}:${pergunta.toLowerCase()}`
         if (vistas.has(chave)) continue
         vistas.add(chave)
-        lista.push({ id: c.id, pergunta, quando: c.created_at })
+        // `mensagemId` é o que leva o chat da conversa a abrir NESTA pergunta,
+        // e não no fim da conversa (ver Chat.jsx). Listas guardadas antes de
+        // 25/09/2026 não o têm, e aí a conversa abre no fim, como antes.
+        lista.push({ id: m.chat_id, mensagemId: m.id, pergunta, quando: m.created_at, sessionId })
       }
       mostrar(lista)
     } catch { /* a lista é um extra; sem ela a tela funciona igual */ }
   }, [user?.id])
+
+  // O nome da conversa de onde veio cada pergunta. Sai da lista que esta tela
+  // já busca (o acervo inteiro), então não custa consulta nenhuma; enquanto
+  // ela não chega, a linha aparece sem o nome em vez de esperar por ele.
+  const nomeDaConversa = useCallback(id => {
+    const conversa = (acervo || []).find(c => c.id === id)
+    return conversa ? displayTitle(conversa) : null
+  }, [acervo])
+
+  // Uma pergunta feita dentro de uma conversa abre o chat dela; uma feita aqui
+  // abre a thread daqui, como sempre.
+  function abrirAnterior(anterior) {
+    if (anterior.sessionId) {
+      track('pergunta_anterior_aberta', { origem: 'conversa' })
+      navigate(`/conversa/${anterior.sessionId}/chat`, { state: { focar: anterior.mensagemId } })
+      return
+    }
+    track('pergunta_anterior_aberta', { origem: 'acervo' })
+    abrirThread(anterior.id)
+  }
 
   // A lista da última visita aparece antes das duas consultas acima
   // terminarem, e é trocada pela de agora assim que elas chegam.
@@ -412,8 +452,14 @@ export default function Perguntar() {
   // formulário duas vezes era como as duas acabavam diferentes uma da outra.
   const barra = esgotado ? (
     <div className="ask-bar ask-esgotado">
-      <span>Você usou todas as perguntas deste mês.</span>
-      {abrirPlano && <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>}
+      <SemSaldo
+        texto="Você usou todas as perguntas deste mês."
+        onConvidar={abrirConvite}
+        onVerPlanos={abrirPlano}
+        premio={premioConvite}
+        origem="sem-perguntas"
+        compacto
+      />
     </div>
   ) : (
     <form className="ask-bar" onSubmit={enviar}>
@@ -449,12 +495,35 @@ export default function Perguntar() {
           </div>
           {anteriores.length > 0 && (
             <div className="ask-anteriores">
-              {anteriores.slice(0, ANTERIORES_NA_TELA).map(a => (
-                <button key={a.id} type="button" onClick={() => abrirThread(a.id)} title={a.pergunta}>
-                  <IconClock width={15} height={15} />
-                  <span>{a.pergunta}</span>
+              {anteriores.slice(0, quantasAnteriores).map(a => {
+                const conversa = a.sessionId ? nomeDaConversa(a.sessionId) : null
+                return (
+                  <button
+                    key={`${a.id}-${a.quando}`}
+                    type="button"
+                    onClick={() => abrirAnterior(a)}
+                    title={conversa ? `${a.pergunta} · ${conversa}` : a.pergunta}
+                  >
+                    <IconClock width={15} height={15} />
+                    <span className="ask-anterior-texto">
+                      {a.pergunta}
+                      {/* De onde veio a pergunta. Sem isto, duas perguntas
+                          parecidas feitas em conversas diferentes viravam a
+                          mesma linha para quem lê. */}
+                      {conversa && <span className="ask-anterior-conversa">{conversa}</span>}
+                    </span>
+                  </button>
+                )
+              })}
+              {anteriores.length > quantasAnteriores && (
+                <button
+                  type="button"
+                  className="ask-anteriores-mais"
+                  onClick={() => setQuantasAnteriores(n => n + ANTERIORES_POR_VEZ)}
+                >
+                  Ver mais
                 </button>
-              ))}
+              )}
             </div>
           )}
           <div className="ask-hero-rodape">

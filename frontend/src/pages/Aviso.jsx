@@ -48,11 +48,18 @@ export default function Aviso() {
   // Rede lenta ou principal ocupada: o texto pode não vir no primeiro pedido.
   // Pede de novo algumas vezes e, se nada chegar, a janela se fecha sozinha.
   // Um retângulo vazio na frente da tela, sem jeito de tirar, é o pior caso.
+  //
+  // Só quando ela está VISÍVEL. Desde 25/09/2026 a janelinha é criada
+  // escondida assim que o detector liga, para o aviso aparecer na hora em vez
+  // de esperar a página carregar no meio da reunião. Escondida e sem texto ela
+  // é o estado normal de espera, e fechá-la ali desfaria justamente o que foi
+  // preparado.
   const temEstado = !!estado
   useEffect(() => {
     if (previa || temEstado) return
     let tentativas = 0
-    const id = setInterval(() => {
+    const id = setInterval(async () => {
+      if (!(await estaVisivel())) return
       tentativas += 1
       if (tentativas > VAZIA_TENTATIVAS) {
         clearInterval(id)
@@ -180,6 +187,20 @@ export default function Aviso() {
 // Janela vazia: quantas vezes pede o texto de novo, e de quanto em quanto.
 const VAZIA_TENTATIVAS = 4
 const VAZIA_INTERVALO_MS = 1500
+
+// Escondida, a janelinha está só esperando a próxima reunião (foi criada assim
+// pelo prepararAviso). Só um `false` explícito conta como escondida: qualquer
+// outra resposta (fora do app nativo, sem permissão, versão antiga da API)
+// vale como visível, para a proteção contra a janela em branco presa na tela
+// continuar valendo em todos os casos em que ela sempre valeu.
+async function estaVisivel() {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    return (await getCurrentWindow().isVisible()) !== false
+  } catch {
+    return true
+  }
+}
 
 async function fecharEsta() {
   try {

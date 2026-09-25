@@ -26,14 +26,18 @@ await p.click('button[type="submit"]')
 await p.waitForSelector('.home', { timeout: 25000 })
 await p.waitForFunction(() => document.querySelectorAll('.sidebar-item').length > 0, { timeout: 20000 })
 
+// O cronômetro tem um lugar durante a gravação (.gravando-tempo) e outro na
+// revisão (.revisao-tempo): desde o b8770c8 gravar é um modo de tela à parte.
 const segundos = async () => {
-  const texto = await p.locator('.record-label').textContent()
+  const alvo = await p.locator('.gravando-tempo').count()
+    ? '.gravando-tempo' : '.revisao-tempo'
+  const texto = await p.locator(alvo).textContent()
   const [, mm, ss] = texto.match(/(\d+):(\d+)/) || []
   return Number(mm) * 60 + Number(ss)
 }
 
 await p.click('.record-btn')
-await p.waitForSelector('.record-label:has-text("Gravando")', { timeout: 10000 })
+await p.waitForSelector('.gravando-estado:has-text("Gravando")', { timeout: 10000 })
 await p.waitForTimeout(3000)
 const antes = await segundos()
 console.log('gravando na home:', antes, 's')
@@ -46,29 +50,31 @@ await p.waitForTimeout(4000)
 console.log('numa conversa por 4 s, url', new URL(p.url()).hash)
 
 await p.click('.sidebar-novo:has-text("Transcrever")')
-await p.waitForSelector('.record-label', { timeout: 10000 })
+await p.waitForSelector('.gravando-agora', { timeout: 10000 })
 const depois = await segundos()
 console.log('de volta na home:', depois, 's')
 
-const aindaGravando = await p.locator('.record-label:has-text("Gravando")').count()
+const aindaGravando = await p.locator('.gravando-estado:has-text("Gravando")').count()
 if (!aindaGravando) throw new Error('a gravação não sobreviveu à navegação')
 if (depois < antes + 3) throw new Error(`o cronômetro parou no meio (${antes} → ${depois})`)
 
 // Parar tem de entregar o áudio, e não um erro de "já existe uma gravação".
-await p.click('.record-btn')
-await p.waitForSelector('.record-label:has-text("Gravação concluída")', { timeout: 20000 })
-console.log('parada:', await p.locator('.record-label').textContent())
+await p.click('.gravando-parar')
+await p.waitForSelector('.revisao-titulo:has-text("Gravação concluída")', { timeout: 20000 })
+console.log('parada:', await p.locator('.revisao-titulo').textContent())
 if (await p.locator('.alert-error').count()) {
   throw new Error('erro na tela: ' + await p.locator('.alert-error').textContent())
 }
 
-// E uma gravação nova começa normalmente depois dela.
-await p.click('.btn-ghost:has-text("Regravar")')
+// E uma gravação nova começa normalmente depois dela. "Regravar" virou
+// "Descartar", com confirmação (b8770c8).
+await p.click('.btn-link.discreto')
+await p.click('.descartar-pergunta .perigo')
 await p.click('.record-btn')
-await p.waitForSelector('.record-label:has-text("Gravando")', { timeout: 10000 })
+await p.waitForSelector('.gravando-estado:has-text("Gravando")', { timeout: 10000 })
 console.log('a gravação seguinte começa sem travar')
-await p.click('.record-btn')
-await p.waitForSelector('.record-label:has-text("Gravação concluída")', { timeout: 20000 })
+await p.click('.gravando-parar')
+await p.waitForSelector('.revisao-titulo:has-text("Gravação concluída")', { timeout: 20000 })
 
 await b.close()
 console.log('gravação sobrevive à navegação ok')

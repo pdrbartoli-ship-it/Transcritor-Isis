@@ -5,6 +5,7 @@ import { generateInsights } from '../../lib/api'
 import { planoPorId } from '../../lib/planos'
 import { IconChevron } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
+import PerguntasFeitas from './PerguntasFeitas'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { track } from '../../lib/analytics'
 import { formatTimestamp, formatRange, sliceSegments } from './shared'
@@ -83,6 +84,7 @@ export default function Conversa() {
             <MarkdownText text={conversation.summary} />
           </section>
         )}
+        <PerguntasFeitas conversation={conversation} />
         <div className="empty-insights">
           <p>Esta conversa ainda não tem os 4 tópicos, a lista de próximos passos nem o resumo minuto a minuto.</p>
           {/* No Grátis o botão continua aqui, e é o mesmo convite: mostrar o que
@@ -108,6 +110,19 @@ export default function Conversa() {
     <div className="conversa">
       <ConversaHeader conversation={conversation} />
       {error && <div className="alert alert-error">{error}</div>}
+
+      {/* O resumo abre a conversa, como na simples. Na completa ele existia
+          desde sempre (é o `summary_bullets` da análise) e a tela não o
+          mostrava: quem abria uma reunião de uma hora caía direto nos quatro
+          tópicos, sem nunca ver o apanhado do que foi dito. */}
+      {conversation.summary && (
+        <section className="conversa-block">
+          <h2>Resumo</h2>
+          <MarkdownText text={conversation.summary} />
+        </section>
+      )}
+
+      <PerguntasFeitas conversation={conversation} />
 
       <div className="conversa-grid">
         <section className="conversa-block">

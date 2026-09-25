@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ChatTextarea from '../../components/chat/ChatTextarea'
 import { IconSend } from '../../components/Icons'
+import SemSaldo from '../../components/SemSaldo'
 import { track } from '../../lib/analytics'
 import { textoPerguntasRestantes } from './perguntas'
 
@@ -12,7 +13,7 @@ import { textoPerguntasRestantes } from './perguntas'
 //
 // `restantes` é null quando o plano não tem limite (ou a contagem não chegou):
 // aí não se mostra número nenhum.
-export default function AskBar({ restantes = null, onVerPlanos }) {
+export default function AskBar({ restantes = null, onVerPlanos, onConvidar = null, premio = null }) {
   const navigate = useNavigate()
   const [texto, setTexto] = useState('')
 
@@ -25,13 +26,23 @@ export default function AskBar({ restantes = null, onVerPlanos }) {
     navigate('chat', pergunta ? { state: { ask: pergunta } } : undefined)
   }
 
-  // Acabaram as perguntas desta transcrição: o campo vira o convite. Deixar
-  // digitar para só depois recusar gastaria a vontade da pessoa num erro.
+  // Acabaram as perguntas: o campo vira o convite. Deixar digitar para só
+  // depois recusar gastaria a vontade da pessoa num erro.
+  //
+  // "deste mês", e não "desta transcrição": o limite passou a ser um saldo
+  // mensal único (commit 4290d7b) e o texto ficou para trás, dizendo à pessoa
+  // que bastava abrir outra conversa para continuar perguntando.
   if (restantes === 0) {
     return (
       <div className="ask-bar ask-esgotado">
-        <span>Você usou todas as perguntas desta transcrição.</span>
-        {onVerPlanos && <button type="button" className="btn-primary btn-sm" onClick={onVerPlanos}>Ver planos</button>}
+        <SemSaldo
+          texto="Você usou todas as perguntas deste mês."
+          onConvidar={onConvidar}
+          onVerPlanos={onVerPlanos}
+          premio={premio}
+          origem="sem-perguntas"
+          compacto
+        />
       </div>
     )
   }

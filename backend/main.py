@@ -339,7 +339,14 @@ VITRINE_PLANO = {
 # O convite vale quando o amigo entra pelo link, cria a conta e faz esta
 # quantidade de transcrições. Uma conta só "entra pelo link" se foi criada há
 # pouco: sem a janela, qualquer conta antiga podia colar o código de alguém.
-CONVITE_META_CAPTURAS = 3
+#
+# Era 3 até 25/09/2026. Com 1, o amigo vira convite válido na primeira
+# transcrição que fizer, o que encurta o caminho entre convidar e ganhar. Quem
+# entrou pela regra antiga e já fez 1 ou 2 passa a valer na transcrição
+# seguinte: a função do banco soma e compara com a meta de agora, então não há
+# migração a rodar. Se aparecer conta falsa em série, a trava a ligar aqui é
+# exigir um mínimo de duração nessa primeira transcrição.
+CONVITE_META_CAPTURAS = 1
 CONVITE_JANELA_DIAS = 7
 # O que quem convidou ganha, por amigo, nos planos com limite. Vale no ciclo
 # em curso, somado ao limite do plano (supabase/convites.sql).
@@ -754,14 +761,17 @@ OEMBED_ENDPOINTS = {
 }
 
 
-async def fetch_video_title(url: str) -> str | None:
+async def fetch_video_info(url: str) -> dict:
+    """Título e canal do vídeo, pelo oEmbed. O canal vem junto porque numa
+    entrevista ele costuma ser metade da resposta de "quem está falando": o
+    dono do canal é quem entrevista, e o convidado costuma estar no título."""
     host = (urlparse(url).hostname or "").lower().removeprefix("www.")
     endpoint = next(
         (e for h, e in OEMBED_ENDPOINTS.items() if host == h or host.endswith("." + h)),
         None,
     )
     if not endpoint:
-        return None
+        return {}
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -771,12 +781,15 @@ async def fetch_video_title(url: str) -> str | None:
                 follow_redirects=True,
             )
         if resp.status_code == 200:
-            title = (resp.json() or {}).get("title")
-            return title.strip() if isinstance(title, str) and title.strip() else None
+            dados = resp.json() or {}
+            def limpo(campo):
+                valor = dados.get(campo)
+                return valor.strip() if isinstance(valor, str) and valor.strip() else None
+            return {"titulo": limpo("title"), "canal": limpo("author_name")}
     except Exception:
         # Título é enfeite: se falhar, o insight do modelo vira o nome da conversa.
         pass
-    return None
+    return {}
 
 
 # Idioma de SAÍDA da análise: em que língua o app escreve título, resumo,
@@ -1113,11 +1126,59 @@ Registro: NEUTRO e executivo. Frases curtas, diretas, sem floreio, sem emoji, se
 
 - **title**: 3 a 7 palavras nomeando o assunto da conversa. Sem aspas, sem ponto final.
 - **summary_bullets**: 3 a 6 bullets curtos com o essencial. Cada um uma frase.
-- **speakers**: quem fala, inferido do próprio conteúdo (alguém é chamado pelo nome, se apresenta, ou assina uma fala). `label` é sempre "Locutor 1", "Locutor 2"… na ordem em que aparecem. `name` é o nome inferido, ou null se não houver pista nenhuma. `confidence` é "alta" só quando a pessoa é nomeada de forma inequívoca e repetida; "media" quando há uma pista só; "baixa" quando é palpite. NÃO invente nomes: sem pista, name é null. Se a gravação é claramente de uma pessoa só, devolva um único locutor.
+- **speakers**: quem fala, inferido do conteúdo (alguém é chamado pelo nome, se apresenta, ou assina uma fala) e do contexto da gravação, quando ele for dado. `label` é sempre "Locutor 1", "Locutor 2"… na ordem em que aparecem. `name` é o nome inferido, ou null se não houver pista nenhuma. `confidence` é "alta" só quando a pessoa é nomeada de forma inequívoca e repetida; "media" quando há uma pista só; "baixa" quando é palpite. NÃO invente nomes: sem pista, name é null. Se a gravação é claramente de uma pessoa só, devolva um único locutor.
+- **speakers, quando não há nome**: em vez de deixar a pessoa como "Locutor 2", use o PAPEL dela, quando o papel for evidente pelo que ela diz ("Médica", "Paciente", "Professora", "Aluno", "Entrevistador", "Entrevistada", "Cliente", "Vendedor", "Apresentador"). Papel não é palpite sobre quem a pessoa é, é o que ela está fazendo na conversa, e para quem lê vale muito mais do que um número. Ponha o papel em `name` e deixe `confidence` em "media". "Locutor N" fica como último recurso, para quando nem o nome nem o papel dão para saber.
 - **speaker_turns**: uma entrada CADA VEZ que a voz muda de dono, com `start` em segundos (tirado do marcador de tempo mais próximo) e `speaker` igual ao `name` do locutor, ou ao `label` dele quando não há nome. Não repita a mesma pessoa em entradas seguidas: só marque a troca. Se a gravação tem uma voz só, devolva uma entrada em 0.
 - **topics**: EXATAMENTE 4 tópicos, os mais importantes da conversa. `label` é curtíssimo, 2 a 4 palavras, como uma etiqueta ("Política comercial", "Dimensionamento de equipes"). `detail` são 3 a 5 bullets em markdown (cada linha começando com "- ") desenvolvendo o tópico. `time_refs` são os intervalos [início, fim] em SEGUNDOS onde o tópico é discutido, tirados dos marcadores de tempo.
 - **todos**: ações concretas que ficaram combinadas, ou seja, algo que alguém precisa fazer depois. `task` é curtíssimo e começa por verbo ("Revisar apresentação do Q4"). `description` é uma frase dizendo o que precisa ser feito. `owners` são os nomes dos responsáveis (lista vazia se não ficou claro). `due` é o prazo como foi dito ("até sexta", "no fim do mês") ou null. `time_ref` é o intervalo [início, fim] em segundos onde a ação foi combinada. Se a conversa não combinou nenhuma ação, devolva uma lista VAZIA. Não invente tarefas para preencher espaço.
 - **chapters**: a conversa dividida em seções sequenciais por assunto, tipicamente entre 4 e 12. Cada uma com `start` e `end` em segundos, um `title` curto (igual em espírito aos labels de tópico) e 2 a 4 `bullets` com o que foi dito ali. As seções devem cobrir a conversa inteira, em ordem, sem buraco e sem sobreposição: o `start` de uma é o `end` da anterior, a primeira começa em 0 e a última termina no último marcador de tempo."""
+
+
+# O que o modelo sabe da gravação ALÉM do que foi dito nela. Existe para os
+# locutores: sem nada disto, ele só tem o texto, e "quem fala" só sai com nome
+# quando alguém é chamado pelo nome no meio da conversa. Com a origem, o título
+# e o canal do vídeo, uma entrevista já entrega os dois nomes; com o nome de
+# quem gravou, a voz do microfone deixa de ser "Locutor 1".
+#
+# Nada disto é guardado no servidor: entra no pedido e morre com ele.
+ORIGEM_EM_PALAVRAS = {
+    "record": "uma reunião, aula ou conversa gravada pela própria pessoa",
+    "file": "um arquivo de áudio ou vídeo enviado pela pessoa (costuma ser áudio de WhatsApp, onde há uma voz só, a de quem mandou)",
+    "url": "um vídeo da internet",
+}
+
+
+# O nome de quem gravou vem da tela (Configurações) a cada captura, e não do
+# banco: é dado de pessoa, entra no pedido e morre com ele. O teto é generoso
+# para nome composto e curto o bastante para ninguém enfiar instrução no prompt
+# por aqui.
+NOME_MAX = 60
+
+
+def normalizar_nome(nome: str | None) -> str | None:
+    limpo = " ".join((nome or "").split())[:NOME_MAX].strip()
+    return limpo or None
+
+
+def bloco_de_contexto(contexto: dict | None) -> str:
+    if not contexto:
+        return ""
+    linhas = []
+    origem = ORIGEM_EM_PALAVRAS.get(contexto.get("origem") or "")
+    if origem:
+        linhas.append(f"- Esta gravação é {origem}.")
+    if contexto.get("titulo"):
+        linhas.append(f"- Título do vídeo: {contexto['titulo']}")
+    if contexto.get("canal"):
+        linhas.append(f"- Canal que publicou: {contexto['canal']}")
+    if contexto.get("nome"):
+        linhas.append(
+            f"- Quem gravou se chama {contexto['nome']}. Quando der para saber qual voz é a dela "
+            "(ela se apresenta, é chamada assim, ou é quem conduz a conversa), use esse nome."
+        )
+    if not linhas:
+        return ""
+    return "Contexto da gravação (não é parte do que foi dito):\n" + "\n".join(linhas) + "\n\n"
 
 
 def instrucoes_insights(idioma: str | None) -> str:
@@ -1651,21 +1712,26 @@ def modelos_usados(modelos: list[str]) -> str:
 
 async def extract_insights(
     transcript: str, segments: list[dict], effort: str | None = None,
-    idioma: str = IDIOMA_AUTO,
+    idioma: str = IDIOMA_AUTO, contexto: dict | None = None,
 ) -> tuple[dict, int, int, int, int, str]:
-    """Título, resumo, 4 tópicos, tarefas, capítulos e locutores — tudo de uma
-    chamada só, sobre a transcrição com marcadores de tempo."""
+    """Título, resumo, 4 tópicos, tarefas, capítulos e locutores, tudo de uma
+    chamada só, sobre a transcrição com marcadores de tempo.
+
+    `contexto` é o que se sabe da gravação por fora do texto (ver
+    bloco_de_contexto): é o que permite nomear quem fala quando ninguém diz
+    nome nenhum na conversa."""
     body = format_timed_transcript(segments) or transcript
+    cabecalho = bloco_de_contexto(contexto)
 
     if len(body) <= MAX_SINGLE_PASS_CHARS:
         insights, tin, tout, cache_read, cache_write, modelo = await call_insights_com_reserva(
             "transcricao_avancada",
-            instrucoes_insights(idioma), f"Transcrição:\n{body}", INSIGHTS_SCHEMA,
+            instrucoes_insights(idioma), f"{cabecalho}Transcrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
         return normalize_insights(insights, segments), tin, tout, cache_read, cache_write, modelo
 
-    return await extract_insights_long(body, segments, idioma)
+    return await extract_insights_long(body, segments, idioma, contexto)
 
 
 SIMPLE_SUMMARY_SCHEMA = {
@@ -1740,7 +1806,9 @@ PART_SCHEMA = {
 }
 
 
-async def extract_insights_long(body: str, segments: list[dict], idioma: str = IDIOMA_AUTO) -> tuple[dict, int, int, int, int, str]:
+async def extract_insights_long(
+    body: str, segments: list[dict], idioma: str = IDIOMA_AUTO, contexto: dict | None = None,
+) -> tuple[dict, int, int, int, int, str]:
     """Transcrição longa: cada parte gera seus capítulos e tarefas em paralelo,
     e uma segunda chamada pequena — alimentada só pelos títulos de capítulo —
     consolida título, resumo e os 4 tópicos."""
@@ -1752,6 +1820,7 @@ async def extract_insights_long(body: str, segments: list[dict], idioma: str = I
         call_insights_com_reserva(
             "transcricao_avancada",
             instrucoes_insights(idioma),
+            f"{bloco_de_contexto(contexto)}"
             f"Esta é a PARTE {i + 1} de {len(parts)} de uma conversa longa. "
             "Extraia apenas locutores, tarefas e capítulos DESTA parte. Os tempos já são absolutos "
             "em relação à conversa inteira: use-os como estão.\n\n"
@@ -2107,6 +2176,7 @@ async def analisar_transcricao(
     user_id: str | None = None,
     idioma: str = IDIOMA_AUTO,
     convidado: bool = False,
+    contexto: dict | None = None,
 ) -> TranscriptionResult:
     """O trecho que as duas rotas de captura têm em comum: com a transcrição na
     mão, decidir qual análise rodar e montar o resultado. Sem isto, cada rota
@@ -2145,7 +2215,9 @@ async def analisar_transcricao(
             ),
         )
 
-    insights, in_tokens, out_tokens, cache_read, cache_write, modelo = await extract_insights(full_transcript, segments, idioma=idioma)
+    insights, in_tokens, out_tokens, cache_read, cache_write, modelo = await extract_insights(
+        full_transcript, segments, idioma=idioma, contexto=contexto,
+    )
     await _cobrar_do_saldo(user_id, minutos, saldo)
     return TranscriptionResult(
         transcript=full_transcript,
@@ -2223,6 +2295,8 @@ async def transcribe(
     file: UploadFile = File(...),
     mode: str = Form(MODO_COMPLETA),
     language: str = Form(IDIOMA_AUTO),
+    origem: str = Form("file"),
+    nome: str | None = Form(None),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -2251,6 +2325,10 @@ async def transcribe(
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
                 user_id=user_id, idioma=idioma, convidado=convidado,
+                contexto={
+                    "origem": origem if origem in ORIGENS_DE_CAPTURA else "file",
+                    "nome": normalizar_nome(nome),
+                },
             )
         finally:
             # A faxina mora aqui, e não na rota: `run_once` blinda o trabalho
@@ -2281,6 +2359,7 @@ async def process_url(
     url: str = Form(...),
     mode: str = Form(MODO_COMPLETA),
     language: str = Form(IDIOMA_AUTO),
+    nome: str | None = Form(None),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -2305,7 +2384,7 @@ async def process_url(
     # Aqui a identidade é a própria URL: baixar e transcrever o mesmo vídeo duas
     # vezes em paralelo é o pior caso de desperdício do app.
     key = capture_key("url", url.strip(), modo, idioma)
-    return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma, convidado))
+    return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma, convidado, normalizar_nome(nome)))
 
 
 # ── Transcrição que continua no servidor ─────────────────────────────────
@@ -2405,6 +2484,7 @@ async def criar_transcricao(
     mode: str = Form(MODO_COMPLETA),
     language: str = Form(IDIOMA_AUTO),
     duracao_s: int | None = Form(None),
+    nome: str | None = Form(None),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -2440,6 +2520,7 @@ async def criar_transcricao(
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
                 user_id=user_id, idioma=idioma,
+                contexto={"origem": origem, "nome": normalizar_nome(nome)},
             )
         # A mesma chave de /transcribe: o mesmo áudio mandado pelos dois
         # caminhos ao mesmo tempo (o app caindo de um para o outro) é um
@@ -2456,7 +2537,7 @@ async def criar_transcricao(
             if duracao_link:
                 recusar_se_nao_cabe(await ler_saldo(user_id), duracao_link / 60)
                 duracao_s = duracao_s or round(duracao_link)
-        build = lambda: build_url_result(url, modo, user_id, idioma, False)  # noqa: E731
+        build = lambda: build_url_result(url, modo, user_id, idioma, False, normalizar_nome(nome))  # noqa: E731
         key = capture_key("url", url, modo, idioma)
 
     job_id = await _criar_linha_de_transcricao({
@@ -2700,7 +2781,7 @@ def legenda_imprestavel(
 
 async def build_url_result(
     url: str, modo: str = MODO_COMPLETA, user_id: str | None = None,
-    idioma: str = IDIOMA_AUTO, convidado: bool = False,
+    idioma: str = IDIOMA_AUTO, convidado: bool = False, nome: str | None = None,
 ) -> TranscriptionResult:
     # "Está demorando" só vira coisa que dá para consertar com o tempo medido e
     # separado: buscar o texto (legenda, ou baixar e transcrever o áudio) e
@@ -2878,7 +2959,8 @@ async def build_url_result(
     # O título real do vídeo/página ganha do que o modelo inferiu: a conversa
     # não deve se chamar pela URL crua, nem por um resumo do que o vídeo é
     # quando o próprio YouTube já diz o nome dele.
-    title = await fetch_video_title(url) if is_video_url(url) else None
+    info = await fetch_video_info(url) if is_video_url(url) else {}
+    title = info.get("titulo")
 
     texto_pronto = time()
     resultado = await analisar_transcricao(
@@ -2887,6 +2969,7 @@ async def build_url_result(
         user_id=user_id,
         idioma=idioma,
         convidado=convidado,
+        contexto={"origem": "url", "titulo": title, "canal": info.get("canal"), "nome": nome},
     )
     logger.info(
         "Link pronto em %.1fs (texto: %.1fs, análise: %.1fs, %d caracteres)",

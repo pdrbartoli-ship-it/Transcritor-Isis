@@ -548,6 +548,13 @@ export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}
     pausedAt: pausedAtRef.current,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
+    // Só em desenvolvimento: põe uma gravação na tela de revisão sem gravar
+    // nada, para o teste exercitar o que acontece quando uma reunião nova
+    // começa com ela pendurada ali (ver useDeteccaoReuniao).
+    ...(import.meta.env.DEV ? { __simularGravacaoPronta: (segundos = 90) => {
+      setRecordedBlob(new Blob(['x'], { type: 'audio/webm' }))
+      setRecordingTime(segundos)
+    } } : {}),
   }
 }
 

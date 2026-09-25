@@ -15,7 +15,10 @@ const p = await b.newPage({ viewport: { width: 1400, height: 900 } })
 
 // Saldo de mentira: o plano e os minutos usados saem daqui, e não do banco.
 let usados = 0
-const limitePlano = 800 // Avançado, a régua que planoPorId devolve
+// Iniciante, e não Avançado: em 24/09/2026 o Avançado virou ILIMITADO em
+// minutos, e com ele não há teto a calcular nem variante de saldo curto para
+// exercitar. O plano com limite é o Iniciante (250 min na régua vigente).
+const limitePlano = 250
 await p.route(`${SUPABASE}/rest/v1/uso_mensal*`, route => route.fulfill({
   status: 200,
   contentType: 'application/json',
@@ -31,7 +34,7 @@ await p.route(`${SUPABASE}/rest/v1/uso_mensal*`, route => route.fulfill({
 await p.route(`${SUPABASE}/rest/v1/subscriptions*`, route => route.fulfill({
   status: 200,
   contentType: 'application/json',
-  body: JSON.stringify({ plano: 'avancado' }),
+  body: JSON.stringify({ plano: 'iniciante' }),
 }))
 
 await p.goto(base + '#/auth')
@@ -69,15 +72,15 @@ async function simular(id, app = 'zoom') {
 }
 
 // Saldo folgado: convite seco, sem falar de minutos.
-usados = 300
+usados = 50
 const folgado = await simular(10)
-console.log('saldo 500 min →', folgado.variante, '|', folgado.corpo, '| teto', folgado.pendente.tetoS, 's')
+console.log('saldo 200 min →', folgado.variante, '|', folgado.corpo, '| teto', folgado.pendente.tetoS, 's')
 if (folgado.variante !== 'convite') throw new Error('esperava convite')
 if (/min/.test(folgado.corpo)) throw new Error('o convite folgado não deve falar de saldo')
-if (folgado.pendente.tetoS !== 500 * 60 - 30) throw new Error('teto errado para 500 min')
+if (folgado.pendente.tetoS !== 200 * 60 - 30) throw new Error('teto errado para 200 min')
 
 // Saldo médio: o número real aparece, e o teto para 30 s antes do fim.
-usados = 788
+usados = 238
 const curto = await simular(11, 'teams')
 console.log('saldo 12 min →', curto.variante, '|', curto.corpo, '| teto', curto.pendente.tetoS, 's')
 if (curto.variante !== 'convite-saldo-curto') throw new Error('esperava convite-saldo-curto')
@@ -94,7 +97,7 @@ console.log('segunda reunião do dia sem saldo:', segundaVez === null ? 'nada ap
 if (segundaVez !== null) throw new Error('o "sem saldo" apareceu duas vezes no mesmo dia')
 
 // A mesma reunião não pergunta de novo.
-usados = 300
+usados = 50
 const repetida = await simular(10)
 console.log('mesma reunião de novo:', repetida === null ? 'nada aparece' : 'ERRO: apareceu')
 if (repetida !== null) throw new Error('a mesma reunião perguntou duas vezes')
@@ -121,6 +124,25 @@ await p.evaluate(() => window.__simularReuniao({ id: 33, app: 'zoom' }))
 const outra = await p.evaluate(() => window.__simularFimReuniao(999))
 if (!outra || outra.reuniaoId !== 33) throw new Error('o fim de outra reunião fechou o convite errado')
 await p.evaluate(() => window.__responderReuniao('nao'))
+
+// Gravação esperando o "Transcrever" quando outra reunião começa: a anterior
+// vai para a fila sozinha e o aviso da nova aparece. Antes disto (25/09/2026) o
+// Dito ficava calado, e a pessoa só descobria ao voltar ao computador.
+usados = 50
+await p.evaluate(() => window.__simularGravacaoPronta(90))
+await p.waitForFunction(() => window.__temGravacaoPendente() === true, { timeout: 5000 })
+const comPendente = await simular(40, 'meet')
+console.log('reunião nova com gravação pendente:', comPendente ? `avisou (${comPendente.variante})` : 'ERRO: ficou calado')
+if (!comPendente) throw new Error('a reunião nova não perguntou com uma gravação pendente')
+const revisaoLimpa = await p.evaluate(() => window.__temGravacaoPendente() === false)
+console.log('gravação anterior saiu da revisão:', revisaoLimpa ? 'sim, foi para a fila' : 'ERRO: continua lá')
+if (!revisaoLimpa) throw new Error('a gravação pendente continuou na tela de revisão')
+// A linha tem de aparecer na lateral: é como a pessoa fica sabendo que a
+// gravação anterior não se perdeu.
+const naLateral = await p.waitForSelector('.andamento-grupo .sidebar-item.andamento', { timeout: 8000 })
+  .then(() => true).catch(() => false)
+console.log('linha de "Transcrevendo" na lateral:', naLateral ? 'apareceu' : 'ERRO: não apareceu')
+if (!naLateral) throw new Error('a gravação enfileirada não apareceu na lateral')
 
 // Saldo ilegível: não prometemos o que não sabemos.
 await p.route(`${SUPABASE}/rest/v1/uso_mensal*`, route => route.fulfill({ status: 500, body: '{}' }))

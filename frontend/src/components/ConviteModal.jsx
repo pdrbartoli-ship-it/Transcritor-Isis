@@ -66,8 +66,13 @@ export default function ConviteModal({ convite, onAtualizar, onClose }) {
           <>
             <Premio convite={convite} />
 
+            {/* Com a meta em 1 (desde 25/09/2026) a frase de antes saía como
+                "faz 1 transcrições". O número continua vindo do servidor, que
+                é quem manda na regra. */}
             <p className="convite-regra">
-              Vale quando o amigo cria a conta pelo seu link e faz {convite.regras.capturas} transcrições.
+              {convite.regras.capturas === 1
+                ? 'Vale quando o amigo cria a conta pelo seu link e faz a primeira transcrição.'
+                : `Vale quando o amigo cria a conta pelo seu link e faz ${convite.regras.capturas} transcrições.`}
             </p>
 
             <div className="convite-link">

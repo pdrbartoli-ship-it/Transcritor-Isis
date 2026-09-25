@@ -1452,6 +1452,21 @@ input::placeholder { color: var(--text-muted); }
 .fala-head { display: block; margin-bottom: 2px; }
 .fala-time { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 8px; }
 .fala-speaker { font-size: 12px; font-weight: 500; color: var(--accent); }
+/* O nome de quem fala é clicável: quem corrige "Locutor 2" para "Júlia" muda a
+   conversa inteira (ver NomeDoLocutor). Sem nenhum enfeite parado na tela; o
+   convite aparece ao passar o mouse. */
+.fala-speaker-botao {
+  border: none; background: none; padding: 0; font: inherit;
+  color: var(--accent); cursor: pointer; border-radius: 3px;
+}
+.fala-speaker-botao:hover { text-decoration: underline; }
+.fala-speaker-botao:disabled { opacity: .6; cursor: default; }
+.fala-speaker-campo {
+  width: 11ch; padding: 1px 5px;
+  font-size: 12px; font-weight: 500; font-family: inherit;
+  color: var(--accent); background: var(--surface);
+  border: 1px solid var(--accent); border-radius: 3px;
+}
 
 /* ---------- Locutores e ações ---------- */
 
@@ -1574,6 +1589,32 @@ input::placeholder { color: var(--text-muted); }
 .ask-anteriores button:hover { background: var(--surface-2); color: var(--text); }
 .ask-anteriores button:hover > svg { opacity: 1; }
 .ask-anteriores button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* A pergunta em cima, e embaixo a conversa de onde ela veio (nada, quando foi
+   feita aqui no Perguntar). */
+.ask-anterior-texto { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ask-anterior-texto > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-anterior-conversa {
+  font-size: 12px; color: var(--text-muted); opacity: .8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ask-anteriores-mais { justify-content: center; font-size: 13px; font-weight: 500; }
+
+/* A pergunta que a visão geral da conversa mandou abrir: um realce curto, só
+   para os olhos a encontrarem no meio do histórico. */
+.message-focada .bubble {
+  animation: destacar-pergunta 1.5s ease-out;
+}
+@keyframes destacar-pergunta {
+  0%, 55% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .message-focada .bubble { animation: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+}
+
+/* Na visão geral a lista fica encostada à esquerda, e não centralizada como
+   na tela do Perguntar. */
+.perguntas-feitas { max-width: none; }
 .ask-hero-status { margin: 0; font-size: 12px; color: var(--text-muted); }
 
 /* Perguntas restantes: informação de canto, no mesmo tom apagado do contador
@@ -2218,6 +2259,26 @@ input::placeholder { color: var(--text-muted); }
   color: var(--accent); cursor: pointer; text-decoration: underline;
 }
 .alert-cta { display: block; margin-top: 10px; padding: 7px 14px; font-size: 13px; }
+
+/* ── Saldo esgotado: convite na frente, planos ao lado ─────────────────── */
+/* Usado na home, no painel de captura, no Perguntar e no chat da conversa.
+   A mesma peça nos quatro lugares; só o texto muda. */
+.sem-saldo {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  margin-bottom: 14px; padding: 14px 16px;
+  background: var(--accent-soft); border: 1px solid var(--border);
+  border-radius: var(--radius); text-align: center;
+}
+.sem-saldo-texto { font-size: 14px; color: var(--text); margin: 0; }
+.sem-saldo-acoes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.sem-saldo-acoes .btn-sm { display: inline-flex; align-items: center; gap: 6px; }
+.sem-saldo-premio { font-size: 12px; color: var(--text-muted); margin: 0; }
+/* Dentro da barra de perguntar, onde a altura é apertada: some a moldura, que
+   ali seria uma caixa dentro de outra. */
+.sem-saldo-compacto {
+  margin: 0; padding: 0; background: none; border: none; gap: 8px;
+}
+.sem-saldo-compacto .sem-saldo-texto { font-size: 13px; color: var(--text-muted); }
 
 /* ── Perguntar ao acervo ────────────────────────────────────────────────── */
 /* O botão da barra lateral repete a casca do "Novo" (mesma caixa, mesma

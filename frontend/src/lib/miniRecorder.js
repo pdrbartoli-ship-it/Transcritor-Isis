@@ -22,10 +22,35 @@ const MINI_W = 232
 const MINI_H = 74
 const MARGIN = 24
 
-// Onde o usuário deixou a janelinha da última vez, em pixels lógicos. Ela é
-// fechada (e não escondida) quando a pessoa volta ao app, então sem guardar
-// isto ela renasceria no lugar padrão a cada minimizada, e quem a tirou de cima
-// da câmera do Teams teria de arrastar de novo toda vez.
+// Quanto a janelinha fica ACIMA do fim da área livre da tela (o topo da barra
+// de tarefas). Não é folga estética: é o que a tira de cima dos controles da
+// reunião.
+//
+// Onde cada coisa fica, conferido na documentação dos três (25/09/2026):
+// · Meet: barra de botões embaixo, sempre visível, por volta de 80 px, com
+//   microfone, câmera e desligar no centro. A sua própria imagem é um quadro
+//   flutuante no canto de baixo à DIREITA numa chamada de duas pessoas.
+// · Teams: os botões ficam no topo, mas a sua imagem também fica no canto de
+//   baixo à direita do palco.
+// · Zoom: barra embaixo, por volta de 60 px; no modo orador as miniaturas
+//   ficam em cima.
+//
+// Daí o lugar escolhido: centro, embaixo, logo ACIMA das barras. O canto
+// direito (onde a janelinha nascia antes de 23/09) é a câmera de quem está na
+// chamada nos dois primeiros; colada na borda, ela cobriria o microfone e o
+// desligar do Meet; e em cima ela bate nas miniaturas do Zoom. No centro, o
+// máximo que ela cobre é a parte de baixo do vídeo do meio.
+const ACIMA_DOS_CONTROLES = 104
+
+// Onde o usuário arrastou a janelinha, em pixels lógicos. Ela é fechada (e não
+// escondida) a cada vez que a pessoa volta ao app, então sem guardar isto ela
+// renasceria no lugar padrão a cada minimizada, e quem a tirou do caminho
+// teria de arrastar de novo no meio da mesma reunião.
+//
+// Vale só ENQUANTO aquela gravação dura (ver esquecerPosicaoMini): guardar
+// entre gravações fazia a janelinha voltar, semanas depois, a um canto que a
+// pessoa escolheu numa reunião com outro layout, e foi assim que ela continuou
+// aparecendo em cima da câmera mesmo depois de o padrão virar o centro.
 const POSICAO_KEY = 'dito-mini-posicao'
 
 // Importação dinâmica: no navegador comum estes módulos nunca são carregados, e
@@ -46,7 +71,7 @@ export async function openMiniWindow() {
     return
   }
 
-  const position = (await posicaoGuardada()) || (await centroInferior())
+  const position = (await posicaoGuardada()) || (await centroInferior(MINI_W, MINI_H))
   const mini = new WebviewWindow(MINI_LABEL, {
     // Um caminho relativo abriria a cópia do site que vai dentro do instalador,
     // congelada no dia do build. A janelinha tem de vir de onde veio a janela
@@ -77,40 +102,50 @@ export async function closeMiniWindow() {
   await mini?.close()
 }
 
-// Canto inferior direito do monitor atual. Se não der para descobrir o monitor,
-// a janela nasce onde o sistema quiser — melhor do que não nascer.
-//
-// Recebe o tamanho porque a janelinha de gravação não é a única que nasce ali:
-// o aviso de reunião usa o mesmo canto, e `acima` é o que o empurra para cima
-// da janelinha quando as duas estão na tela ao mesmo tempo.
-export async function cantoInferiorDireito(largura, altura, acima = 0) {
+// O monitor onde o mouse está, que é onde a reunião está acontecendo. A janela
+// principal do Dito não serve de referência: durante uma reunião ela costuma
+// estar minimizada ou escondida na bandeja, e podia ter sido deixada no outro
+// monitor.
+async function monitorDeAgora() {
+  const { cursorPosition, monitorFromPoint, currentMonitor } = await tauriWindow()
   try {
-    const { currentMonitor } = await tauriWindow()
-    const monitor = await currentMonitor()
-    if (!monitor) return {}
-    const scale = monitor.scaleFactor || 1
-    return {
-      x: Math.round(monitor.size.width / scale - largura - MARGIN),
-      y: Math.round(monitor.size.height / scale - altura - MARGIN * 3 - acima),
-    }
+    const ponteiro = await cursorPosition()
+    const debaixo = await monitorFromPoint(ponteiro.x, ponteiro.y)
+    if (debaixo) return debaixo
   } catch {
-    return {}
+    // Sem ponteiro (sessão remota, versão antiga da API): vale o monitor da
+    // janela principal, que é o que havia antes.
   }
+  return currentMonitor()
 }
 
-// Centro da borda de baixo do monitor atual. O canto direito, onde ela nascia
-// antes, é justamente onde o Teams e o Zoom põem a imagem da própria câmera.
-async function centroInferior() {
+// Centro da borda de baixo da ÁREA LIVRE da tela, acima dos controles da
+// reunião (ver ACIMA_DOS_CONTROLES). Se não der para descobrir o monitor, a
+// janela nasce onde o sistema quiser: melhor do que não nascer.
+//
+// A área livre é a tela menos a barra de tarefas. A conta antiga usava a
+// altura TOTAL menos uma folga fixa, e por isso errava em quem tem a barra de
+// tarefas mais alta, na lateral ou escondida.
+//
+// Recebe o tamanho porque a janelinha de gravação não é a única que nasce ali:
+// o aviso de reunião usa o mesmo lugar, e `acima` é o que o empurra para cima
+// da janelinha quando as duas estão na tela ao mesmo tempo.
+export async function centroInferior(largura = MINI_W, altura = MINI_H, acima = 0) {
   try {
-    const { currentMonitor } = await tauriWindow()
-    const monitor = await currentMonitor()
+    const monitor = await monitorDeAgora()
     if (!monitor) return {}
     const scale = monitor.scaleFactor || 1
-    const x0 = (monitor.position?.x || 0) / scale
-    const y0 = (monitor.position?.y || 0) / scale
+    // `workArea` só existe nas versões novas da API; sem ele, a tela inteira
+    // menos uma folga, que é o que havia antes.
+    const area = monitor.workArea || { position: monitor.position, size: monitor.size }
+    const x0 = (area.position?.x || 0) / scale
+    const y0 = (area.position?.y || 0) / scale
+    const larguraTela = area.size.width / scale
+    const alturaTela = area.size.height / scale
+    const folga = monitor.workArea ? ACIMA_DOS_CONTROLES : MARGIN * 3
     return {
-      x: Math.round(x0 + (monitor.size.width / scale - MINI_W) / 2),
-      y: Math.round(y0 + monitor.size.height / scale - MINI_H - MARGIN * 3),
+      x: Math.round(x0 + (larguraTela - largura) / 2),
+      y: Math.round(y0 + alturaTela - altura - folga - acima),
     }
   } catch {
     return {}
@@ -125,6 +160,11 @@ export function guardarPosicaoMini(x, y) {
   } catch {
     // Sem armazenamento: ela volta para o centro, que é o padrão aceitável.
   }
+}
+
+// Chamado quando a gravação termina: a próxima começa no centro de novo.
+export function esquecerPosicaoMini() {
+  try { localStorage.removeItem(POSICAO_KEY) } catch { /* sem storage */ }
 }
 
 // A posição guardada só vale se ainda cair dentro de algum monitor: quem

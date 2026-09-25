@@ -461,9 +461,9 @@ export default function Landing() {
               <p>Você ganha o selo de apoiador e usa as novidades antes de todo mundo.</p>
             </div>
             <div>
-              <strong>3 transcrições</strong>
+              <strong>1 transcrição</strong>
               <h3>Quando vale</h3>
-              <p>O amigo cria a conta pelo seu link e faz 3 transcrições.</p>
+              <p>O amigo cria a conta pelo seu link e faz a primeira transcrição.</p>
             </div>
           </div>
           <p className="lp-precos-nota">Seu link fica em Convidar amigos, dentro do app.</p>

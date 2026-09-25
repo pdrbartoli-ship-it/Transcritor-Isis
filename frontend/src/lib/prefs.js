@@ -170,6 +170,26 @@ export function setIdioma(idioma) {
 }
 
 
+// ── Seu nome ───────────────────────────────────────────────
+//
+// Vai junto de cada captura, para a IA saber de quem é a voz de quem gravou
+// em vez de chamá-la de "Locutor 1". Fica só neste aparelho: o servidor o
+// recebe no pedido, usa no prompt e não o guarda.
+const NOME_MAX = 60
+
+export function getNome() {
+  try { return localStorage.getItem('dito-nome') || '' } catch { return '' }
+}
+
+export function setNome(nome) {
+  const limpo = (nome || '').trim().slice(0, NOME_MAX)
+  try {
+    if (limpo) localStorage.setItem('dito-nome', limpo)
+    else localStorage.removeItem('dito-nome')
+  } catch { /* sem storage: o nome não viaja, e os locutores saem como antes */ }
+}
+
+
 // ── Avisar quando uma reunião começar ─────────────────────
 //
 // Só existe no app de Windows. Nasce LIGADO desde 22/09/2026, e a decisão é de

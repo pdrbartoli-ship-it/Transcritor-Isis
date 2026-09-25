@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { MODO_COMPLETA } from '../components/capture/modos'
-import { getIdioma } from './prefs'
+import { getIdioma, getNome } from './prefs'
 // Importação circular de propósito e sem risco: planos.js só lê API_URL daqui
 // dentro de uma função, e este arquivo só chama planoPorId dentro de outra —
 // nenhum dos dois precisa do outro no instante em que o módulo é avaliado.
@@ -217,7 +217,14 @@ const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 const CAPTURA_TIMEOUT_MS = 15 * 60 * 1000
 const CAPTURA_TIMEOUT_MSG = 'O envio demorou demais e foi interrompido. Verifique sua conexão e tente de novo.'
 
-export async function transcribeFile(file, mode = MODO_COMPLETA) {
+// O nome de quem gravou só viaja quando existe: sem ele o servidor segue com o
+// que sempre fez, e mandar um campo vazio só faria ruído no formulário.
+function comNome(formData) {
+  const nome = getNome()
+  if (nome) formData.append('nome', nome)
+}
+
+export async function transcribeFile(file, mode = MODO_COMPLETA, origem = 'file') {
   await assertReadable(file)
   if (file.size > MAX_UPLOAD_BYTES) {
     const gb = (file.size / (1024 ** 3)).toFixed(1)
@@ -230,6 +237,10 @@ export async function transcribeFile(file, mode = MODO_COMPLETA) {
   formData.append('file', file)
   formData.append('mode', mode)
   formData.append('language', getIdioma())
+  // Contexto para a IA nomear quem fala (ver bloco_de_contexto no servidor).
+  // Uma gravação feita aqui e um áudio de WhatsApp pedem leituras diferentes.
+  formData.append('origem', origem)
+  comNome(formData)
   return comTeto(
     signal => postWithRetry('/transcribe', formData, { signal }).then(handleResponse),
     CAPTURA_TIMEOUT_MS,
@@ -242,6 +253,7 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   formData.append('url', url)
   formData.append('mode', mode)
   formData.append('language', getIdioma())
+  comNome(formData)
   return comTeto(
     signal => postWithRetry('/process-url', formData, { signal }).then(handleResponse),
     CAPTURA_TIMEOUT_MS,
@@ -271,6 +283,7 @@ export async function criarTranscricao({ arquivo, url, origem, modo = MODO_COMPL
   formData.append('origem', origem)
   formData.append('mode', modo)
   formData.append('language', getIdioma())
+  comNome(formData)
   if (duracaoS) formData.append('duracao_s', String(Math.round(duracaoS)))
   return comTeto(
     signal => postWithRetry('/transcricoes', formData, { signal }).then(handleResponse),

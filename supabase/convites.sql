@@ -1,7 +1,7 @@
 -- Convite premiado (24/09/2026).
 --
--- Quem convida ganha quando o amigo entra pelo link, cria a conta e faz 3
--- transcrições:
+-- Quem convida ganha quando o amigo entra pelo link, cria a conta e faz a
+-- primeira transcrição (eram 3 até 25/09/2026):
 --   · Grátis e Iniciante: +25 minutos e +2 perguntas, valendo no ciclo em curso.
 --   · Avançado (já ilimitado): cada amigo conta para os 5 que tornam a pessoa
 --     apoiadora, com acesso antecipado às novidades.
@@ -59,7 +59,7 @@ alter table public.convites        enable row level security;
 -- mesma instrução impede duas capturas simultâneas de premiarem duas vezes.
 create or replace function public.contar_captura_convite(
   p_convidado uuid,
-  p_meta int default 3
+  p_meta int default 1
 ) returns uuid
 language plpgsql
 as $$

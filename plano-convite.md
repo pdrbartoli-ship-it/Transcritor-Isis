@@ -19,7 +19,8 @@ O Iniciante é âncora de preço; o destino é o Avançado.
 | Grátis e Iniciante | +25 minutos e +2 perguntas, valendo no mês em curso |
 | Avançado | com 5 amigos, selo de apoiador e acesso antecipado às novidades |
 
-Vale quando o amigo entra pelo link, cria a conta e faz 3 transcrições.
+Vale quando o amigo entra pelo link, cria a conta e faz a primeira
+transcrição (eram 3 até 25/09/2026).
 
 Travas: só conta criada há até 7 dias entra por convite; o próprio código e o
 mesmo e-mail com `+` ou ponto não valem; cada amigo conta uma vez.

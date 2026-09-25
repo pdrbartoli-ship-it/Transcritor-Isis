@@ -45,9 +45,13 @@ const ACOES_CONVITE = [
   { id: 'gravar', rotulo: 'Gravar', primaria: true },
 ]
 
+// Sem saldo, o convite premiado vem na frente: ele devolve minutos na hora e
+// de graça, e quem está entrando numa reunião não vai parar para assinar.
+// Cabem dois botões na janelinha, então "Fechar" sai: o × do canto e os 30 s
+// de prazo já a fazem sumir.
 const ACOES_SEM_SALDO = [
-  { id: 'fechar', rotulo: 'Fechar' },
-  { id: 'planos', rotulo: 'Ver planos', primaria: true },
+  { id: 'planos', rotulo: 'Ver planos' },
+  { id: 'convite', rotulo: 'Convidar amigos', primaria: true },
 ]
 
 // Qual das três variantes de convite cabe para este saldo. `restanteMin` nulo
@@ -70,8 +74,8 @@ export function montarConvite({ variante, app, restanteMin }) {
       variante,
       titulo,
       corpo: minutos > 0
-        ? `Restam só ${minutos} min no seu plano, pouco para uma reunião.`
-        : 'Seus minutos deste mês acabaram, então o Dito não vai gravar.',
+        ? `Restam só ${minutos} min no seu plano, pouco para uma reunião. Cada amigo convidado vale mais minutos.`
+        : 'Seus minutos deste mês acabaram. Cada amigo convidado vale mais minutos.',
       acoes: ACOES_SEM_SALDO,
       timeoutS: PROMPT_TIMEOUT_S,
     }

@@ -75,7 +75,12 @@ export default function ConversaLayout() {
       }} />
       {!noChat && (
         <div className="ask-dock">
-          <AskBar restantes={perguntasRestantes} onVerPlanos={outer.abrirPlano} />
+          <AskBar
+            restantes={perguntasRestantes}
+            onVerPlanos={outer.abrirPlano}
+            onConvidar={outer.abrirConvite}
+            premio={outer.premioConvite}
+          />
         </div>
       )}
     </div>

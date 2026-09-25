@@ -12,17 +12,19 @@ import FeedbackModal from './FeedbackModal'
 import PlanModal from './PlanModal'
 import ConviteModal from './ConviteModal'
 import PremioAviso, { avisoDoConvite } from './PremioAviso'
+import SemSaldo from './SemSaldo'
 import ConversaMenu, { useConversaMenu } from './ConversaMenu'
 import ContadorMinutos from './ContadorMinutos'
 import { LinhasEmAndamento } from './EmAndamento'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { lerSaldoAtual } from '../lib/api'
-import { trackAppOpen } from '../lib/analytics'
+import { trackAppOpen, track } from '../lib/analytics'
 import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
 import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
+import { aoPedirConvite } from '../lib/conviteModal'
 import { podeVender, usePlatform } from '../lib/platform'
 import { useConvite, useSeloNovo } from '../lib/convite'
 import { iniciarNotificacoes, esquecerAparelho } from '../lib/notificacoes'
@@ -122,6 +124,9 @@ export default function Layout() {
   // mostrado. Quem entrou sem conta não tem convite (o hook devolve null).
   const { convite, atualizar: atualizarConvite, marcarVisto: marcarConviteVisto } = useConvite(user)
   const [seloNovo, dispensarSelo] = useSeloNovo(convite, user?.id)
+  // Quem não tem conta não tem link de convite: ali o caminho continua sendo
+  // criar a conta, e um botão "Convidar amigos" não teria o que abrir.
+  const abrirConvite = convite ? () => setShowConvite(true) : null
   const avisoPremio = avisoDoConvite(convite, seloNovo)
 
   // No celular, o aviso do prêmio também chega como notificação. Quando ela
@@ -291,6 +296,9 @@ export default function Layout() {
   // "Ver planos" clicado na janelinha de aviso de reunião. Ela vive fora do
   // Layout, e este é o ponto onde o modal existe.
   useEffect(() => aoPedirPlano(plano => setShowPlan(plano || true)), [])
+  // O "Convidar amigos" do aviso de reunião sem saldo: a janelinha vive fora
+  // do Layout e não alcança este estado por conta própria.
+  useEffect(() => aoPedirConvite(() => setShowConvite(true)), [])
 
   // Cada tela nova entra com um deslize curto, e voltar desliza para o outro
   // lado: sem isso a troca de tela no celular era um corte seco, com a tela
@@ -679,18 +687,36 @@ export default function Layout() {
           )}
         </div>
         <div className="content" ref={conteudoRef}>
+          {/* Acabou: a faixa some da tela e a pessoa ficava sem nenhum caminho
+              à vista. Agora ela continua, com o convite na frente (ver
+              SemSaldo). Entre 80% e 100% segue a faixa fina de sempre, com o
+              convite como link ao lado. */}
+          {saldoEfetivo?.limite != null && naHome && saldoEfetivo.usados >= saldoEfetivo.limite && (
+            <SemSaldo
+              texto="Seus minutos deste mês acabaram."
+              onConvidar={abrirConvite}
+              onVerPlanos={vendeAqui ? () => setShowPlan(true) : null}
+              premio={convite?.regras}
+              origem="sem-minutos"
+            />
+          )}
           {saldoEfetivo?.limite != null && naHome &&
             saldoEfetivo.usados >= saldoEfetivo.limite * AVISO_A_PARTIR_DE && saldoEfetivo.usados < saldoEfetivo.limite && (
             <div className="aviso-saldo">
               <span>
                 Faltam {Math.max(0, Math.round(saldoEfetivo.limite - saldoEfetivo.usados))} minutos do seu mês.
               </span>
+              {abrirConvite && (
+                <button type="button" onClick={() => { track('convite_aberto', { origem: 'saldo-baixo' }); abrirConvite() }}>
+                  Convidar amigos
+                </button>
+              )}
               {vendeAqui && <button type="button" onClick={() => setShowPlan(true)}>Ver planos</button>}
             </div>
           )}
           {/* `apoiador` é a chave do acesso antecipado: função nova em teste
               aparece para quem tem o selo antes de ir para todo mundo. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo: saldoEfetivo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, apoiador: !!convite?.apoiador, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo: saldoEfetivo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, apoiador: !!convite?.apoiador, abrirPlano: vendeAqui ? () => setShowPlan(true) : null, abrirConvite, premioConvite: convite?.regras ?? null }} />
         </div>
       </div>
 

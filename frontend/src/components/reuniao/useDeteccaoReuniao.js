@@ -6,12 +6,17 @@ import { isTauriApp } from '../../lib/platform'
 import { lerSaldoAtual } from '../../lib/api'
 import { track } from '../../lib/analytics'
 import { openMiniWindow } from '../../lib/miniRecorder'
-import { abrirAviso, fecharAviso, emitirAviso, ouvirRespostas } from '../../lib/avisoWindow'
+import { abrirAviso, fecharAviso, emitirAviso, ouvirRespostas, prepararAviso } from '../../lib/avisoWindow'
+import { pedirConvite } from '../../lib/conviteModal'
 import {
   variantePorSaldo, montarConvite, montarAvisoSaldo, montarParouPorSaldo,
   tetoPorSaldo, SEM_SALDO_POR_DIA,
 } from '../../lib/reuniao'
 import { useGravacaoAtual } from '../../contexts/GravacaoContext'
+import { useTranscricoes } from '../../contexts/TranscricoesContext'
+import { modoRecomendado } from '../capture/modos'
+import { extensionFor } from '../capture/useCapture'
+import { formatTime } from '../capture/estimate'
 
 // O cérebro da detecção de reunião. O Rust percebe que um Zoom, Teams ou Meet
 // abriu o microfone; daqui para frente tudo é decisão de produto: se vale
@@ -22,15 +27,27 @@ import { useGravacaoAtual } from '../../contexts/GravacaoContext'
 // de tela este hook perderia os ouvintes e a memória de quais reuniões já
 // foram perguntadas. A janelinha de aviso é burra (ver pages/Aviso.jsx): quem
 // decide é este hook.
+// Quanto tempo o saldo lido continua valendo para decidir se vale interromper.
+// Ler na hora custava de 0,3 a 1 s bem no instante em que a pessoa entra na
+// chamada; neste intervalo o número não muda o bastante para mudar a decisão,
+// e o teto da gravação continua saindo de uma leitura fresca (ver 'gravar').
+const SALDO_VALE_POR_MS = 5 * 60 * 1000
+
 export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
   const gravacao = useGravacaoAtual()
+  const { transcrever } = useTranscricoes()
   const navigate = useNavigate()
   const [disponivel, setDisponivel] = useState(false)
 
   // Os ouvintes são montados uma vez e precisam do valor de agora, não do que
   // valia quando foram montados.
   const atualRef = useRef({})
-  atualRef.current = { userId, convidado, avisar, abrirPlano, gravacao, navigate }
+  atualRef.current = { userId, convidado, avisar, abrirPlano, gravacao, navigate, transcrever }
+
+  // O último saldo lido, com a hora da leitura. Ver SALDO_VALE_POR_MS.
+  const saldoRef = useRef({ valor: null, em: 0 })
+  // A última gravação mandada para a fila por transcreverPendente.
+  const enfileiradoRef = useRef(null)
 
   // O que está na janelinha agora, para responder ao `sync` que ela pede ao
   // nascer, e o que aquele aviso significa quando a resposta voltar.
@@ -78,6 +95,25 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
       .catch(() => setIniciarComWindows(null))
   }, [disponivel])
 
+  // Com o detector ligado, a janelinha do aviso é criada escondida e o saldo é
+  // relido de tempos em tempos. As duas coisas existem para o aviso aparecer
+  // na hora: sem elas, a reunião começava e o Dito ainda estava carregando
+  // uma página e consultando o banco.
+  useEffect(() => {
+    if (!disponivel || !avisar || convidado || !userId) return
+    prepararAviso().catch(() => { /* sem janelinha pronta, ela nasce na hora */ })
+
+    let vivo = true
+    const reler = () => {
+      lerSaldoAtual(userId)
+        .then(saldo => { if (vivo) saldoRef.current = { valor: saldo, em: Date.now() } })
+        .catch(() => { /* sem saldo lido, a decisão lê na hora */ })
+    }
+    reler()
+    const id = setInterval(reler, SALDO_VALE_POR_MS)
+    return () => { vivo = false; clearInterval(id) }
+  }, [disponivel, avisar, convidado, userId])
+
   // A preferência manda no detector e no modo de bandeja: os dois são o mesmo
   // recurso para quem usa, e separá-los daria um detector que só funciona com
   // a janela aberta.
@@ -123,47 +159,105 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     await abrirAviso(estado, opcoes)
   }
 
-  // Sugerir uma reunião nova é o único ponto que lê o saldo NA HORA: o valor
-  // guardado no Layout pode ter minutos de atraso, e é com este número que
-  // decidimos interromper a pessoa. Devolve o aviso mostrado, ou null quando
+  // Uma reunião detectada que não vira aviso deixava de existir: nenhum
+  // registro dizia por que o Dito ficou calado, e o "não avisou" do usuário
+  // não tinha como ser investigado. O motivo não leva título nem conteúdo.
+  function calado(motivo) {
+    track('reuniao_ignorada', { motivo })
+    return null
+  }
+
+  // A gravação que ficou na tela de revisão, esperando o clique em
+  // "Transcrever", vai para a fila sozinha quando uma reunião nova começa. É o
+  // que o usuário pediu em 25/09/2026: entrar noutra reunião é sinal claro de
+  // que a anterior acabou, e antes disso o aviso da nova simplesmente não
+  // aparecia enquanto a anterior estivesse pendurada ali.
+  //
+  // O tipo de transcrição é o mesmo que o botão escolheria para aquela
+  // duração, e o resultado aparece na lateral como qualquer outra.
+  async function transcreverPendente() {
+    const { gravacao: grav, transcrever: enfileirar } = atualRef.current
+    if (!grav.recordedBlob) return
+    // Duas detecções quase juntas (sair e voltar à chamada) chegam aqui antes
+    // de o `resetRecording` da primeira ter sido aplicado, e a mesma gravação
+    // iria duas vezes para a fila. O blob é a identidade: enfileirado uma vez,
+    // não vai de novo.
+    if (enfileiradoRef.current === grav.recordedBlob) return
+    enfileiradoRef.current = grav.recordedBlob
+    const duracao = grav.recordingTime
+    const blob = grav.recordedBlob
+    try {
+      enfileirar({
+        origem: 'record',
+        modo: modoRecomendado({ origem: 'record', durationSec: duracao }),
+        arquivo: new File([blob], `gravacao.${extensionFor(blob.type)}`, { type: blob.type }),
+        duracaoS: duracao,
+        rotulo: `Gravação de ${formatTime(duracao)}`,
+      })
+      grav.resetRecording()
+      track('gravacao_pendente_enfileirada', { duracaoS: duracao })
+    } catch {
+      // Falhar aqui não pode impedir o aviso da reunião nova: a gravação
+      // continua na revisão, como antes.
+    }
+  }
+
+  // O saldo guardado, quando ainda vale; senão, uma leitura na hora. Devolve
+  // null quando não dá para saber (rede fora, consulta recusada).
+  async function saldoParaDecidir(uid) {
+    const guardado = saldoRef.current
+    if (guardado.valor && Date.now() - guardado.em < SALDO_VALE_POR_MS) return guardado.valor
+    try {
+      const saldo = await lerSaldoAtual(uid)
+      saldoRef.current = { valor: saldo, em: Date.now() }
+      return saldo
+    } catch {
+      return null
+    }
+  }
+
+  // Decide se vale interromper. Devolve o aviso mostrado, ou null quando
   // decidimos ficar calados — é por esse retorno que a simulação de
   // desenvolvimento confere a decisão.
   async function tratarReuniao({ id, app }) {
     const { userId: uid, convidado: semConta, avisar: ligado, gravacao: grav } = atualRef.current
-    if (!ligado || !uid || semConta) return null
-    // Já gravando, ou com uma gravação esperando para ser transcrita: a pessoa
-    // já sabe que o Dito está ali.
-    if (grav.isRecording || grav.isFinalizing || grav.recordedBlob) return null
-    if (pendenteRef.current) return null
-    if (tratadasRef.current.has(id)) return null
+    if (!ligado || !uid || semConta) return calado('desligado')
+    // Já gravando: a pessoa já sabe que o Dito está ali.
+    if (grav.isRecording || grav.isFinalizing) return calado('ja-gravando')
+    if (pendenteRef.current) return calado('aviso-aberto')
+    if (tratadasRef.current.has(id)) return calado('ja-tratada')
     tratadasRef.current.add(id)
+
+    // Uma gravação encerrada e ainda não transcrita (a tela de revisão aberta)
+    // calava o aviso da reunião nova, e a pessoa só descobria isso ao voltar
+    // ao computador. Agora a anterior vai para a fila sozinha e a pergunta
+    // sai normalmente. Ver transcreverPendente.
+    await transcreverPendente()
 
     // A vaga é reservada antes de ler o saldo: duas detecções seguidas (sair e
     // entrar na chamada) passavam juntas pela checagem acima enquanto a
     // leitura corria, e as duas tentavam abrir a mesma janela.
     const reserva = { tipo: 'lendo', reuniaoId: id }
     pendenteRef.current = reserva
-    const desistir = () => {
+    const desistir = motivo => {
       if (pendenteRef.current === reserva) pendenteRef.current = null
-      return null
+      return calado(motivo)
     }
 
     track('reuniao_detectada', { app })
 
-    let saldo
-    try {
-      saldo = await lerSaldoAtual(uid)
-    } catch {
+    const saldo = await saldoParaDecidir(uid)
+    if (!saldo) {
       // Sem saber o saldo não sugerimos: prometer uma gravação que o plano não
       // cobre é pior do que ficar calado.
-      return desistir()
+      return desistir('saldo-ilegivel')
     }
     // A reunião acabou enquanto o saldo era lido: não há mais o que perguntar.
     if (pendenteRef.current !== reserva) return null
 
     const variante = variantePorSaldo(saldo.restanteMin)
-    if (!variante) return desistir()
-    if (variante === 'sem-saldo' && !podeAvisarSemSaldo()) return desistir()
+    if (!variante) return desistir('saldo-ilegivel')
+    if (variante === 'sem-saldo' && !podeAvisarSemSaldo()) return desistir('sem-saldo-hoje')
 
     const estado = montarConvite({ variante, app, restanteMin: saldo.restanteMin })
     pendenteRef.current = { tipo: 'convite', reuniaoId: id, variante, tetoS: tetoPorSaldo(saldo.restanteMin) }
@@ -197,25 +291,49 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     estadoRef.current = null
     await fecharAviso()
 
-    const { gravacao: grav, navigate: ir, abrirPlano: planos } = atualRef.current
+    const { gravacao: grav, navigate: ir, abrirPlano: planos, userId: uid } = atualRef.current
 
     if (pendente?.tipo === 'convite') {
       track('reuniao_resposta', { resposta, variante: pendente.variante })
     }
 
     if (resposta === 'gravar') {
+      // O teto sai de uma leitura FRESCA, e não do saldo guardado que decidiu
+      // mostrar o aviso: é este número que faz a gravação parar antes de o
+      // plano acabar, e errá-lo para mais devolve 402 quando a reunião já
+      // acabou e a pessoa já esperou o upload.
+      const saldo = uid ? await lerSaldoAtual(uid).catch(() => null) : null
+      if (saldo) saldoRef.current = { valor: saldo, em: Date.now() }
+      const tetoS = saldo ? tetoPorSaldo(saldo.restanteMin) : (pendente?.tetoS ?? null)
+      // O saldo acabou entre o aviso e o clique (outro aparelho, ou o guardado
+      // estava velho): gravar aqui seria prometer o que não cabe.
+      if (saldo && !variantePorSaldo(saldo.restanteMin)) {
+        track('reuniao_gravar_sem_saldo')
+        await mostrarPrincipal()
+        planos?.()
+        return
+      }
       // A tela inicial é a única que mostra a gravação e a revisão dela. E a
       // janelinha é aberta na mão porque o useMiniRecorder só a abre sozinho
       // ao MINIMIZAR — e a principal pode já estar minimizada ou escondida na
       // bandeja, que é o caso normal aqui.
       ir('/')
       await openMiniWindow()
-      await grav.startRecording({ tetoS: pendente?.tetoS ?? null })
+      await grav.startRecording({ tetoS })
       return
     }
     if (resposta === 'planos') {
       await mostrarPrincipal()
       planos?.()
+      return
+    }
+    // Sem saldo, o caminho que resolve na hora e de graça: cada amigo vale
+    // mais minutos (ver lib/reuniao.js).
+    if (resposta === 'convite') {
+      track('convite_aberto', { origem: 'aviso-reuniao' })
+      await mostrarPrincipal()
+      ir('/')
+      pedirConvite()
       return
     }
     if (resposta === 'abrir') {
@@ -273,6 +391,10 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
   useEffect(() => {
     if (!import.meta.env.DEV) return
     window.__simularReuniao = async (payload = {}) => {
+      // O saldo guardado é justamente o que a simulação NÃO quer: ela existe
+      // para exercitar a decisão com o saldo que o teste montou, e o valor
+      // guardado (lido da conta de verdade) passaria por cima dele.
+      saldoRef.current = { valor: null, em: 0 }
       const reuniao = { ...payload, id: payload.id ?? Date.now(), app: payload.app || 'zoom' }
       const mostrado = await tratarReuniao(reuniao)
       // O `pendente` leva o teto calculado a partir do saldo — é o número que
@@ -280,6 +402,10 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
       return mostrado ? { ...mostrado, pendente: pendenteRef.current } : null
     }
     window.__responderReuniao = resposta => tratarResposta(resposta)
+    // Põe uma gravação na revisão e dispara uma reunião: é o caminho da
+    // decisão de 25/09 (a anterior vai para a fila sozinha).
+    window.__simularGravacaoPronta = segundos => atualRef.current.gravacao.__simularGravacaoPronta?.(segundos)
+    window.__temGravacaoPendente = () => !!atualRef.current.gravacao.recordedBlob
     window.__simularFimReuniao = async id => {
       await tratarFim({ id })
       return pendenteRef.current
@@ -287,6 +413,8 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
     return () => {
       delete window.__simularReuniao
       delete window.__responderReuniao
+      delete window.__simularGravacaoPronta
+      delete window.__temGravacaoPendente
       delete window.__simularFimReuniao
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

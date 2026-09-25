@@ -20,9 +20,9 @@ const CONVITE = {
 // `principal`: 'responde' devolve o convite a cada `sync`; 'muda' nunca
 // responde. `atrasoListenMs` segura o registro do ouvinte, que é a corrida que
 // deixava a janela em branco quando a resposta chegava antes dele.
-async function abrir({ principal, atrasoListenMs = 0 }) {
+async function abrir({ principal, atrasoListenMs = 0, visivel = true }) {
   const p = await b.newPage({ viewport: { width: 340, height: 132 } })
-  await p.addInitScript(({ principal, atrasoListenMs, CONVITE }) => {
+  await p.addInitScript(({ principal, atrasoListenMs, CONVITE, visivel }) => {
     const callbacks = new Map()
     const ouvintes = new Map()
     let proximo = 1
@@ -49,6 +49,9 @@ async function abrir({ principal, atrasoListenMs = 0 }) {
           ouvintes.set(args.event, lista)
           return args.handler
         }
+        // A janelinha criada de véspera (prepararAviso) nasce escondida e
+        // fica assim até uma reunião começar.
+        if (cmd === 'plugin:window|is_visible') return visivel
         if (cmd === 'plugin:event|emit') {
           // A principal responde ao `sync` na hora, antes de qualquer outra
           // coisa: o pior caso para quem ainda está montando o ouvinte.
@@ -60,7 +63,7 @@ async function abrir({ principal, atrasoListenMs = 0 }) {
         return null
       },
     }
-  }, { principal, atrasoListenMs, CONVITE })
+  }, { principal, atrasoListenMs, CONVITE, visivel })
   await p.goto(`${base}#/aviso`)
   return p
 }
@@ -102,5 +105,17 @@ for (const principal of ['responde', 'muda']) {
   await p.close()
 }
 
+// 4. A janelinha pré-criada fica escondida esperando a próxima reunião: sem
+//    texto e sem ninguém respondendo, ela NÃO pode se fechar sozinha, senão o
+//    aviso seguinte volta a demorar o tempo de carregar a página.
+{
+  const p = await abrir({ principal: 'muda', visivel: false })
+  await p.waitForTimeout(9000)
+  const sumiu = await fechou(p)
+  console.log('escondida e sem texto:', sumiu ? 'ERRO: fechou sozinha' : 'continua de pé, esperando')
+  if (sumiu) process.exitCode = 1
+  await p.close()
+}
+
 await b.close()
-console.log('janelinha de aviso não trava mais')
+console.log(process.exitCode ? 'janelinha de aviso FALHOU' : 'janelinha de aviso não trava mais')

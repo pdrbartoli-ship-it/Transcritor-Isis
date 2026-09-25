@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTheme, setTheme, getIdioma, setIdioma, IDIOMAS, TEMA_AUTO } from '../lib/prefs'
+import { getTheme, setTheme, getIdioma, setIdioma, getNome, setNome, IDIOMAS, TEMA_AUTO } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
 import { rastroAuth } from '../contexts/AuthContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,6 +26,7 @@ export default function SettingsModal({
 }) {
   const [theme, setThemeState] = useState(getTheme())
   const [idioma, setIdiomaState] = useState(getIdioma())
+  const [nome, setNomeState] = useState(getNome)
   const { user } = useAuth()
   const navigate = useNavigate()
   // Três estados, não um booleano: 'fechado' é o link discreto, 'confirmando'
@@ -39,6 +40,9 @@ export default function SettingsModal({
 
   function changeTheme(t) { setThemeState(t); setTheme(t) }
   function changeIdioma(i) { setIdiomaState(i); setIdioma(i) }
+  // Guardado a cada tecla: a janela fecha clicando fora, e um botão "Salvar"
+  // só para este campo faria a pessoa perder o nome sem perceber.
+  function changeNome(n) { setNomeState(n); setNome(n) }
 
   async function confirmarExclusao() {
     setErro('')
@@ -83,6 +87,26 @@ export default function SettingsModal({
               <IconMoon width={15} height={15} style={{ verticalAlign: '-2px', marginRight: 6 }} /> Escuro
             </button>
           </div>
+        </div>
+
+        {/* Quem grava é quase sempre uma das vozes da gravação, e é a única
+            que o Dito teria como saber de antemão. Sem isto ela sai como
+            "Locutor 1" mesmo quando ninguém diz nome nenhum na conversa. */}
+        <div className="settings-group">
+          <label htmlFor="settings-nome">Seu nome</label>
+          <p className="hint">
+            Aparece no lugar de "Locutor 1" quando o Dito reconhece a sua voz na
+            gravação. Fica só neste aparelho.
+          </p>
+          <input
+            id="settings-nome"
+            type="text"
+            value={nome}
+            maxLength={60}
+            placeholder="Como as pessoas te chamam"
+            onChange={e => changeNome(e.target.value)}
+            autoComplete="given-name"
+          />
         </div>
 
         {/* A dica não é enfeite: sem ela, "Idioma" numa tela de transcrição é
@@ -132,22 +156,19 @@ export default function SettingsModal({
             {/* Só no executável baixado do site (null na versão da Store, onde
                 o início acompanha o aviso) e só com o aviso ligado: sem o
                 detector não há o que abrir sozinho. */}
+            {/* Sem explicação embaixo: o rótulo já diz o que o interruptor faz,
+                e contar que o app sobe escondido na bandeja era detalhe de
+                implementação que não muda a decisão de ninguém. */}
             {avisarReuniao && iniciarComWindows !== null && (
-              <>
-                <button
-                  className={`settings-switch ${iniciarComWindows ? 'on' : ''}`}
-                  role="switch"
-                  aria-checked={iniciarComWindows}
-                  onClick={() => onIniciarComWindows?.(!iniciarComWindows)}
-                >
-                  <span className="settings-switch-texto">Abrir o Dito quando o Windows iniciar</span>
-                  <span className="settings-switch-trilho"><span className="settings-switch-bolinha" /></span>
-                </button>
-                <p className="hint">
-                  Assim o aviso de reunião funciona mesmo depois de reiniciar o
-                  computador. O Dito abre escondido, só com o ícone perto do relógio.
-                </p>
-              </>
+              <button
+                className={`settings-switch ${iniciarComWindows ? 'on' : ''}`}
+                role="switch"
+                aria-checked={iniciarComWindows}
+                onClick={() => onIniciarComWindows?.(!iniciarComWindows)}
+              >
+                <span className="settings-switch-texto">Abrir o Dito quando o Windows iniciar</span>
+                <span className="settings-switch-trilho"><span className="settings-switch-bolinha" /></span>
+              </button>
             )}
           </div>
         )}

@@ -140,6 +140,6 @@ const EXTENSION_BY_MIME = {
   'video/webm': 'webm',
 }
 
-function extensionFor(mime) {
+export function extensionFor(mime) {
   return EXTENSION_BY_MIME[(mime || '').split(';')[0].trim()] || 'webm'
 }

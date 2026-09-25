@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { askConversation } from '../../lib/api'
 import { track } from '../../lib/analytics'
 import ChatTextarea from '../../components/chat/ChatTextarea'
+import SemSaldo from '../../components/SemSaldo'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { IconSend, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
@@ -37,9 +38,12 @@ const SUGESTOES = [
 // cima — não um chat novo que esconde o anterior atrás de uma aba de
 // histórico. O id da thread mora em `chats.session_id`; a primeira pergunta
 // cria a linha, as seguintes só acrescentam mensagens a ela.
+// Quanto tempo a pergunta aberta pela visão geral fica destacada.
+const DESTAQUE_MS = 1500
+
 export default function Chat() {
   const { user } = useAuth()
-  const { conversation, perguntasRestantes, atualizarPerguntasRestantes, abrirPlano } = useOutletContext()
+  const { conversation, perguntasRestantes, atualizarPerguntasRestantes, abrirPlano, abrirConvite, premioConvite } = useOutletContext()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -52,6 +56,9 @@ export default function Chat() {
   const [errorStatus, setErrorStatus] = useState(null)
   const bottomRef = useRef(null)
   const firstScrollRef = useRef(true)
+  // A pergunta que a visão geral mandou abrir (ver PerguntasFeitas).
+  const [focar, setFocar] = useState(location.state?.focar || null)
+  const focoRef = useRef(null)
 
   const esgotado = perguntasRestantes === 0
 
@@ -97,7 +104,7 @@ export default function Chat() {
       if (chat) {
         setChatId(chat.id)
         const { data: msgs } = await supabase
-          .from('chat_messages').select('role, content, enc_version')
+          .from('chat_messages').select('id, role, content, enc_version')
           .eq('chat_id', chat.id).order('created_at')
         history = await decifrarMensagens(msgs)
       }
@@ -124,10 +131,18 @@ export default function Chat() {
   // com o usuário já olhando, rola suave.
   useEffect(() => {
     if (!ready) return
+    // Quem chegou clicando numa pergunta da visão geral quer AQUELA pergunta,
+    // não o fim da conversa. O destaque some sozinho: ele serve para os olhos
+    // encontrarem a linha, não para ficar marcado nela.
+    if (focar && focoRef.current) {
+      focoRef.current.scrollIntoView({ behavior: 'auto', block: 'center' })
+      const id = setTimeout(() => setFocar(null), DESTAQUE_MS)
+      return () => clearTimeout(id)
+    }
     const behavior = firstScrollRef.current ? 'auto' : 'smooth'
     firstScrollRef.current = false
     bottomRef.current?.scrollIntoView({ behavior, block: 'end' })
-  }, [messages, sending, ready])
+  }, [messages, sending, ready, focar])
 
   // Um chip não passa pelo campo: mandar o texto direto evita depender de o
   // setState ter sido aplicado antes do submit.
@@ -232,7 +247,11 @@ export default function Chat() {
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`message ${m.role}`}>
+          <div
+            key={i}
+            ref={m.id && m.id === focar ? focoRef : null}
+            className={`message ${m.role}${m.id && m.id === focar ? ' message-focada' : ''}`}
+          >
             <div className="bubble">
               {m.role === 'assistant' ? <MarkdownText text={m.content} /> : m.content}
             </div>
@@ -259,8 +278,14 @@ export default function Chat() {
           desta tela e o do AskBar são visualmente idênticos. */}
       {esgotado ? (
         <div className="ask-bar chat-input ask-esgotado">
-          <span>Você usou todas as perguntas desta transcrição.</span>
-          {abrirPlano && <button type="button" className="btn-primary btn-sm" onClick={abrirPlano}>Ver planos</button>}
+          <SemSaldo
+            texto="Você usou todas as perguntas deste mês."
+            onConvidar={abrirConvite}
+            onVerPlanos={abrirPlano}
+            premio={premioConvite}
+            origem="sem-perguntas"
+            compacto
+          />
         </div>
       ) : (
         <div className="chat-input-area">
