@@ -5,6 +5,7 @@ import { readFile } from '@tauri-apps/plugin-fs'
 import { isTauriApp } from '../../lib/platform'
 import { lerSaldoAtual } from '../../lib/api'
 import { tetoPorSaldo } from '../../lib/reuniao'
+import { GravadorNativo, temGravadorNativo, lerGravacaoNativa } from '../../lib/gravadorNativo'
 
 // A metade que GRAVA, separada da metade que envia (useCapture).
 //
@@ -16,10 +17,15 @@ import { tetoPorSaldo } from '../../lib/reuniao'
 // Montado no Layout (ver GravacaoProvider), nada disso depende mais de qual
 // tela está aberta.
 //
-// São duas gravações por trás do mesmo botão: dentro do app nativo
+// São três gravações por trás do mesmo botão: dentro do app nativo
 // (Windows/Tauri) é a captura WASAPI de sistema + microfone (src-tauri/audio);
-// no navegador é getUserMedia + MediaRecorder, só microfone.
-export function useGravacao({ userId, convidado = false } = {}) {
+// no app de celular é o gravador nativo (plugins/gravador), que continua com a
+// tela travada; no navegador é getUserMedia + MediaRecorder, só microfone.
+//
+// `aoEncerrarDeFora` é chamado quando a gravação do celular acaba sem o botão
+// do app: pela notificação, pelo fim do saldo, ou porque o app foi fechado no
+// meio. Quem a chama leva a pessoa até a revisão.
+export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}) {
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   // Entre "parei de gravar" e "a gravação está pronta" há um trabalho real:
@@ -38,6 +44,18 @@ export function useGravacao({ userId, convidado = false } = {}) {
   // A gravação parou sozinha porque o saldo acabou. O áudio está guardado e a
   // tela de revisão é a mesma de sempre — o que muda é o aviso que aparece.
   const [paradaPorSaldo, setParadaPorSaldo] = useState(false)
+  // Um recado neutro do gravador do celular, que não é erro: a ligação que
+  // pausou a gravação, ou o app que fechou no meio dela.
+  const [avisoGravacao, setAvisoGravacao] = useState(null)
+
+  // A gravação em curso (ou a última) é a do gravador nativo do celular.
+  const nativoRef = useRef(false)
+  // O arquivo nativo já trazido para a tela. O fim da gravação chega por dois
+  // caminhos (a resposta do encerrar e o evento "mudou"), e só um pode ler.
+  const lidaRef = useRef(null)
+  const lendoRef = useRef(false)
+  const aoEncerrarDeForaRef = useRef(aoEncerrarDeFora)
+  aoEncerrarDeForaRef.current = aoEncerrarDeFora
 
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
@@ -155,6 +173,34 @@ export function useGravacao({ userId, convidado = false } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // O gravador do celular vive fora da página: grava com ela congelada, pode
+  // ser pausado por uma ligação ou encerrado pela notificação, e sobrevive ao
+  // app fechado. A tela confere o estado dele ao abrir e a cada volta ao
+  // primeiro plano, e escuta o que muda enquanto está à vista.
+  //
+  // Não há nada a parar no desmonte: sair da página não pode encerrar a
+  // gravação, é justamente o que ela veio resolver.
+  const aplicarNativoRef = useRef(null)
+  useEffect(() => {
+    if (!temGravadorNativo()) return undefined
+    let vivo = true
+    const alcas = []
+    const guardar = p => p.then(h => (vivo ? alcas.push(h) : h.remove())).catch(() => {})
+    guardar(GravadorNativo.addListener('nivel', e => { levelRef.current = e?.nivel || 0 }))
+    guardar(GravadorNativo.addListener('mudou', e => aplicarNativoRef.current?.(e)))
+    const conferir = () => {
+      if (document.visibilityState !== 'visible') return
+      GravadorNativo.estado().then(e => vivo && aplicarNativoRef.current?.(e)).catch(() => {})
+    }
+    conferir()
+    document.addEventListener('visibilitychange', conferir)
+    return () => {
+      vivo = false
+      alcas.forEach(h => h.remove())
+      document.removeEventListener('visibilitychange', conferir)
+    }
+  }, [])
+
   function resetRecording() {
     setRecordedBlob(null)
     setRecordingTime(0)
@@ -163,10 +209,95 @@ export function useGravacao({ userId, convidado = false } = {}) {
     setIsFinalizing(false)
     setParadaPorSaldo(false)
     setAvisoSaldo(null)
+    setAvisoGravacao(null)
     startedAtRef.current = null
     pausedMsRef.current = 0
     pausedAtRef.current = null
     chunksRef.current = []
+    // O áudio já está em memória (ou foi descartado): o arquivo do aparelho
+    // não serve mais para nada.
+    if (lidaRef.current) {
+      lidaRef.current = null
+      GravadorNativo.descartar().catch(() => {})
+    }
+    nativoRef.current = false
+  }
+
+  // O que o gravador do celular diz vira o estado da tela. Serve para a
+  // resposta de cada chamada, para o evento "mudou" e para a conferência na
+  // volta ao app. O relógio é realinhado pela duração que o aparelho mediu:
+  // com a página congelada, o da tela pode ter ficado para trás.
+  async function aplicarNativo(s) {
+    if (!s?.estado) return
+    if (s.estado === 'gravando' || s.estado === 'pausado') {
+      nativoRef.current = true
+      const pausado = s.estado === 'pausado'
+      startedAtRef.current = Date.now() - (s.duracaoMs || 0)
+      pausedMsRef.current = 0
+      pausedAtRef.current = pausado ? Date.now() : null
+      setIsRecording(true)
+      setIsPaused(pausado)
+      setIsFinalizing(false)
+      setRecordingTime(elapsedSeconds())
+      setAvisoGravacao(pausado && s.motivo === 'ligacao' ? AVISO_LIGACAO : null)
+      if (pausado) clearInterval(timerRef.current)
+      else startTimer()
+      return
+    }
+    if (s.estado === 'encerrado') {
+      await receberEncerrada(s)
+      return
+    }
+    // "parado" com a tela achando que grava: o aparelho perdeu a gravação
+    // (o arquivo sumiu junto com o app). Melhor dizer do que fingir.
+    if (nativoRef.current && isRecording) {
+      clearInterval(timerRef.current)
+      levelRef.current = 0
+      setIsRecording(false)
+      setIsPaused(false)
+      nativoRef.current = false
+      setErro('A gravação foi interrompida e não havia áudio guardado. Tente gravar de novo.')
+    }
+  }
+  aplicarNativoRef.current = aplicarNativo
+
+  // Devolve se foi esta chamada que trouxe o arquivo.
+  async function receberEncerrada(s) {
+    if (!s.caminho || lidaRef.current === s.caminho) return false
+    lidaRef.current = s.caminho
+    nativoRef.current = true
+    const segundos = Math.floor((s.duracaoMs || 0) / 1000)
+    clearInterval(timerRef.current)
+    levelRef.current = 0
+    startedAtRef.current = null
+    setIsRecording(false)
+    setIsPaused(false)
+    setIsFinalizing(true)
+    setRecordingTime(segundos)
+    setAvisoGravacao(AVISO_DO_FIM[s.motivo] || null)
+    if (s.motivo === 'limite') setParadaPorSaldo(true)
+    if (s.motivo && s.motivo !== 'voce') aoEncerrarDeForaRef.current?.()
+
+    if (!s.teveSom && segundos >= MIN_S_PARA_ACUSAR_SILENCIO) {
+      setIsFinalizing(false)
+      setAvisoGravacao(null)
+      setErro(SEM_SOM_CELULAR)
+      lidaRef.current = null
+      GravadorNativo.descartar().catch(() => {})
+      return true
+    }
+    lendoRef.current = true
+    try {
+      setRecordedBlob(await lerGravacaoNativa(s))
+    } catch {
+      // O arquivo continua no aparelho; a próxima volta ao app tenta de novo.
+      lidaRef.current = null
+      setErro('Não foi possível abrir a gravação. Feche e abra o Dito para tentar de novo.')
+    } finally {
+      lendoRef.current = false
+      setIsFinalizing(false)
+    }
+    return true
   }
 
   function beginTiming() {
@@ -185,11 +316,13 @@ export function useGravacao({ userId, convidado = false } = {}) {
     try {
       if (isTauriApp()) {
         await invoke('set_recording_paused', { paused: true })
+      } else if (nativoRef.current) {
+        await GravadorNativo.pausar()
       } else if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.pause()
       }
     } catch (err) {
-      setErro(typeof err === 'string' ? err : 'Não foi possível pausar a gravação.')
+      setErro(typeof err === 'string' ? err : err?.message || 'Não foi possível pausar a gravação.')
       return
     }
     pausedAtRef.current = Date.now()
@@ -202,16 +335,19 @@ export function useGravacao({ userId, convidado = false } = {}) {
     try {
       if (isTauriApp()) {
         await invoke('set_recording_paused', { paused: false })
+      } else if (nativoRef.current) {
+        await GravadorNativo.retomar()
       } else if (mediaRecorderRef.current?.state === 'paused') {
         mediaRecorderRef.current.resume()
       }
     } catch (err) {
-      setErro(typeof err === 'string' ? err : 'Não foi possível retomar a gravação.')
+      setErro(typeof err === 'string' ? err : err?.message || 'Não foi possível retomar a gravação.')
       return
     }
     pausedMsRef.current += Date.now() - pausedAtRef.current
     pausedAtRef.current = null
     setIsPaused(false)
+    setAvisoGravacao(null)
     startTimer()
   }
 
@@ -280,6 +416,18 @@ export function useGravacao({ userId, convidado = false } = {}) {
       } catch (err) {
         soltarOuvintes()
         setErro(typeof err === 'string' ? err : 'Não foi possível iniciar a gravação.')
+        return false
+      }
+    }
+
+    if (temGravadorNativo()) {
+      try {
+        const tetoS = tetoInformado ? opcoes.tetoS : await tetoDaGravacao()
+        const s = await GravadorNativo.iniciar({ maxSegundos: tetoS ?? 0 })
+        await aplicarNativo(s)
+        return true
+      } catch (err) {
+        setErro(err?.message || 'Não foi possível iniciar a gravação.')
         return false
       }
     }
@@ -357,6 +505,24 @@ export function useGravacao({ userId, convidado = false } = {}) {
       return
     }
 
+    if (nativoRef.current) {
+      setIsRecording(false)
+      setIsPaused(false)
+      setIsFinalizing(true)
+      setRecordingTime(finalSeconds)
+      clearInterval(timerRef.current)
+      try {
+        const trouxe = await receberEncerrada(await GravadorNativo.encerrar())
+        // O evento "mudou" chegou antes e já está lendo o arquivo: o
+        // "finalizando" é dele desligar.
+        if (!trouxe && !lendoRef.current) setIsFinalizing(false)
+      } catch (err) {
+        setIsFinalizing(false)
+        setErro(err?.message || 'Não foi possível finalizar a gravação.')
+      }
+      return
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       // `onstop` desliga o "finalizando"; sem gravador ativo não há o que
       // finalizar, e ligá-lo aqui deixaria a tela presa nesse estado.
@@ -373,7 +539,7 @@ export function useGravacao({ userId, convidado = false } = {}) {
   return {
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
     erro, setErro,
-    avisoSaldo, paradaPorSaldo,
+    avisoSaldo, paradaPorSaldo, avisoGravacao,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
     // relógio dela a partir deles, em vez de receber um contador que atrasa
     // junto com os timers da janela minimizada.
@@ -402,6 +568,18 @@ const PICO_SILENCIO = 0.004
 const MIN_S_PARA_ACUSAR_SILENCIO = 2
 
 const SEM_SOM = 'Não entrou som nenhum nesta gravação. Confira se o microfone certo está escolhido no Windows e se ele não está no mudo, e tente de novo.'
+
+const SEM_SOM_CELULAR = 'Não entrou som nenhum nesta gravação. Confira se outro app, como uma ligação, não estava usando o microfone, e tente de novo.'
+
+const AVISO_LIGACAO = 'Uma ligação pausou a gravação.'
+
+// Como a gravação do celular acabou, quando não foi pelo botão do app. O fim
+// pela notificação dispensa recado: foi a própria pessoa.
+const AVISO_DO_FIM = {
+  interrompida: 'O Dito fechou no meio da gravação. O que foi gravado até ali está guardado.',
+  erro: 'A gravação parou sozinha. O que foi gravado até ali está guardado.',
+  limite: 'A gravação parou quando seus minutos do mês acabaram.',
+}
 
 const RECORDING_BITS_PER_SECOND = 32_000
 

@@ -1196,6 +1196,12 @@ def sniff_container(data: bytes) -> str | None:
         return "wav"
     if data[4:8] == b"ftyp":
         return "m4a"
+    # AAC em quadros soltos (ADTS), o que o gravador nativo do celular grava.
+    # A palavra de sincronia é a mesma do MP3; o que os separa são os bits de
+    # "camada", sempre 00 no ADTS. Tem de vir antes do MP3: confundido com ele,
+    # ia direto ao Groq com o nome errado e era recusado.
+    if len(data) > 1 and data[0] == 0xFF and (data[1] & 0xF6) == 0xF0:
+        return "aac"
     if data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
         return "mp3"
     return None
@@ -1922,7 +1928,9 @@ async def process_audio_path(input_path: str, filename: str) -> tuple[str, list[
             await asyncio.to_thread(extract_audio, input_path, audio_path)
             # A duração real é a do áudio extraído; para um vídeo, a sonda de
             # cima já a leu, mas um container quebrado pode só revelá-la aqui.
-            if total_seconds <= 0:
+            # O ADTS não tem duração no cabeçalho: o ffmpeg a estima pela taxa
+            # de bits, e é por ela que o minuto é cobrado. Vale a do m4a.
+            if total_seconds <= 0 or container == "aac":
                 total_seconds, _ = probe_media(audio_path)
 
             if os.path.getsize(audio_path) <= MAX_CHUNK_BYTES:

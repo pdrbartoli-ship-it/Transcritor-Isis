@@ -220,6 +220,7 @@ html, body { overscroll-behavior: none; }
 .revisao { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .revisao-titulo { font-size: 14px; color: var(--text-muted); }
 .revisao-tempo { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+.revisao-aviso { text-align: center; margin: -4px 0 4px; }
 .descartar-pergunta {
   display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap;
   font-size: 14px; color: var(--text);

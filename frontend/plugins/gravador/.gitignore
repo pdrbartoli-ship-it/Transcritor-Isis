@@ -1,0 +1,2 @@
+# Sobra da montagem local do Android (./gradlew), nunca vai para o git.
+android/build/

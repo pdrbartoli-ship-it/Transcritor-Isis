@@ -364,11 +364,14 @@ export function LinhaConsumo({ duracaoSec, calculando }) {
   )
 }
 
-export function RecordingReview({ recordingTime, onSubmit, onReset, loading }) {
+// `aviso` é o recado de uma gravação que acabou sem o botão do app (o Dito
+// fechou no meio, o saldo acabou): diz por que ela está ali.
+export function RecordingReview({ recordingTime, onSubmit, onReset, loading, aviso }) {
   return (
     <div className="revisao">
       <p className="revisao-titulo">Gravação concluída</p>
       <p className="revisao-tempo">{formatTime(recordingTime)}</p>
+      {aviso && <p className="mic-hint revisao-aviso">{aviso}</p>}
       <TranscribeButton
         recomendado={modoRecomendado({ origem: 'record', durationSec: recordingTime })}
         duracaoSec={recordingTime}

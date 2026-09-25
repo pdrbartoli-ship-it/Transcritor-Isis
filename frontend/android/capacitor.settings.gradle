@@ -10,3 +10,6 @@ project(':capacitor-push-notifications').projectDir = new File('../node_modules/
 
 include ':capgo-capacitor-updater'
 project(':capgo-capacitor-updater').projectDir = new File('../node_modules/@capgo/capacitor-updater/android')
+
+include ':dito-gravador'
+project(':dito-gravador').projectDir = new File('../plugins/gravador/android')

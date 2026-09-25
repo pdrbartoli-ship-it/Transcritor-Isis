@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { useGravacao } from '../components/capture/useGravacao'
 import { useMiniRecorder } from '../components/recorder/useMiniRecorder'
@@ -29,7 +30,15 @@ export function useGravacaoAtual() {
 
 export function GravacaoProvider({ children }) {
   const { user } = useAuth()
-  const gravacao = useGravacao({ userId: user?.id, convidado: !!user?.is_anonymous })
+  const navigate = useNavigate()
+  // A gravação do celular pode acabar fora do app (pela notificação, ou com o
+  // app fechado no meio). A revisão mora na home: é para lá que a pessoa volta,
+  // de onde quer que estivesse.
+  const gravacao = useGravacao({
+    userId: user?.id,
+    convidado: !!user?.is_anonymous,
+    aoEncerrarDeFora: () => navigate('/'),
+  })
 
   const mini = useMiniRecorder({
     isRecording: gravacao.isRecording,

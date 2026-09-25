@@ -135,6 +135,8 @@ const EXTENSION_BY_MIME = {
   'audio/webm': 'webm',
   'audio/ogg': 'ogg',
   'audio/mp4': 'm4a',
+  // O gravador nativo do celular grava AAC em quadros soltos (ADTS).
+  'audio/aac': 'aac',
   'video/webm': 'webm',
 }
 

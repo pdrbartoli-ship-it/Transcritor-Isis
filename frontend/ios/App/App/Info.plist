@@ -38,6 +38,13 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Gravar com a tela travada ou em outro app. Sem isto o iPhone suspende
+	     o Dito segundos depois de ele sair da tela, e o microfone vai junto.
+	     Quem grava é o gravador nativo (plugins/gravador). -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

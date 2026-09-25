@@ -3,11 +3,15 @@ import { IconMic, IconFile } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
 import { RecordingReview, FileReview, UrlForm, GravandoAgora, MODE_TITLE } from './CaptureShared'
 import { usePlatform } from '../../lib/platform'
+import { temGravadorNativo } from '../../lib/gravadorNativo'
 
-// Enquanto a gravação no celular for a do navegador embutido, ela para quando
-// o Dito sai da tela: o iPhone e o Android cortam o microfone de quem está em
-// segundo plano. A frase diz isso sem rodeio, até o gravador nativo chegar.
-const DICA_DA_TELA = 'Mantenha o Dito aberto e a tela ligada enquanto grava.'
+// Com o gravador nativo, a gravação continua com a tela travada ou em outro
+// app, e a frase diz isso. Nos apps de loja anteriores a ele a gravação ainda
+// é a do navegador embutido, que para quando o Dito sai da tela: o iPhone e o
+// Android cortam o microfone de quem está em segundo plano.
+const dicaDaTela = () => (temGravadorNativo()
+  ? 'Pode travar a tela: o Dito continua gravando.'
+  : 'Mantenha o Dito aberto e a tela ligada enquanto grava.')
 
 // Captura no celular. Diferenças reais em relação ao desktop:
 // - não existe arrastar arquivo: o alvo vira um botão de toque, sem a área
@@ -21,6 +25,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
   const {
     loading, error, errorStatus, pendingFile,
     isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
+    avisoGravacao,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
     pickFile, clearFile,
@@ -47,6 +52,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
               onSubmit={submitRecording}
               onReset={resetRecording}
               loading={loading}
+              aviso={avisoGravacao}
             />
           ) : isRecording ? (
             <GravandoAgora
@@ -57,7 +63,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
               onPause={pauseRecording}
               onResume={resumeRecording}
               mini={mini}
-              dica={variant === 'hero' ? DICA_DA_TELA : null}
+              dica={avisoGravacao || (variant === 'hero' ? dicaDaTela() : null)}
             />
           ) : isFinalizing ? (
             <p className="record-label">
@@ -74,7 +80,7 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
                 <IconMic width={26} height={26} />
               </button>
               <p className="record-label">Toque para gravar</p>
-              {variant === 'hero' && <p className="mic-hint">{DICA_DA_TELA}</p>}
+              {variant === 'hero' && <p className="mic-hint">{dicaDaTela()}</p>}
             </>
           )}
         </div>

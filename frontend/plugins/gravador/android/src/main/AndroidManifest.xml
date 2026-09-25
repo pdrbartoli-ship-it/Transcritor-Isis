@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- O microfone. Faltava no app inteiro: sem ela o Android nega o
+         microfone até ao gravador da página, sem nem perguntar. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- O serviço em primeiro plano é o que mantém o microfone com a tela
+         travada ou com outro app na frente. Desde o Android 14 ele declara o
+         tipo (microfone), e a Play pede um formulário explicando o uso. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+            android:name="br.com.albiecloud.dito.gravador.GravadorService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>
+</manifest>
