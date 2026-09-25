@@ -109,8 +109,13 @@ export function useReguaDePlanos() {
   useEffect(() => { carregarPlanos() }, [])
 }
 
+// Valor redondo sai sem centavos (R$ 18), o quebrado mantém (R$ 16,58).
 export const formatarPreco = valor =>
-  valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  valor.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: Number.isInteger(valor) ? 0 : 2,
+  })
 
 // O preço que a vitrine mostra primeiro: o anual dividido pelo mês. Derivado do
 // anual, e não escrito à mão, para a manchete nunca divergir do que é cobrado.
