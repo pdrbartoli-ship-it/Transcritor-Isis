@@ -2300,6 +2300,170 @@ async def process_url(
     return await run_once(key, lambda: build_url_result(url, modo, user_id, idioma, convidado))
 
 
+# ── Transcrição que continua no servidor ─────────────────────────────────
+# O app manda o arquivo (ou o link) e recebe um número na hora; o resto
+# acontece aqui, com o app fechado se a pessoa quiser. O resultado é guardado
+# na tabela `transcricoes` (supabase/transcricoes.sql) cifrado com a chave
+# PÚBLICA da pessoa: nem o banco nem nós conseguimos ler o que ficou lá, e só
+# um aparelho dela, que tem a privada, abre. Pronta, vai uma notificação para
+# os celulares dela.
+#
+# 409 é o "use o caminho de sempre": sem a tabela, sem a chave pública, ou para
+# o convidado (que não tem chave nenhuma). O app, ao ver 409, manda a mesma
+# captura para /transcribe ou /process-url e espera com o app aberto.
+
+ORIGENS_DE_CAPTURA = ("record", "file", "url")
+SEM_SEGUNDO_PLANO = "Transcrição em segundo plano indisponível para esta conta."
+
+
+def _b64url_para_bytes(valor: str) -> bytes:
+    return base64.urlsafe_b64decode(valor + "=" * (-len(valor) % 4))
+
+
+def fechar_para(publica: dict, dados: bytes) -> str:
+    """Cifra `dados` para a dona da chave pública: uma chave AES nova por
+    resultado (AES-256-GCM), e essa chave fechada com a pública (RSA-OAEP com
+    SHA-256). O formato é o que chaveTranscricao.js abre."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    n = int.from_bytes(_b64url_para_bytes(publica["n"]), "big")
+    e = int.from_bytes(_b64url_para_bytes(publica["e"]), "big")
+    chave_publica = rsa.RSAPublicNumbers(e, n).public_key()
+    aes = AESGCM.generate_key(bit_length=256)
+    iv = os.urandom(12)
+    cifrado = AESGCM(aes).encrypt(iv, dados, None)
+    aes_fechada = chave_publica.encrypt(
+        aes,
+        padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None),
+    )
+    b64 = lambda b: base64.b64encode(b).decode()
+    return json.dumps({"v": 1, "k": b64(aes_fechada), "iv": b64(iv), "c": b64(cifrado)})
+
+
+async def _chave_publica(user_id: str) -> dict | None:
+    linhas = await supabase_service_get(
+        "chaves_transcricao", {"user_id": f"eq.{user_id}", "select": "publica", "limit": 1},
+    )
+    return (linhas[0] or {}).get("publica") if linhas else None
+
+
+async def _criar_linha_de_transcricao(dados: dict) -> str | None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/transcricoes",
+            json=dados,
+            headers=_cabecalhos_service({"Prefer": "return=representation"}),
+            timeout=10.0,
+        )
+    if resp.status_code >= 300:
+        logger.error("Falha ao criar transcrição de %s: %s %s", dados.get("user_id"), resp.status_code, resp.text)
+        return None
+    linhas = resp.json() or []
+    return linhas[0]["id"] if linhas else None
+
+
+async def _terminar_transcricao(job_id: str, dados: dict) -> None:
+    await _service_patch("transcricoes", {"id": f"eq.{job_id}"}, {**dados, "atualizada_em": _agora_iso()})
+
+
+async def _processar_transcricao(job_id: str, user_id: str, publica: dict, build, key: str, tmpdir: str | None) -> None:
+    try:
+        resultado = await run_once(key, build)
+        cifrado = fechar_para(publica, resultado.model_dump_json().encode())
+        await _terminar_transcricao(job_id, {
+            "estado": "pronta", "resultado": cifrado, "duracao_s": resultado.duration_s or None,
+        })
+        await avisar_transcricao_pronta(user_id, job_id)
+    except HTTPException as e:
+        await _terminar_transcricao(job_id, {"estado": "erro", "erro": str(e.detail), "erro_status": e.status_code})
+    except Exception:
+        logger.exception("Transcrição %s falhou em segundo plano", job_id)
+        await _terminar_transcricao(job_id, {
+            "estado": "erro", "erro": "Não foi possível transcrever. Tente de novo.", "erro_status": 500,
+        })
+    finally:
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@app.post("/transcricoes")
+async def criar_transcricao(
+    request: Request,
+    file: UploadFile | None = File(None),
+    url: str | None = Form(None),
+    origem: str = Form("file"),
+    mode: str = Form(MODO_COMPLETA),
+    language: str = Form(IDIOMA_AUTO),
+    duracao_s: int | None = Form(None),
+    user_id: str | None = Depends(guarda_de_captura),
+):
+    if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="Chaves de API não configuradas.")
+    convidado = bool(getattr(request.state, "convidado", False))
+    if not user_id or convidado or not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=409, detail=SEM_SEGUNDO_PLANO)
+    if origem not in ORIGENS_DE_CAPTURA:
+        raise HTTPException(status_code=400, detail="Origem de captura desconhecida.")
+    if not file and not (url or "").strip():
+        raise HTTPException(status_code=400, detail="Mande um arquivo ou um link.")
+
+    publica = await _chave_publica(user_id)
+    if not publica:
+        raise HTTPException(status_code=409, detail=SEM_SEGUNDO_PLANO)
+
+    modo = await modo_do_plano(normalizar_modo(mode), user_id)
+    idioma = normalizar_idioma(language)
+    tmpdir = None
+
+    if file:
+        filename = file.filename or "audio.m4a"
+        tmpdir = tempfile.mkdtemp()
+        try:
+            input_path = os.path.join(tmpdir, os.path.basename(filename) or "entrada")
+            file_hash = await save_upload(file, input_path)
+        except BaseException:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            raise
+
+        async def build() -> TranscriptionResult:
+            full_transcript, segments, num_chunks, duration_str, audio_seconds = await process_audio_path(input_path, filename)
+            return await analisar_transcricao(
+                modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
+                user_id=user_id, idioma=idioma,
+            )
+        # A mesma chave de /transcribe: o mesmo áudio mandado pelos dois
+        # caminhos ao mesmo tempo (o app caindo de um para o outro) é um
+        # trabalho só.
+        key = capture_key("file", file_hash, modo, idioma)
+    else:
+        url = url.strip()
+        if not is_safe_public_url(url):
+            raise HTTPException(status_code=400, detail="Não foi possível acessar este link.")
+        # Como em /process-url: o que não cabe no mês é recusado aqui, antes
+        # de a pessoa fechar o app achando que está tudo andando.
+        if is_video_url(url) and (YOUTUBE_API_KEY or SUPADATA_API_KEY):
+            duracao_link = await duracao_com_cache(url)
+            if duracao_link:
+                recusar_se_nao_cabe(await ler_saldo(user_id), duracao_link / 60)
+                duracao_s = duracao_s or round(duracao_link)
+        build = lambda: build_url_result(url, modo, user_id, idioma, False)  # noqa: E731
+        key = capture_key("url", url, modo, idioma)
+
+    job_id = await _criar_linha_de_transcricao({
+        "user_id": user_id, "origem": origem, "modo": modo,
+        "duracao_s": int(duracao_s) if duracao_s else None,
+    })
+    if not job_id:
+        if tmpdir:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        raise HTTPException(status_code=409, detail=SEM_SEGUNDO_PLANO)
+
+    _em_segundo_plano(_processar_transcricao(job_id, user_id, publica, build, key, tmpdir))
+    return {"id": job_id}
+
+
 class DuracaoLinkRequest(BaseModel):
     url: str = Field(..., max_length=2_000)
 
@@ -4021,6 +4185,22 @@ async def avisar_premio_no_celular(dono: str, premio: str, virou_apoiador: bool,
         await enviar_notificacao(aparelho["token"], aparelho["plataforma"], *texto)
 
 
+async def avisar_transcricao_pronta(user_id: str, job_id: str) -> None:
+    """A transcrição ficou pronta com o app fechado. O texto não diz do que se
+    trata de propósito: a notificação passa pelos servidores do Google e da
+    Apple e aparece na tela bloqueada, e o assunto de uma consulta ou de uma
+    reunião não é para estar em nenhum dos dois."""
+    aparelhos = await supabase_service_get(
+        "dispositivos", {"user_id": f"eq.{user_id}", "select": "token,plataforma"},
+    )
+    for aparelho in aparelhos:
+        await enviar_notificacao(
+            aparelho["token"], aparelho["plataforma"],
+            "Sua transcrição está pronta", "Toque para abrir no Dito.",
+            tipo="transcricao", canal=CANAL_TRANSCRICOES, dados={"id": job_id}, som=False,
+        )
+
+
 # ── Notificação no celular ────────────────────────────────────────────────
 # Android pelo Firebase (FCM), iPhone direto pela Apple (APNs). Cada lado tem
 # a sua credencial, nas variáveis do Render; sem ela, aquele lado fica mudo e
@@ -4046,6 +4226,8 @@ APNS_HOST = (
 
 # O canal de notificação do Android (criado pelo app, ver notificacoes.js).
 CANAL_ANDROID = "convites"
+# O das transcrições prontas: sem som, e calável sem calar o do convite.
+CANAL_TRANSCRICOES = "transcricoes"
 COR_ANDROID = "#1a5c4e"
 
 # Os dois lados pedem um token assinado. Ele vale por uma hora (Google) ou é
@@ -4141,9 +4323,13 @@ async def _esquecer_aparelho(token: str) -> None:
         )
 
 
-async def enviar_notificacao(token: str, plataforma: str, titulo: str, corpo: str) -> None:
-    """Uma notificação para um aparelho. Nunca levanta: é o último passo de um
-    prêmio que já foi dado."""
+async def enviar_notificacao(
+    token: str, plataforma: str, titulo: str, corpo: str,
+    tipo: str = "convite", canal: str = CANAL_ANDROID, dados: dict | None = None, som: bool = True,
+) -> None:
+    """Uma notificação para um aparelho. Nunca levanta: é o último passo de
+    algo que já aconteceu (o prêmio dado, a transcrição pronta). `tipo` e
+    `dados` chegam ao app, que decide o que abrir ao toque."""
     try:
         if plataforma == "android":
             credencial = await _token_do_fcm()
@@ -4156,8 +4342,8 @@ async def enviar_notificacao(token: str, plataforma: str, titulo: str, corpo: st
                     json={"message": {
                         "token": token,
                         "notification": {"title": titulo, "body": corpo},
-                        "android": {"notification": {"channel_id": CANAL_ANDROID, "color": COR_ANDROID}},
-                        "data": {"tipo": "convite"},
+                        "android": {"notification": {"channel_id": canal, "color": COR_ANDROID}},
+                        "data": {"tipo": tipo, **{k: str(v) for k, v in (dados or {}).items()}},
                     }},
                     headers={"Authorization": f"Bearer {acesso}"},
                     timeout=10.0,
@@ -4175,7 +4361,10 @@ async def enviar_notificacao(token: str, plataforma: str, titulo: str, corpo: st
             async with httpx.AsyncClient(http2=True) as client:
                 resp = await client.post(
                     f"{APNS_HOST}/3/device/{token}",
-                    json={"aps": {"alert": {"title": titulo, "body": corpo}, "sound": "default"}, "tipo": "convite"},
+                    json={
+                        "aps": {"alert": {"title": titulo, "body": corpo}, **({"sound": "default"} if som else {})},
+                        "tipo": tipo, **(dados or {}),
+                    },
                     headers={
                         "authorization": f"bearer {credencial}",
                         "apns-topic": APNS_TOPIC,
