@@ -113,9 +113,12 @@ workflows:
 
       app_store_connect:
         auth: integration
-        # Sobe para o TestFlight, que é a versão de teste, e para por aí. A
-        # entrega para a revisão da Apple continua sendo um clique seu, na tela
-        # deles: é a hora de conferir a ficha da loja, as capturas e a conta de
-        # teste do revisor.
-        submit_to_testflight: true
+        # Sobe para o App Store Connect e para por aí: o build fica no TestFlight
+        # para o teste interno, que dispensa revisão. `submit_to_testflight`
+        # fica desligado porque ele pede a revisão do teste externo, e essa
+        # revisão exige a ficha de teste preenchida (e-mail de devolutiva,
+        # contato do revisor); sem ela a montagem termina em erro mesmo com o
+        # build já enviado. A entrega para a revisão da Apple continua sendo um
+        # clique seu, na tela deles.
+        submit_to_testflight: false
         submit_to_app_store: false
