@@ -249,6 +249,36 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
   )
 }
 
+// A transcrição que o servidor termina sozinho: devolve { id } assim que o
+// arquivo (ou o link) chega, e a pessoa pode fechar o app. O resultado sai
+// depois, cifrado para a chave dela (ver chaveTranscricao.js). Um servidor
+// antigo responde 404, e um que não achou a chave pública, 409: nos dois casos
+// quem chama volta para o caminho de sempre, com o app aberto.
+export async function criarTranscricao({ arquivo, url, origem, modo = MODO_COMPLETA, duracaoS = null }) {
+  const formData = new FormData()
+  if (arquivo) {
+    await assertReadable(arquivo)
+    if (arquivo.size > MAX_UPLOAD_BYTES) {
+      const gb = (arquivo.size / (1024 ** 3)).toFixed(1)
+      throw new Error(
+        `Este arquivo tem ${gb} GB e o limite é 1 GB (cerca de 8 horas de gravação). ` +
+        'Se for vídeo, envie só o áudio.'
+      )
+    }
+    formData.append('file', arquivo)
+  }
+  if (url) formData.append('url', url)
+  formData.append('origem', origem)
+  formData.append('mode', modo)
+  formData.append('language', getIdioma())
+  if (duracaoS) formData.append('duracao_s', String(Math.round(duracaoS)))
+  return comTeto(
+    signal => postWithRetry('/transcricoes', formData, { signal }).then(handleResponse),
+    CAPTURA_TIMEOUT_MS,
+    CAPTURA_TIMEOUT_MSG,
+  )
+}
+
 // Duração do vídeo de um link, sem baixá-lo — para o botão dizer quantos
 // minutos a captura vai consumir. Null quando não dá para saber; nunca lança,
 // porque a estimativa é informação e não pode travar o envio.

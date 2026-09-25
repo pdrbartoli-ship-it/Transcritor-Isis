@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { IconMic } from '../Icons'
 import { ACCEPTED_FILES, formatTime } from './estimate'
-import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm, MODE_TITLE } from './CaptureShared'
+import { RecordingReview, FileReview, UrlForm, GravandoAgora, MODE_TITLE } from './CaptureShared'
 
 // Captura no navegador de desktop: existe mouse, então arrastar arquivo faz
 // sentido e o vocabulário é "clique". Cada origem tem a sua rota, e este
@@ -10,7 +10,7 @@ import { ProcessingBox, RecordingReview, RecordingControls, FileReview, UrlForm,
 export default function CaptureWeb({ capture, variant, mode = 'record', mini, onVerPlanos }) {
   const {
     loading, error, errorStatus, pendingFile,
-    isRecording, isPaused, isFinalizing, recordedBlob, recordingTime,
+    isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
     startRecording, stopRecording, resetRecording,
     pauseRecording, resumeRecording,
     pickFile, clearFile,
@@ -23,49 +23,47 @@ export default function CaptureWeb({ capture, variant, mode = 'record', mini, on
 
   // `modo` aqui é a profundidade da transcrição, não o `mode` do painel (que
   // diz qual origem está aberta) — nomes diferentes para não confundir os dois.
-  async function handleUrl(modo) {
-    if (await submitUrl(url, modo)) setUrl('')
+  function handleUrl(modo, duracaoS) {
+    if (submitUrl(url, modo, duracaoS)) setUrl('')
   }
-
-  if (loading) return <ProcessingBox />
 
   return (
     <>
       {mode === 'record' && (
         <div className="hero-record">
-          {!recordedBlob ? (
-            <>
-              <button
-                className={`record-btn ${variant === 'hero' ? 'hero' : ''} ${isRecording ? 'recording' : ''}`}
-                onClick={isRecording ? stopRecording : startRecording}
-                disabled={loading || isFinalizing}
-                aria-label={isRecording ? 'Parar gravação' : 'Iniciar gravação'}
-              >
-                <IconMic width={26} height={26} />
-              </button>
-              <p className="record-label">
-                {isRecording
-                  ? <><span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'} · {formatTime(recordingTime)}</>
-                  : isFinalizing
-                    ? <><span className="spinner spinner-sm" /> Finalizando a gravação · {formatTime(recordingTime)}</>
-                    : 'Clique para gravar'}
-              </p>
-              {isRecording && !isFinalizing && (
-                <RecordingControls
-                  paused={isPaused}
-                  onPause={pauseRecording}
-                  onResume={resumeRecording}
-                  mini={mini}
-                />
-              )}
-            </>
-          ) : (
+          {recordedBlob ? (
             <RecordingReview
               recordingTime={recordingTime}
               onSubmit={submitRecording}
               onReset={resetRecording}
               loading={loading}
             />
+          ) : isRecording ? (
+            <GravandoAgora
+              recordingTime={recordingTime}
+              isPaused={isPaused}
+              getLevel={getLevel}
+              onStop={stopRecording}
+              onPause={pauseRecording}
+              onResume={resumeRecording}
+              mini={mini}
+            />
+          ) : isFinalizing ? (
+            <p className="record-label">
+              <span className="spinner spinner-sm" /> Finalizando a gravação · {formatTime(recordingTime)}
+            </p>
+          ) : (
+            <>
+              <button
+                className={`record-btn ${variant === 'hero' ? 'hero' : ''}`}
+                onClick={startRecording}
+                disabled={loading}
+                aria-label="Iniciar gravação"
+              >
+                <IconMic width={26} height={26} />
+              </button>
+              <p className="record-label">Clique para gravar</p>
+            </>
           )}
         </div>
       )}

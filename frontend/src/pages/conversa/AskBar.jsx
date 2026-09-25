@@ -43,7 +43,7 @@ export default function AskBar({ restantes = null, onVerPlanos }) {
           value={texto}
           onChange={setTexto}
           onSubmit={enviar}
-          placeholder="Pergunte qualquer coisa sobre esta conversa"
+          placeholder="Pergunte sobre esta conversa"
         />
         <button type="submit" className="btn-icon ask-send" aria-label="Perguntar">
           <IconSend width={18} height={18} />

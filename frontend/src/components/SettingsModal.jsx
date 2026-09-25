@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTheme, setTheme, getIdioma, setIdioma, IDIOMAS } from '../lib/prefs'
+import { getTheme, setTheme, getIdioma, setIdioma, IDIOMAS, TEMA_AUTO } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
+import { rastroAuth } from '../contexts/AuthContext'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { esquecerDoAparelho } from '../lib/chaves'
@@ -64,12 +65,17 @@ export default function SettingsModal({
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Configurações</h3>
-          <button className="btn-icon" onClick={onClose}><IconClose /></button>
+          <button className="btn-icon" onClick={onClose} aria-label="Fechar"><IconClose /></button>
         </div>
 
         <div className="settings-group">
           <label>Tema</label>
+          {/* "Automático" primeiro: é o padrão de quem nunca escolheu, e é o
+              que o resto do aparelho faz. */}
           <div className="seg">
+            <button className={theme === TEMA_AUTO ? 'on' : ''} onClick={() => changeTheme(TEMA_AUTO)}>
+              Automático
+            </button>
             <button className={theme === 'light' ? 'on' : ''} onClick={() => changeTheme('light')}>
               <IconSun width={15} height={15} style={{ verticalAlign: '-2px', marginRight: 6 }} /> Claro
             </button>
@@ -204,9 +210,17 @@ export default function SettingsModal({
           </div>
         )}
 
-        <div className="modal-actions">
-          <button className="btn-primary" onClick={onClose}>Concluído</button>
-        </div>
+        {/* Qual build está rodando. Morava no rodapé da barra lateral, onde
+            no celular ficava embaixo do indicador de início; aqui continua a
+            um toque de quem pergunta "atualizou?". Sem o "Concluído" que
+            havia aqui: o × do topo e o toque fora já fecham, e dois jeitos de
+            fechar a mesma janela era um a mais. */}
+        <p
+          className="settings-versao"
+          title={`Commit ${__BUILD_SHA__}\nÚltimos eventos de login: ${rastroAuth() || 'nenhum'}`}
+        >
+          Versão {__APP_VERSION__} · {__BUILD_SHA__}
+        </p>
       </div>
     </div>
   )

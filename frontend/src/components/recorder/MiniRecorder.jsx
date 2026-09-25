@@ -23,7 +23,7 @@ const DB_CEIL = -8
 // o valor mostrado nunca alcançava o real, justamente nos transientes.
 const RELEASE = 0.16
 
-function perceptual(level) {
+export function perceptual(level) {
   if (level <= 0.00013) return 0            // -78 dB: silêncio digital
   const db = 20 * Math.log10(level)
   return Math.max(0, Math.min(1, (db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)))

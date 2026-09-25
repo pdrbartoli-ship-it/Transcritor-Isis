@@ -1,0 +1,482 @@
+/* ── Celular e as peças novas de 25/09/2026 ─────────────────
+   Carregado depois do index.css (ver main.jsx), então vale por cima dele.
+
+   Três coisas moram aqui:
+   1. O app no celular do tamanho certo: as faixas do sistema (barra de
+      status, indicador de início), alvos do tamanho do dedo, letra de 16 px
+      nos campos (abaixo disso o iPhone amplia a tela ao tocar e não desfaz) e
+      a lateral e o topo no desenho do app do Claude.
+   2. O toque com cara de app: sem o destaque que gruda depois do toque, sem
+      o piscar cinza do Safari e sem a tela inteira quicando.
+   3. As peças do "transcrever sem esperar": transcrições em andamento, a
+      bolinha de não lida, o modo gravando e a escolha do tipo de transcrição
+      à vista. */
+
+/* ── Faixas do sistema ─────────────────────────────────────
+   No iPhone as medidas vêm do env() (com viewport-fit=cover no index.html).
+   No Android o Capacitor 8 injeta as mesmas medidas em --safe-area-inset-*,
+   porque o WebView antigo informa zero no env(); quando ele mesmo afasta o
+   app das barras, injeta zero, e nada se soma duas vezes. */
+:root {
+  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --sal: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --sar: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --gaveta-w: min(84vw, 340px);
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+/* A rolagem mora dentro do app (.content, a lista da lateral); o documento
+   em si não tem o que rolar, e quicar a tela inteira ao puxar além do fim é o
+   que denuncia um site dentro de um app. */
+html, body { overscroll-behavior: none; }
+
+/* ── Tela de toque ───────────────────────────────────────── */
+@media (pointer: coarse) {
+  /* Abaixo de 16 px o iPhone amplia a página ao focar o campo e não volta
+     sozinho: era o "zoom todo deslocado" ao tocar para perguntar. O
+     !important existe porque cada campo do app tem o seu tamanho, e este é
+     o único que pode valer em tela de toque. */
+  input, textarea, select { font-size: 16px !important; }
+
+  /* 44 pontos: o mínimo da Apple para um alvo de toque. */
+  .btn-icon { min-width: 44px; min-height: 44px; }
+  .btn-sinalizar-resposta { width: 40px; height: 40px; }
+  .seg button { min-height: 40px; padding: 9px 16px; font-size: 14px; }
+  .settings-switch { min-height: 48px; font-size: 14px; }
+  .nav-item { min-height: 44px; font-size: 14px; }
+  .starter-chips button { min-height: 40px; font-size: 14px; }
+  .todo-row, .chapter-row { min-height: 52px; }
+  .timeline-slot { height: 36px; }
+
+  /* Segurar uma conversa abre o menu dela; sem isto o iPhone abria junto a
+     lupa de seleção de texto por cima. */
+  .sidebar-item, .nav-card, .todo-row, .chapter-row, .botao-redondo, .gaveta-novo {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+}
+
+/* Sem ponteiro, o "passar o mouse" não existe, mas o navegador o aplica ao
+   que foi tocado e o deixa lá: o cartão da tarefa ficava cinza depois do
+   toque, parecendo selecionado. Aqui o hover volta ao repouso, e quem dá o
+   retorno do toque é o :active, que dura o tempo do dedo na tela. */
+@media (hover: none) {
+  .nav-card:hover { border-color: var(--border); background: var(--surface); }
+  .nav-card:hover .card-arrow { opacity: .55; color: var(--text-muted); }
+  .sidebar-item:hover { background: transparent; }
+  .sidebar-item.active:hover { background: var(--accent-soft); }
+  .todo-row:hover, .chapter-row:hover { border-color: var(--border); }
+  .todo-row.open:hover, .chapter-row.open:hover { border-color: var(--accent); }
+  .timeline-slot:hover { background: var(--surface-2); transform: none; }
+  .timeline-slot.on:hover { background: var(--accent); }
+  .btn-primary:hover:not(:disabled) { background: var(--accent); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--border); color: var(--text-muted); }
+  .btn-icon:hover, .tool-btn:hover:not(:disabled) { background: transparent; color: var(--text-muted); }
+  .record-btn:hover:not(:disabled) { border-color: var(--border); }
+  .seg button:hover { border-color: var(--border); color: var(--text-muted); }
+  .seg button.on:hover { border-color: transparent; color: var(--accent); }
+  .fonte-chip:hover, .starter-chips button:hover { background: var(--surface); border-color: var(--border); }
+  .ask-anteriores button:hover { background: transparent; color: var(--text-muted); }
+  .nav-item:hover, .ctx-item:hover, .sidebar-novo:hover { background: transparent; }
+
+  .sidebar-item:active, .nav-card:active, .todo-row:active, .chapter-row:active,
+  .conta-item:active, .ctx-item:active, .andamento-abrir:active, .nav-item:active,
+  .ask-anteriores button:active, .sidebar-novo:active { background: var(--surface-2); }
+  .botao-redondo:active, .btn-primary:active:not(:disabled), .gaveta-novo:active,
+  .gravando-parar:active, .record-btn:active:not(:disabled) { transform: scale(.96); }
+}
+
+/* ── Troca de tela ──────────────────────────────────────────
+   Cada tela nova entra com um deslize curto; voltar desliza do outro lado
+   (Layout.jsx põe as classes). No computador, só um esmaecer. Quem pediu
+   menos movimento no sistema não vê nenhum dos dois (regra no index.css). */
+.content.entrando > * { animation: tela-esmaece .16s ease-out; }
+@keyframes tela-esmaece { from { opacity: 0; } to { opacity: 1; } }
+.sidebar-overlay { animation: modal-overlay-in .22s ease; }
+
+/* ── Avisos ───────────────────────────────────────────────── */
+/* Uma regra antiga do .toast (index.css) ainda o fixava a 22 px do rodapé,
+   por fora da pilha: no celular o aviso caía em cima do indicador de início,
+   e dois avisos seguidos se sobrepunham. Quem posiciona é a pilha. */
+.toast { position: static; transform: none; }
+
+/* ── Bolinha de conversa nova ─────────────────────────────── */
+.sidebar-item { position: relative; }
+.ponto-nao-lida {
+  position: absolute; top: 7px; right: 8px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--sidebar-bg);
+}
+.sidebar-item:has(.ponto-nao-lida) { padding-right: 24px; }
+.ponto-nao-lida.no-botao { top: 7px; right: 7px; box-shadow: 0 0 0 2px var(--surface); }
+
+/* ── Transcrições em andamento ─────────────────────────────── */
+.andamento-grupo { margin-bottom: 2px; }
+.sidebar-item.andamento .andamento-estado {
+  flex-shrink: 0; font-size: 12px; color: var(--text-muted);
+}
+.sidebar-item.andamento.erro .andamento-estado { color: var(--danger); }
+.andamento-spinner { margin: 0 !important; flex-shrink: 0; }
+.andamento-marca.erro {
+  flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--danger-bg); color: var(--danger);
+  font-size: 11px; font-weight: 700;
+}
+
+.andamento-painel { width: 100%; max-width: 480px; margin-top: 28px; display: flex; flex-direction: column; gap: 8px; }
+.andamento-cartao {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.andamento-abrir {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; background: transparent; text-align: left;
+  border-radius: var(--radius);
+}
+.andamento-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.andamento-rotulo {
+  font-size: 14px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.andamento-sub { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.andamento-cartao.erro .andamento-sub { color: var(--danger); }
+.andamento-acoes { display: flex; gap: 6px; padding: 0 10px 8px 40px; }
+
+.transcrevendo {
+  max-width: 480px; margin: 0 auto; padding: 12vh 24px 40px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+}
+.transcrevendo-titulo { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.transcrevendo-rotulo { font-size: 16px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.transcrevendo-nota { font-size: 14px; line-height: 1.5; color: var(--text-muted); max-width: 340px; }
+.transcrevendo-acoes { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ── Botão com peso de link ───────────────────────────────── */
+.btn-link {
+  background: none; border: none; padding: 8px 6px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 500; color: var(--accent);
+}
+.btn-link:hover:not(:disabled) { text-decoration: underline; }
+.btn-link.discreto { color: var(--text-muted); font-weight: 400; }
+.btn-link.perigo { color: var(--danger); font-weight: 600; }
+
+/* ── Esqueletos ───────────────────────────────────────────── */
+.esqueleto-lista { display: flex; flex-direction: column; gap: 16px; padding: 14px 12px; }
+.esqueleto-linha, .esqueleto-bloco {
+  display: block; border-radius: 6px; background: var(--surface-2);
+  animation: esqueleto 1.4s ease-in-out infinite;
+}
+.esqueleto-linha { height: 12px; }
+.esqueleto-linha.titulo { height: 26px; width: 70%; margin-bottom: 2px; }
+.esqueleto-bloco { height: 96px; border-radius: var(--radius); }
+.esqueleto-conversa { display: flex; flex-direction: column; gap: 14px; padding-top: 12px; }
+@keyframes esqueleto { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* ── Gravando ─────────────────────────────────────────────── */
+.gravando-agora {
+  width: 100%; max-width: 420px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.gravando-estado { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-muted); }
+/* O tempo é o que se olha de longe, no meio da reunião: é a única peça fora
+   da escala de fonte do app, como o logotipo. */
+.gravando-tempo {
+  font-size: 48px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.onda {
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  width: 100%; max-width: 300px; height: 56px;
+}
+.onda span {
+  flex: 1; max-width: 6px; height: 100%; border-radius: 3px;
+  background: var(--record); transform: scaleY(.06); transform-origin: center;
+}
+.onda.pausada span { background: var(--text-muted); }
+.gravando-controles {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  width: 100%; max-width: 340px; margin-top: 8px;
+}
+.gravando-lateral {
+  justify-self: center; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 72px; min-height: 60px; padding: 6px;
+  background: transparent; color: var(--text-muted); font-size: 12px; border-radius: var(--radius-sm);
+}
+.gravando-lateral svg { color: var(--text); }
+.gravando-lateral.vazio { visibility: hidden; }
+.gravando-parar {
+  width: 80px; height: 80px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--record-soft); border: 2px solid var(--record);
+  transition: transform .1s;
+}
+.gravando-quadrado { width: 26px; height: 26px; border-radius: 6px; background: var(--record); }
+.home.gravando { min-height: 100%; }
+.home.gravando .home-capture { flex: 1; justify-content: center; }
+
+/* ── Revisão da gravação ──────────────────────────────────── */
+.revisao { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.revisao-titulo { font-size: 14px; color: var(--text-muted); }
+.revisao-tempo { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+.descartar-pergunta {
+  display: flex; align-items: center; justify-content: center; gap: 2px; flex-wrap: wrap;
+  font-size: 14px; color: var(--text);
+}
+.file-review .btn-link { margin-top: 2px; }
+
+/* ── Escolha do tipo de transcrição, no celular ──────────── */
+.escolha-transcricao { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.escolha-opcoes {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  border-radius: 14px; background: var(--track); border: 1px solid var(--border);
+}
+.escolha-opcao {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; border-radius: 10px;
+  background: transparent; color: var(--text-muted); font-size: 16px; font-weight: 500;
+}
+.escolha-opcao.on { background: var(--seg-on); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.escolha-opcao.trancada { color: var(--text-muted); }
+.escolha-opcao:disabled { opacity: .55; cursor: default; }
+.escolha-dica { font-size: 13px; line-height: 1.45; color: var(--text-muted); text-align: center; min-height: 2.9em; }
+.escolha-enviar {
+  width: 100%; min-height: 50px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 16px; font-weight: 600;
+}
+
+/* ── Link do vídeo ────────────────────────────────────────── */
+.url-campo { position: relative; flex: 1; min-width: 0; display: flex; }
+.url-campo input { flex: 1; min-width: 0; padding-right: 78px; }
+.url-colar {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 600;
+}
+.url-form.toque { flex-direction: column; align-items: stretch; gap: 12px; }
+.url-form.toque .url-campo input { min-height: 50px; }
+
+/* ── O caminho do WhatsApp (Android) ─────────────────────── */
+.passos-whatsapp {
+  list-style: none; counter-reset: passo;
+  width: 100%; max-width: 380px; margin: 0 0 10px; padding: 18px;
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.passos-whatsapp li {
+  counter-increment: passo;
+  display: flex; align-items: center; gap: 12px; font-size: 16px; line-height: 1.4;
+}
+.passos-whatsapp li::before {
+  content: counter(passo); flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600;
+}
+
+/* ── Opções da conversa ───────────────────────────────────── */
+.conversa-topbar { justify-content: flex-end; margin-bottom: 6px; }
+.acoes-conversa { position: relative; }
+/* O menu de contexto é `fixed` na posição do clique; este é o mesmo menu,
+   pendurado no botão "⋯". */
+.ctx-menu.acoes-lista { position: absolute; top: calc(100% + 6px); right: 0; left: auto; min-width: 220px; }
+
+/* ── Conta e opções como folha (celular) ─────────────────── */
+.conta-topo {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 4px 14px; margin-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.foot-avatar.grande { width: 40px; height: 40px; font-size: 16px; }
+.conta-email {
+  flex: 1; min-width: 0; font-size: 14px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conta-lista { display: flex; flex-direction: column; }
+.conta-item {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px;
+  padding: 0 8px; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text); font-size: 16px; text-align: left;
+}
+.conta-item svg { flex-shrink: 0; color: var(--text-muted); }
+.conta-item.danger, .conta-item.danger svg { color: var(--danger); }
+
+.settings-versao {
+  margin-top: 20px; font-size: 12px; text-align: center;
+  color: var(--text-muted); opacity: .7; font-variant-numeric: tabular-nums;
+}
+
+/* ── Computador: a lateral sem cartões ────────────────────── */
+@media (min-width: 761px) {
+  /* "Transcrever" e "Perguntar" eram cartões com contorno e sombra, um em
+     cima do outro: dois blocos pesados antes da lista. Agora são linhas,
+     como o "Novo chat" do Claude. */
+  .sidebar-novo { background: transparent; border-color: transparent; box-shadow: none; }
+  .sidebar-novo:hover { background: var(--hover); border-color: transparent; }
+  .sidebar-perguntar.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .sidebar-perguntar.active svg { color: var(--accent); }
+}
+
+/* ── Celular ────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  /* O topo, como o do Claude: dois botões redondos e o nome da tela entre
+     eles, abaixo da barra de status (onde o toque é do aparelho). */
+  .topbar-mobile {
+    display: flex; align-items: center; gap: 8px;
+    height: calc(var(--header-h) + var(--sat));
+    padding: var(--sat) calc(12px + var(--sar)) 0 calc(12px + var(--sal));
+    border-bottom: none; background: var(--bg);
+  }
+  .botao-redondo, .topbar-mobile .hamburger {
+    position: relative; flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    transition: transform .1s, background .15s;
+  }
+  .botao-redondo.on { background: var(--surface-2); }
+  .topbar-titulo {
+    flex: 1; min-width: 0; text-align: center;
+    font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .topbar-titulo.como-botao {
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    min-height: 44px; padding: 0 4px; background: transparent;
+  }
+  .topbar-titulo.como-botao span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-titulo.como-botao svg { flex-shrink: 0; color: var(--text-muted); }
+  .topbar-contador { min-width: 44px; display: flex; justify-content: flex-end; }
+  .contador-minutos.compacto { font-size: 13px; gap: 6px; }
+
+  /* A lateral: 84% da largura, e o conteúdo empurrado para a direita como um
+     cartão escurecido, que é o que se toca para voltar. */
+  .sidebar {
+    width: var(--gaveta-w); padding-top: var(--sat); padding-left: var(--sal);
+    border-right: none; box-shadow: none;
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1);
+  }
+  .app-shell.collapsed .sidebar { width: var(--gaveta-w); }
+  .content-wrap { transition: transform .28s cubic-bezier(.2, .8, .2, 1), border-radius .28s; }
+  .app-shell.drawer-open .content-wrap {
+    transform: translateX(var(--gaveta-w)); border-radius: 24px;
+    box-shadow: -1px 0 0 var(--border);
+  }
+  .sidebar-overlay { background: rgba(0, 0, 0, .32); }
+
+  .gaveta-topo {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px 12px 20px;
+  }
+  .gaveta-topo .brand { font-size: 28px; }
+  .gaveta-botoes { display: flex; gap: 10px; }
+  .sidebar-search { margin: 0 14px 10px; padding: 4px 6px 4px 12px; min-height: 46px; }
+  .sidebar-search input { font-size: 16px; }
+
+  .sidebar-novo.sidebar-perguntar {
+    width: auto; margin: 0 10px 6px; padding: 12px;
+    gap: 14px; font-size: 16px; font-weight: 500;
+    background: transparent; border: none; box-shadow: none; border-radius: var(--radius-sm);
+  }
+  .sidebar-perguntar svg { color: var(--text); }
+  .sidebar-perguntar.active { background: var(--accent-soft); color: var(--accent); }
+  .sidebar-perguntar.active svg { color: var(--accent); }
+
+  /* Espaço embaixo para o rodapé flutuante não cobrir a última conversa. */
+  .sidebar-list { padding: 0 10px calc(104px + var(--sab)); }
+  .sidebar-item { font-size: 16px; padding: 11px 12px; gap: 14px; min-height: 46px; }
+  .sidebar-item .kind-icon { width: 18px; height: 18px; }
+  .sidebar-group-label { text-transform: none; letter-spacing: 0; font-size: 14px; padding: 18px 12px 6px; }
+  .sidebar-empty { font-size: 14px; padding: 10px 12px; }
+  .ponto-nao-lida { top: 10px; right: 10px; }
+
+  /* O rodapé do Claude: a conta num botão redondo, e o botão de começar algo
+     novo flutuando por cima do fim da lista. */
+  .gaveta-rodape {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 22px 16px calc(14px + var(--sab)) calc(16px + var(--sal));
+    background: linear-gradient(to bottom, transparent, var(--sidebar-bg) 36%);
+  }
+  .gaveta-rodape:has(.gaveta-convite) { flex-direction: column; align-items: stretch; }
+  .gaveta-convite { margin: 0; border-top: none; padding: 14px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); }
+  .gaveta-avatar {
+    flex-shrink: 0; width: 46px; height: 46px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600;
+    transition: transform .1s;
+  }
+  .gaveta-novo {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 50px; padding: 0 24px; border-radius: 999px;
+    background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600;
+    box-shadow: var(--shadow); transition: transform .1s;
+  }
+
+  /* As janelas viram folhas que sobem de baixo, na largura toda, e o botão
+     principal fica em cima, no alcance do polegar. */
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal, .modal-wide, .modal-confirm {
+    width: 100%; max-width: none;
+    border: none; border-top: 1px solid var(--border); border-radius: 22px 22px 0 0;
+    padding: 20px 20px calc(20px + var(--sab));
+    max-height: calc(100% - var(--sat) - 16px);
+    animation: folha-sobe .3s cubic-bezier(.2, .8, .2, 1);
+  }
+  .modal-actions { flex-direction: column-reverse; align-items: stretch; }
+  .modal-actions > button { width: 100%; min-height: 48px; justify-content: center; }
+
+  /* A home: o relógio de minutos está no topo, e o resto respira. */
+  .home { padding: 2vh 20px calc(28px + var(--sab)); min-height: 100%; }
+  .home-topo { display: none; }
+  .home-greeting { margin-bottom: 24px; }
+  .home-capture-nav { margin-bottom: 28px; }
+  .home-capture-nav a { min-height: 48px; }
+  .capture-mode-title { font-size: 16px; }
+  .pick-file { min-height: 56px; }
+
+  /* A conversa: o título já está no topo da tela; a página não o repete. */
+  .conversa-shell { padding: 8px 18px 12px; }
+  .conversa-topbar { height: 0; margin: 0; }
+  .acoes-botao { display: none; }
+  .conversa-head h1.titulo-da-conversa { display: none; }
+  .conversa-head { margin-bottom: 20px; }
+  .nav-card { padding: 16px 36px 16px 16px; }
+  .topic-label, .todo-task, .chapter-title { font-size: 16px; }
+  .bullet-list li, .fala { font-size: 16px; }
+
+  /* O campo de perguntar, como o do Claude: arredondado, letra de 16 e acima
+     do indicador de início. */
+  .ask-bar { border-radius: 24px; padding: 8px 8px 8px 18px; align-items: center; }
+  .ask-send { width: 40px; height: 40px; }
+  .ask-dock { padding: 10px 0 calc(8px + var(--sab)); }
+  .chat-input-area { padding-bottom: calc(8px + var(--sab)); }
+  .chat-page { min-height: 100%; }
+
+  /* Perguntar em repouso: o convite no meio e o campo embaixo, onde o
+     polegar alcança e onde o teclado o encontra. */
+  .perguntar-page.chat-page-vazia .ask-hero { justify-content: flex-start; padding: 0; gap: 14px; }
+  .perguntar-page.chat-page-vazia .ask-hero-titulo { margin-top: auto; }
+  .perguntar-page.chat-page-vazia .ask-anteriores { order: 2; }
+  .perguntar-page.chat-page-vazia .ask-hero-barra { order: 3; margin-top: auto; }
+  .perguntar-page.chat-page-vazia .ask-hero-rodape { order: 4; padding-bottom: calc(10px + var(--sab)); }
+
+  .toast-stack { bottom: calc(96px + var(--sab)); }
+  .premio-aviso { bottom: calc(16px + var(--sab)); }
+
+  /* O login ocupa a tela, sem a caixa com sombra de site. */
+  .auth-page { align-items: flex-start; padding: calc(20px + var(--sat)) 20px calc(20px + var(--sab)); }
+  .auth-card { border: none; box-shadow: none; background: transparent; padding: 6vh 4px 24px; }
+  .auth-card input[type="email"], .auth-card input[type="password"] { min-height: 50px; }
+  .auth-card .btn-full { min-height: 50px; font-size: 16px; }
+  .auth-tabs button { min-height: 40px; font-size: 14px; }
+
+  /* No celular a troca de tela desliza, como num app. */
+  .content.entrando > * { animation: tela-entra .24s cubic-bezier(.2, .7, .2, 1); }
+  .content.entrando.volta > * { animation-name: tela-volta; }
+}
+
+@keyframes folha-sobe { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes tela-entra { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes tela-volta { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }

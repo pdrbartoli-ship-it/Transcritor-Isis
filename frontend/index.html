@@ -2,7 +2,12 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: sem ele o iPhone informa zero para a área segura, e o
+         app, que ocupa a tela inteira, desenhava o topo embaixo da barra de
+         status (o botão da lateral ficava onde o toque é do sistema).
+         interactive-widget: no Android o teclado encolhe a página, em vez de
+         cobrir o campo de pergunta. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#f6f8f7" />
     <meta name="description" content="Grave a reunião, a consulta ou a aula, ou envie um áudio que você já tem. O Dito devolve a transcrição e um resumo do que ficou combinado, em minutos. Grátis e cifrado no seu aparelho." />
     <link rel="canonical" href="https://dito.albiecloud.com/" />
@@ -25,8 +30,23 @@
     <script>
       // Apply saved theme before render to avoid a flash of the wrong theme.
       (function () {
-        var t = 'light';
-        try { t = localStorage.getItem('dito-theme') || 'light'; } catch (e) {}
+        var t = null;
+        var logado = false;
+        try {
+          t = localStorage.getItem('dito-theme');
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i) || '';
+            if (k.indexOf('sb-') === 0 && k.slice(-11) === '-auth-token') logado = true;
+          }
+        } catch (e) {}
+        // Quem nunca escolheu (ou escolheu o automático) segue o aparelho, mas
+        // só dentro do app: sem sessão quem abre é a vitrine, que é sempre
+        // clara, e resolver para o escuro aqui faria a landing piscar.
+        if (t !== 'light' && t !== 'dark') {
+          var escuro = false;
+          try { escuro = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) {}
+          t = logado && escuro ? 'dark' : 'light';
+        }
         document.documentElement.setAttribute('data-theme', t);
         // A barra do PWA instalado sai do theme-color, e o Chrome a lê antes
         // do React montar — deixar para o setTheme abriria a janela com a

@@ -3,9 +3,8 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { generateInsights } from '../../lib/api'
 import { planoPorId } from '../../lib/planos'
-import { IconChevron, IconCircle } from '../../components/Icons'
+import { IconChevron } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
-import BaixarTranscricao from './BaixarTranscricao'
 import MarkdownText from '../../components/chat/MarkdownText'
 import { track } from '../../lib/analytics'
 import { formatTimestamp, formatRange, sliceSegments } from './shared'
@@ -14,6 +13,10 @@ import { formatTimestamp, formatRange, sliceSegments } from './shared'
 // porta, e a sinalização disso é o próprio card reagindo ao ponteiro — mais o
 // chevron que aparece com ele. Duplo clique não existe em celular e é
 // invisível para quem não sabe.
+//
+// Sem as frases de instrução que ficavam embaixo de cada título ("Clique em um
+// tópico para…"): a seta dos cartões já diz que eles abrem, e no celular a
+// frase ainda mandava "clicar" numa tela de toque.
 export default function Conversa() {
   const navigate = useNavigate()
   const { conversation, setConversation, refreshConversations, plano, abrirPlano } = useOutletContext()
@@ -72,10 +75,7 @@ export default function Conversa() {
   if (!insights) {
     return (
       <div className="conversa">
-        <ConversaHeader
-          conversation={conversation}
-          action={<BaixarTranscricao conversation={conversation} />}
-        />
+        <ConversaHeader conversation={conversation} />
         {error && <div className="alert alert-error">{error}</div>}
         {conversation.summary && (
           <section className="conversa-block">
@@ -106,16 +106,12 @@ export default function Conversa() {
 
   return (
     <div className="conversa">
-      <ConversaHeader
-        conversation={conversation}
-        action={<BaixarTranscricao conversation={conversation} />}
-      />
+      <ConversaHeader conversation={conversation} />
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="conversa-grid">
         <section className="conversa-block">
           <h2>4 tópicos mais importantes</h2>
-          <p className="block-hint">Clique em um tópico para ver o que foi dito sobre ele.</p>
           <div className="topic-grid">
             {topics.map((t, i) => (
               <Card key={i} onOpen={() => open(`topico/${i}`, 'topico_aberto')} className="topic-card">
@@ -134,12 +130,10 @@ export default function Conversa() {
             <p className="text-muted text-sm">Nenhuma ação ficou combinada nesta conversa.</p>
           ) : (
             <>
-              <p className="block-hint">Clique para ver o trecho em que cada uma foi combinada.</p>
               <ul className="todo-list">
                 {todos.slice(0, 4).map((t, i) => (
                   <li key={i}>
                     <Card onOpen={() => open('todos', 'todo_aberto', { state: { focus: i } })} className="todo-card">
-                      <span className="todo-check" aria-hidden="true"><IconCircle width={14} height={14} /></span>
                       <span className="todo-main">
                         <span className="todo-task">{t.task}</span>
                         {(t.owners?.length > 0 || t.due) && (
@@ -167,7 +161,6 @@ export default function Conversa() {
       {chapters.length > 0 && (
         <section className="conversa-block">
           <h2>Resumo minuto a minuto</h2>
-          <p className="block-hint">Escolha um intervalo na barra; clique de novo para ler a transcrição dele.</p>
 
           {/* Cada bloco é proporcional à duração do trecho, então a barra
               mostra de relance onde a conversa se demorou. */}

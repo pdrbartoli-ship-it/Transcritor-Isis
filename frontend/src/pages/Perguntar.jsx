@@ -421,7 +421,7 @@ export default function Perguntar() {
         value={question}
         onChange={setQuestion}
         onSubmit={enviar}
-        placeholder="Pergunte alguma coisa sobre suas conversas"
+        placeholder="Pergunte sobre suas conversas"
         disabled={sending}
       />
       <button type="submit" className="btn-icon ask-send" disabled={sending} aria-label="Enviar">

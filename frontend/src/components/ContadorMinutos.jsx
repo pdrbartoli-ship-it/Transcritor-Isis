@@ -12,12 +12,15 @@ const CIRCUNFERENCIA = 2 * Math.PI * RAIO
 // `limite` nulo é o plano sem limite: sem anel para encher, só o que já foi
 // usado no mês. `extra` são os minutos ganhos com convites, já somados ao
 // limite; o "+25" ao lado é o que diz à pessoa que o limite mudou e por quê.
-export default function ContadorMinutos({ usados, limite, extra = 0, convidado = false }) {
+// `compacto` é a versão do topo do celular: o anel e o número, sem a frase.
+// Ao lado do botão da lateral não cabe "minutos usados", e o anel já diz o
+// que o número é.
+export default function ContadorMinutos({ usados, limite, extra = 0, convidado = false, compacto = false }) {
   if (!convidado && limite == null) {
     return (
-      <div className="contador-minutos" title="Seu plano não tem limite de minutos">
+      <div className={`contador-minutos ${compacto ? 'compacto' : ''}`} title="Seu plano não tem limite de minutos">
         <IconInfinito />
-        <span>Minutos ilimitados</span>
+        {!compacto && <span>Minutos ilimitados</span>}
       </div>
     )
   }
@@ -28,7 +31,7 @@ export default function ContadorMinutos({ usados, limite, extra = 0, convidado =
 
   return (
     <div
-      className="contador-minutos"
+      className={`contador-minutos ${compacto ? 'compacto' : ''}`}
       title={convidado
         ? 'Sem conta, o Dito faz uma gravação'
         : extra > 0
@@ -48,8 +51,12 @@ export default function ContadorMinutos({ usados, limite, extra = 0, convidado =
           />
         )}
       </svg>
-      <span>{convidado ? `${gravacoes}/1 gravação` : `${usadosInteiros}/${limite} minutos usados`}</span>
-      {!convidado && extra > 0 && <span className="contador-bonus">+{extra}</span>}
+      <span>
+        {convidado
+          ? `${gravacoes}/1${compacto ? '' : ' gravação'}`
+          : `${usadosInteiros}/${limite}${compacto ? ' min' : ' minutos usados'}`}
+      </span>
+      {!convidado && extra > 0 && !compacto && <span className="contador-bonus">+{extra}</span>}
     </div>
   )
 }

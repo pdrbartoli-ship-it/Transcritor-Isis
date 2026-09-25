@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { useNavigate, useLocation, useNavigationType, Outlet } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { esquecerDoAparelho } from '../lib/chaves'
+import { esquecerChaveAberta } from '../lib/chaveTranscricao'
 import { apagarTudo as apagarIndiceDoAcervo } from '../lib/acervo/indice'
 import { useAuth, rastroAuth } from '../contexts/AuthContext'
+import { useTranscricoes } from '../contexts/TranscricoesContext'
 import { consumeSharedContent, onSharedContent } from '../lib/sharedContent'
 import SettingsModal from './SettingsModal'
 import FeedbackModal from './FeedbackModal'
@@ -11,6 +13,8 @@ import PlanModal from './PlanModal'
 import ConviteModal from './ConviteModal'
 import PremioAviso, { avisoDoConvite } from './PremioAviso'
 import ConversaMenu, { useConversaMenu } from './ConversaMenu'
+import ContadorMinutos from './ContadorMinutos'
+import { LinhasEmAndamento } from './EmAndamento'
 import Toast from './Toast'
 import { listConversations, searchConversations, formatCapturedAt, groupConversations, displayTitle } from '../lib/conversas'
 import { lerSaldoAtual } from '../lib/api'
@@ -19,13 +23,14 @@ import { aplicarTemaDoUsuario } from '../lib/prefs'
 import { planoPorId } from '../lib/planos'
 import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
-import { podeVender } from '../lib/platform'
+import { podeVender, usePlatform } from '../lib/platform'
 import { useConvite, useSeloNovo } from '../lib/convite'
 import { iniciarNotificacoes, esquecerAparelho } from '../lib/notificacoes'
+import { pedirAcoesDaConversa } from '../lib/acoesDaConversa'
 import {
   IconSidebar, IconSettings, IconLogout, IconMic, IconMegafone,
   IconSearch, IconClose, IconCard, IconArrowRight, IconWhatsapp, IconYoutube, IconPlus, IconPin, IconMenu,
-  IconChat, IconGift, IconSelo,
+  IconChat, IconGift, IconSelo, IconCaretDown,
 } from './Icons'
 
 // De onde veio a captura. São os mesmos três ícones das abas da home
@@ -52,15 +57,36 @@ const AVISO_A_PARTIR_DE = 0.8
 // ele seria barulho.
 const ROTAS_DE_CAPTURA = ['/', '/audio', '/video']
 
-// A gravação e o detector de reunião NÃO moram aqui: este componente é
-// remontado a cada troca de ramo do roteador (a home e as conversas têm cada
-// uma o seu Layout), e os dois precisam sobreviver a isso. Ver App.jsx.
+// A lateral do celular abre arrastando da borda esquerda, como no Claude.
+// Borda: onde o dedo precisa começar. Distância: quanto ele precisa andar.
+const BORDA_DO_GESTO_PX = 28
+const DISTANCIA_DO_GESTO_PX = 56
+
+// O nome da tela, no topo do celular. Na home fica vazio: o título grande da
+// página já diz o que se faz ali.
+function tituloDaTela(pathname, conversations) {
+  const conversaId = pathname.match(/^\/conversa\/([^/]+)/)?.[1]
+  if (conversaId) {
+    const c = conversations.find(x => x.id === conversaId)
+    return c ? displayTitle(c) : ''
+  }
+  if (pathname === '/perguntar') return 'Perguntar'
+  if (pathname.startsWith('/transcrevendo/')) return 'Transcrevendo'
+  return ''
+}
+
+// A gravação, o detector de reunião e as transcrições em andamento NÃO moram
+// aqui: esta casca desmonta ao ir para o login ou para a volta do pagamento, e
+// os três precisam sobreviver a isso. Ver App.jsx.
 export default function Layout() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const navigationType = useNavigationType()
+  const { isMobile } = usePlatform()
   // Quem entrou pelo "Usar o Dito" da landing, sem conta (signInAnonymously).
   const convidado = !!user?.is_anonymous
+  const { itens: emAndamento, naoLidas, versaoLista, minutosEmAndamento } = useTranscricoes()
 
   // A vitrine (landing, entrar, confirmar) é sempre clara, e o tema é um
   // atributo do documento inteiro. É aqui, ao entrar no app, que a preferência
@@ -78,6 +104,7 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
+  const [showConta, setShowConta] = useState(false)
   // No iPhone o app não vende (ver `podeVender`): sem "Meu plano", sem "Ver
   // planos" e sem o modal. `abrirPlano` vai nulo para as telas, e cada uma
   // delas já sabe não desenhar o convite quando ele não existe — assim nenhum
@@ -88,6 +115,8 @@ export default function Layout() {
   // chega com a pessoa parada na tela, e o relógio precisa mostrar o limite novo.
   const [saldoVersao, setSaldoVersao] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerOpenRef = useRef(false)
+  drawerOpenRef.current = drawerOpen
   const [showConvite, setShowConvite] = useState(false)
   // O convite premiado: o link, os amigos e o prêmio que ainda não foi
   // mostrado. Quem entrou sem conta não tem convite (o hook devolve null).
@@ -137,6 +166,12 @@ export default function Layout() {
 
   useEffect(() => { refreshConversations() }, [refreshConversations])
 
+  // Uma transcrição virou conversa (aqui ou em outro aparelho desta conta).
+  const primeiraVersao = useRef(versaoLista)
+  useEffect(() => {
+    if (versaoLista !== primeiraVersao.current) refreshConversations()
+  }, [versaoLista, refreshConversations])
+
   useEffect(() => {
     if (!user?.id) return
     // Uma abertura por carregamento do app, contada só depois de haver usuário
@@ -166,6 +201,13 @@ export default function Layout() {
   useEffect(() => {
     if (minutosGanhos > 0) setSaldoVersao(v => v + 1)
   }, [minutosGanhos])
+
+  // O que as telas enxergam do saldo já desconta as transcrições que ainda
+  // estão em andamento: sem isso a segunda captura passaria na conferência da
+  // tela e só falharia no fim, por falta de saldo, com o áudio já enviado.
+  const saldoEfetivo = saldo && saldo.limite != null && minutosEmAndamento > 0
+    ? { ...saldo, usados: saldo.usados + minutosEmAndamento }
+    : saldo
 
   function fecharAvisoPremio() {
     if (avisoPremio?.tipo === 'selo') dispensarSelo()
@@ -250,12 +292,73 @@ export default function Layout() {
   // Layout, e este é o ponto onde o modal existe.
   useEffect(() => aoPedirPlano(plano => setShowPlan(plano || true)), [])
 
+  // Cada tela nova entra com um deslize curto, e voltar desliza para o outro
+  // lado: sem isso a troca de tela no celular era um corte seco, com a tela
+  // anterior sumindo de uma vez. Só a troca de endereço anima; a mesma tela
+  // mudando de estado não.
+  const conteudoRef = useRef(null)
+  const primeiraTela = useRef(true)
+  useEffect(() => {
+    if (primeiraTela.current) { primeiraTela.current = false; return }
+    const el = conteudoRef.current
+    if (!el) return
+    el.classList.remove('entrando', 'volta')
+    // Ler a largura força o navegador a esquecer a animação anterior; sem
+    // isso, duas trocas seguidas não animariam a segunda.
+    void el.offsetWidth
+    el.classList.add('entrando')
+    if (navigationType === 'POP') el.classList.add('volta')
+  }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arrastar da borda esquerda abre a lateral no celular; arrastar para a
+  // esquerda, com ela aberta, fecha.
+  const cascaRef = useRef(null)
+  useEffect(() => {
+    if (!isMobile) return
+    const el = cascaRef.current
+    if (!el) return
+    let inicio = null
+    const aoTocar = e => {
+      const t = e.touches[0]
+      if (!drawerOpenRef.current && t.clientX > BORDA_DO_GESTO_PX) { inicio = null; return }
+      inicio = { x: t.clientX, y: t.clientY }
+    }
+    const aoMover = e => {
+      if (!inicio) return
+      const t = e.touches[0]
+      const dx = t.clientX - inicio.x
+      const dy = t.clientY - inicio.y
+      // Mais vertical que horizontal é rolagem, não gesto.
+      if (Math.abs(dy) > Math.abs(dx)) { inicio = null; return }
+      if (!drawerOpenRef.current && dx > DISTANCIA_DO_GESTO_PX) { setDrawerOpen(true); inicio = null }
+      else if (drawerOpenRef.current && dx < -DISTANCIA_DO_GESTO_PX) { setDrawerOpen(false); inicio = null }
+    }
+    const aoSoltar = () => { inicio = null }
+    el.addEventListener('touchstart', aoTocar, { passive: true })
+    el.addEventListener('touchmove', aoMover, { passive: true })
+    el.addEventListener('touchend', aoSoltar, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', aoTocar)
+      el.removeEventListener('touchmove', aoMover)
+      el.removeEventListener('touchend', aoSoltar)
+    }
+  }, [isMobile])
+
   function toggleCollapsed() {
     setCollapsed(v => {
       const next = !v
       try { localStorage.setItem('dito-sidebar-collapsed', next ? '1' : '0') } catch {}
       return next
     })
+  }
+
+  // Abrir uma janela (configurações, convite, feedback) fecha a lateral antes:
+  // no celular ela ficava aberta por trás, desfocada, e fechar a janela
+  // devolvia a pessoa a um menu que ela já tinha deixado.
+  function abrirJanela(abrir) {
+    setDrawerOpen(false)
+    setShowConta(false)
+    abrir()
   }
 
   async function handleLogout() {
@@ -266,6 +369,7 @@ export default function Layout() {
     // Deixá-la num computador compartilhado seria deixar o cofre destrancado
     // para o próximo que logar ali.
     await esquecerDoAparelho()
+    esquecerChaveAberta()
     // Junto com a chave vai o índice do acervo: ele guarda trechos das
     // conversas neste aparelho, e sem a chave eles nem seriam legíveis — mas
     // deixar o arquivo lá seria deixar o rastro do que foi dito.
@@ -292,8 +396,84 @@ export default function Layout() {
     setTerm('')
   }
 
+  const naHome = ROTAS_DE_CAPTURA.includes(location.pathname)
+  const titulo = tituloDaTela(location.pathname, conversations)
+  const naConversa = location.pathname.startsWith('/conversa/')
+  const conversaAberta = location.pathname.match(/^\/conversa\/([^/]+)/)?.[1] || null
+  const transcricaoAberta = location.pathname.match(/^\/transcrevendo\/([^/]+)/)?.[1] || null
+  // A bolinha no ☰: com a lateral fechada, é o único jeito de saber que há
+  // uma conversa nova lá dentro, ou uma transcrição a caminho.
+  const novidadeNaLateral = naoLidas.size > 0 || emAndamento.length > 0
+
+  const busca = searchOpen && (
+    <div className="sidebar-search">
+      <IconSearch width={15} height={15} />
+      <input
+        ref={searchRef}
+        type="search"
+        value={term}
+        onChange={e => setTerm(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') closeSearch() }}
+        placeholder="Buscar conversas"
+        aria-label="Buscar conversas por título ou palavra-chave"
+      />
+      <button className="btn-icon" onClick={closeSearch} aria-label="Fechar busca">
+        <IconClose width={14} height={14} />
+      </button>
+    </div>
+  )
+
+  const lista = (
+    <div className="sidebar-list">
+      {results ? (
+        <SearchResults results={results} searching={searching} onOpen={openConversation} />
+      ) : (
+        <>
+          <LinhasEmAndamento ativa={transcricaoAberta} onAbrir={id => navigate(`/transcrevendo/${id}`)} />
+          {loadingConversations ? (
+            // A forma da lista antes do conteúdo: a lateral não troca um
+            // "Carregando…" solto por vinte linhas de uma vez.
+            <div className="esqueleto-lista" aria-label="Carregando conversas">
+              {[70, 52, 84, 61, 45, 76].map((largura, i) => (
+                <span key={i} className="esqueleto-linha" style={{ width: `${largura}%` }} />
+              ))}
+            </div>
+          ) : listError ? (
+            <p className="sidebar-empty">Não foi possível carregar suas conversas.</p>
+          ) : conversations.length === 0 ? (
+            emAndamento.length === 0 && <p className="sidebar-empty">Nenhuma conversa ainda.</p>
+          ) : (
+            groupConversations(conversations).map(grupo => (
+              <div key={grupo.label}>
+                <div className="sidebar-group-label">{grupo.label}</div>
+                {grupo.items.map(c => (
+                  <button
+                    key={c.id}
+                    className={`sidebar-item ${conversaAberta === c.id ? 'active' : ''}`}
+                    onClick={() => openConversation(c.id)}
+                    {...gestos(c)}
+                    title={displayTitle(c)}
+                  >
+                    <KindIcon sourceType={c.source_type} />
+                    <span className="sidebar-item-text">{displayTitle(c)}</span>
+                    {/* O alfinete é o que distingue uma conversa fixada de
+                        uma recente quando o grupo sai do campo de visão. */}
+                    {c.pinned && <IconPin width={13} height={13} className="pin-mark" />}
+                    {/* Transcrita e ainda não aberta: a bolinha some quando a
+                        conversa é aberta, em qualquer tela. */}
+                    {naoLidas.has(c.id) && <span className="ponto-nao-lida" aria-label="Nova" />}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </>
+      )}
+    </div>
+  )
+
   return (
-    <div className={`app-shell ${collapsed ? 'collapsed' : ''}`}>
+    <div ref={cascaRef} className={`app-shell ${collapsed ? 'collapsed' : ''} ${drawerOpen ? 'drawer-open' : ''}`}>
       {drawerOpen && <div className="sidebar-overlay" onClick={() => setDrawerOpen(false)} />}
       {collapsed && (
         <button className="desktop-reopen" onClick={toggleCollapsed} aria-label="Abrir barra lateral">
@@ -301,40 +481,64 @@ export default function Layout() {
         </button>
       )}
 
-      <aside className={`sidebar ${drawerOpen ? 'open' : ''}`}>
-        <div className="sidebar-head">
-          <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
-          <div className="sidebar-tools">
-            <button
-              className={`tool-btn ${searchOpen ? 'on' : ''}`}
-              onClick={toggleSearch}
-              aria-label="Buscar conversas"
-              aria-expanded={searchOpen}
-            >
-              <IconSearch width={16} height={16} />
-            </button>
-            {/* No app empacotado não existe barra do navegador: sem estes dois
-                não há como voltar de um tópico para a conversa sem passar pela
-                home. O índice vem do próprio histórico do roteador. */}
-            <button className="tool-btn" onClick={() => navigate(-1)} disabled={!canGoBack} aria-label="Voltar">
-              <IconArrowRight width={16} height={16} style={{ transform: 'rotate(180deg)' }} />
-            </button>
-            <button className="tool-btn" onClick={() => navigate(1)} aria-label="Avançar">
-              <IconArrowRight width={16} height={16} />
-            </button>
-            <span className="sep" />
-            <button className="sidebar-toggle" onClick={toggleCollapsed} aria-label="Recolher barra lateral">
-              <IconSidebar />
-            </button>
+      <aside className={`sidebar ${drawerOpen ? 'open' : ''}`} aria-hidden={isMobile && !drawerOpen ? true : undefined}>
+        {isMobile ? (
+          // No celular, o desenho da lateral do Claude: a marca à esquerda e
+          // dois botões redondos (buscar e convidar). Voltar, avançar e
+          // recolher eram peças de computador: no celular voltar é gesto, e
+          // fechar é tocar fora.
+          <div className="gaveta-topo">
+            <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
+            <div className="gaveta-botoes">
+              <button className={`botao-redondo ${searchOpen ? 'on' : ''}`} onClick={toggleSearch} aria-label="Buscar conversas" aria-expanded={searchOpen}>
+                <IconSearch width={19} height={19} />
+              </button>
+              {!convidado && (
+                <button className="botao-redondo" onClick={() => abrirJanela(() => setShowConvite(true))} aria-label="Convidar amigos">
+                  <IconGift width={19} height={19} />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="sidebar-head">
+            <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
+            <div className="sidebar-tools">
+              <button
+                className={`tool-btn ${searchOpen ? 'on' : ''}`}
+                onClick={toggleSearch}
+                aria-label="Buscar conversas"
+                aria-expanded={searchOpen}
+              >
+                <IconSearch width={16} height={16} />
+              </button>
+              {/* No app empacotado não existe barra do navegador: sem estes dois
+                  não há como voltar de um tópico para a conversa sem passar pela
+                  home. O índice vem do próprio histórico do roteador. */}
+              <button className="tool-btn" onClick={() => navigate(-1)} disabled={!canGoBack} aria-label="Voltar">
+                <IconArrowRight width={16} height={16} style={{ transform: 'rotate(180deg)' }} />
+              </button>
+              <button className="tool-btn" onClick={() => navigate(1)} aria-label="Avançar">
+                <IconArrowRight width={16} height={16} />
+              </button>
+              <span className="sep" />
+              <button className="sidebar-toggle" onClick={toggleCollapsed} aria-label="Recolher barra lateral">
+                <IconSidebar />
+              </button>
+            </div>
+          </div>
+        )}
 
-        {/* Entrada permanente para começar algo, como no Claude. Antes só se
-            chegava à captura clicando na marca ou já estando na home — o que
-            deixava a ação mais frequente do app sem lugar fixo na tela. */}
-        <button className="sidebar-novo" onClick={() => navigate('/')}>
-          <IconPlus width={16} height={16} /> Transcrever
-        </button>
+        {isMobile && busca}
+
+        {/* Entrada permanente para começar algo, como no Claude. No celular o
+            "Transcrever" desce para o botão flutuante do rodapé, como o "New
+            session" do Claude, e aqui fica só o "Perguntar". */}
+        {!isMobile && (
+          <button className="sidebar-novo" onClick={() => navigate('/')}>
+            <IconPlus width={16} height={16} /> Transcrever
+          </button>
+        )}
 
         {/* Logo abaixo do "Transcrever", e não no rodapé com as configurações:
             o "Perguntar" é a segunda coisa que se faz no app, não um
@@ -344,143 +548,149 @@ export default function Layout() {
           className={`sidebar-novo sidebar-perguntar ${location.pathname === '/perguntar' ? 'active' : ''}`}
           onClick={() => navigate('/perguntar', { replace: location.pathname === '/perguntar' })}
         >
-          <IconChat width={16} height={16} /> Perguntar
+          <IconChat width={isMobile ? 20 : 16} height={isMobile ? 20 : 16} /> Perguntar
         </button>
 
-        {searchOpen && (
-          <div className="sidebar-search">
-            <IconSearch width={15} height={15} />
-            <input
-              ref={searchRef}
-              type="search"
-              value={term}
-              onChange={e => setTerm(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') closeSearch() }}
-              placeholder="Buscar conversas"
-              aria-label="Buscar conversas por título ou palavra-chave"
-            />
-            <button className="btn-icon" onClick={closeSearch} aria-label="Fechar busca">
-              <IconClose width={14} height={14} />
+        {!isMobile && busca}
+
+        {lista}
+
+        {isMobile ? (
+          <div className="gaveta-rodape">
+            {convidado ? (
+              <div className="foot-convite gaveta-convite">
+                <p className="foot-convite-titulo">Guarde suas conversas</p>
+                <p className="foot-convite-texto">
+                  Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
+                </p>
+                <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
+              </div>
+            ) : (
+              // A conta vira um botão redondo com a inicial, como no Claude: o
+              // e-mail, as configurações, o feedback e o sair moram atrás dele.
+              <button className="gaveta-avatar" onClick={() => setShowConta(true)} aria-label="Conta e configurações">
+                {user?.email?.charAt(0).toUpperCase()}
+              </button>
+            )}
+            <button className="gaveta-novo" onClick={() => navigate('/')}>
+              <IconPlus width={18} height={18} /> Transcrever
             </button>
           </div>
-        )}
-
-        <div className="sidebar-list">
-          {results ? (
-            <SearchResults results={results} searching={searching} onOpen={openConversation} />
-          ) : (
-            <>
-              {loadingConversations ? (
-                <p className="sidebar-empty">Carregando…</p>
-              ) : listError ? (
-                <p className="sidebar-empty">Não foi possível carregar suas conversas.</p>
-              ) : conversations.length === 0 ? (
-                <p className="sidebar-empty">Nenhuma conversa ainda.</p>
-              ) : (
-                groupConversations(conversations).map(grupo => (
-                  <div key={grupo.label}>
-                    <div className="sidebar-group-label">{grupo.label}</div>
-                    {grupo.items.map(c => (
-                      <button
-                        key={c.id}
-                        className={`sidebar-item ${location.pathname.startsWith(`/conversa/${c.id}`) ? 'active' : ''}`}
-                        onClick={() => openConversation(c.id)}
-                        {...gestos(c)}
-                        title={displayTitle(c)}
-                      >
-                        <KindIcon sourceType={c.source_type} />
-                        <span className="sidebar-item-text">{displayTitle(c)}</span>
-                        {/* O alfinete é o que distingue uma conversa fixada de
-                            uma recente quando o grupo sai do campo de visão. */}
-                        {c.pinned && <IconPin width={13} height={13} className="pin-mark" />}
-                      </button>
-                    ))}
-                  </div>
-                ))
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="sidebar-foot">
-          {/* Primeiro do rodapé: é o único dos quatro que dá algo à pessoa. */}
-          {!convidado && (
-            <button className="nav-item" onClick={() => setShowConvite(true)}>
-              <IconGift /> Convidar amigos
-            </button>
-          )}
-          <button className="nav-item" onClick={() => setShowSettings(true)}>
-            <IconSettings /> Configurações
-          </button>
-          <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
-            <IconMegafone /> Enviar feedback
-          </button>
-          {vendeAqui && (
-            <button className="nav-item" onClick={() => setShowPlan(true)}>
-              <IconCard /> Meu plano
-            </button>
-          )}
-          {convidado ? (
-            // O convidado não tem e-mail para mostrar, e "Sair" seria perder a
-            // única captura dele sem aviso. No lugar, o convite para entrar —
-            // é o ponto em que ele decide criar a conta.
-            <div className="foot-convite">
-              <p className="foot-convite-titulo">Guarde suas conversas</p>
-              <p className="foot-convite-texto">
-                Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
-              </p>
-              <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
-              {/* Mesma entrada marcada que o voltar do navegador encontra (ver
-                  RootRoute): a sessão de convidado continua, e o "Usar o Dito"
-                  da landing traz de volta para ela. */}
-              <button className="foot-convite-site" onClick={() => navigate('/', { state: { vitrine: true } })}>
-                Voltar para o site
+        ) : (
+          <div className="sidebar-foot">
+            {/* Primeiro do rodapé: é o único dos quatro que dá algo à pessoa. */}
+            {!convidado && (
+              <button className="nav-item" onClick={() => setShowConvite(true)}>
+                <IconGift /> Convidar amigos
               </button>
-            </div>
-          ) : (
-            <div className="foot-user">
-              <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
-              <span className="email">{user?.email}</span>
-              {convite?.apoiador && (
-                <span className="selo-apoiador" title="Selo de apoiador: você usa as novidades do Dito antes de todo mundo">
-                  <IconSelo width={12} height={12} /> Apoiador
-                </span>
-              )}
-              <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
-            </div>
-          )}
-          {/* Qual build está rodando. O instalador do Windows tem nome e URL
-              fixos, então uma cópia velha no cache do navegador se instala sem
-              nenhum aviso — sem isto, "atualizou?" não tinha resposta. */}
-          <span
-            className="foot-version"
-            title={`Versão ${__APP_VERSION__}, commit ${__BUILD_SHA__}\nÚltimos eventos de login: ${rastroAuth() || 'nenhum'}`}
-          >
-            v{__APP_VERSION__} · {__BUILD_SHA__}
-          </span>
-        </div>
+            )}
+            <button className="nav-item" onClick={() => setShowSettings(true)}>
+              <IconSettings /> Configurações
+            </button>
+            <button className="nav-item nav-feedback" onClick={() => setShowFeedback(true)}>
+              <IconMegafone /> Enviar feedback
+            </button>
+            {vendeAqui && (
+              <button className="nav-item" onClick={() => setShowPlan(true)}>
+                <IconCard /> Meu plano
+              </button>
+            )}
+            {convidado ? (
+              // O convidado não tem e-mail para mostrar, e "Sair" seria perder a
+              // única captura dele sem aviso. No lugar, o convite para entrar —
+              // é o ponto em que ele decide criar a conta.
+              <div className="foot-convite">
+                <p className="foot-convite-titulo">Guarde suas conversas</p>
+                <p className="foot-convite-texto">
+                  Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
+                </p>
+                <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
+                {/* Mesma entrada marcada que o voltar do navegador encontra (ver
+                    AppShell): a sessão de convidado continua, e o "Usar o Dito"
+                    da landing traz de volta para ela. */}
+                <button className="foot-convite-site" onClick={() => navigate('/', { state: { vitrine: true } })}>
+                  Voltar para o site
+                </button>
+              </div>
+            ) : (
+              <div className="foot-user">
+                <span className="foot-avatar">{user?.email?.charAt(0).toUpperCase()}</span>
+                <span className="email">{user?.email}</span>
+                {convite?.apoiador && (
+                  <span className="selo-apoiador" title="Selo de apoiador: você usa as novidades do Dito antes de todo mundo">
+                    <IconSelo width={12} height={12} /> Apoiador
+                  </span>
+                )}
+                <button className="btn-icon" onClick={handleLogout} title="Sair" aria-label="Sair"><IconLogout width={16} height={16} /></button>
+              </div>
+            )}
+            {/* Qual build está rodando. O instalador do Windows tem nome e URL
+                fixos, então uma cópia velha no cache do navegador se instala sem
+                nenhum aviso — sem isto, "atualizou?" não tinha resposta. */}
+            <span
+              className="foot-version"
+              title={`Versão ${__APP_VERSION__}, commit ${__BUILD_SHA__}\nÚltimos eventos de login: ${rastroAuth() || 'nenhum'}`}
+            >
+              v{__APP_VERSION__} · {__BUILD_SHA__}
+            </span>
+          </div>
+        )}
       </aside>
 
       <div className="content-wrap">
+        {/* O topo do celular, como o do Claude: o botão da lateral à esquerda,
+            o nome da tela no meio e, à direita, o "+" para transcrever algo
+            novo de qualquer lugar (ou, na home, o relógio de minutos). Ele
+            começa abaixo da barra de status do aparelho, onde o toque chega. */}
         <div className="topbar-mobile">
-          <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Abrir menu"><IconMenu width={20} height={20} /></button>
-          <span className="brand" onClick={() => navigate('/')}>Dito<span className="dot">.</span></span>
+          <button
+            className="botao-redondo hamburger"
+            onClick={() => setDrawerOpen(true)}
+            aria-label={novidadeNaLateral ? 'Abrir menu: há novidades' : 'Abrir menu'}
+          >
+            <IconMenu width={20} height={20} />
+            {novidadeNaLateral && <span className="ponto-nao-lida no-botao" aria-hidden="true" />}
+          </button>
+          {naConversa && titulo ? (
+            // Tocar no título abre as opções da conversa, como no Claude.
+            <button className="topbar-titulo como-botao" onClick={pedirAcoesDaConversa}>
+              <span>{titulo}</span>
+              <IconCaretDown width={14} height={14} />
+            </button>
+          ) : (
+            <span className="topbar-titulo">{titulo}</span>
+          )}
+          {naHome ? (
+            <div className="topbar-contador">
+              {saldoEfetivo && (
+                <ContadorMinutos
+                  usados={saldoEfetivo.usados}
+                  limite={saldoEfetivo.limite}
+                  extra={saldoEfetivo.minutosExtra}
+                  convidado={convidado}
+                  compacto
+                />
+              )}
+            </div>
+          ) : (
+            <button className="botao-redondo" onClick={() => navigate('/')} aria-label="Transcrever algo novo">
+              <IconPlus width={20} height={20} />
+            </button>
+          )}
         </div>
-        <div className="content">
-          {saldo?.limite != null && ROTAS_DE_CAPTURA.includes(location.pathname) &&
-            saldo.usados >= saldo.limite * AVISO_A_PARTIR_DE && saldo.usados < saldo.limite && (
+        <div className="content" ref={conteudoRef}>
+          {saldoEfetivo?.limite != null && naHome &&
+            saldoEfetivo.usados >= saldoEfetivo.limite * AVISO_A_PARTIR_DE && saldoEfetivo.usados < saldoEfetivo.limite && (
             <div className="aviso-saldo">
               <span>
-                Faltam {Math.max(0, Math.round(saldo.limite - saldo.usados))} minutos do seu mês.
+                Faltam {Math.max(0, Math.round(saldoEfetivo.limite - saldoEfetivo.usados))} minutos do seu mês.
               </span>
               {vendeAqui && <button type="button" onClick={() => setShowPlan(true)}>Ver planos</button>}
             </div>
           )}
-          {/* Nada do app roda sem uma chave utilizável neste aparelho: sem ela,
-              gravar falharia e o que já existe apareceria bloqueado. */}
           {/* `apoiador` é a chave do acesso antecipado: função nova em teste
               aparece para quem tem o selo antes de ir para todo mundo. */}
-          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, apoiador: !!convite?.apoiador, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
+          <Outlet context={{ conversations, refreshConversations, loadingConversations, saldo: saldoEfetivo, plano: saldo?.plano ?? null, perguntasRestantes, atualizarPerguntasRestantes, convidado, apoiador: !!convite?.apoiador, abrirPlano: vendeAqui ? () => setShowPlan(true) : null }} />
         </div>
       </div>
 
@@ -496,6 +706,18 @@ export default function Layout() {
         }}
       />
 
+      {showConta && (
+        <ContaSheet
+          email={user?.email}
+          apoiador={!!convite?.apoiador}
+          vendeAqui={vendeAqui}
+          onClose={() => setShowConta(false)}
+          onSettings={() => abrirJanela(() => setShowSettings(true))}
+          onFeedback={() => abrirJanela(() => setShowFeedback(true))}
+          onPlano={() => abrirJanela(() => setShowPlan(true))}
+          onSair={handleLogout}
+        />
+      )}
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}
@@ -524,6 +746,32 @@ export default function Layout() {
         />
       )}
       <Toast />
+    </div>
+  )
+}
+
+// A conta, no celular: o que no computador fica no rodapé da lateral. Abre por
+// cima, de baixo para cima, como as folhas do iPhone.
+function ContaSheet({ email, apoiador, vendeAqui, onClose, onSettings, onFeedback, onPlano, onSair }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal conta-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label="Conta">
+        <div className="conta-topo">
+          <span className="foot-avatar grande">{email?.charAt(0).toUpperCase()}</span>
+          <span className="conta-email">{email}</span>
+          {apoiador && (
+            <span className="selo-apoiador">
+              <IconSelo width={12} height={12} /> Apoiador
+            </span>
+          )}
+        </div>
+        <div className="conta-lista">
+          <button className="conta-item" onClick={onSettings}><IconSettings /> Configurações</button>
+          <button className="conta-item" onClick={onFeedback}><IconMegafone /> Enviar feedback</button>
+          {vendeAqui && <button className="conta-item" onClick={onPlano}><IconCard /> Meu plano</button>}
+          <button className="conta-item" onClick={onSair}><IconLogout /> Sair</button>
+        </div>
+      </div>
     </div>
   )
 }

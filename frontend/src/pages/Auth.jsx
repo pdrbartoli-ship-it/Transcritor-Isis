@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { IconCheck, IconMail } from '../components/Icons'
 import { temChave, criarChave, abrirComSenha } from '../lib/chaves'
-import { siteUrl } from '../lib/platform'
+import { siteUrl, useIsTouchInput } from '../lib/platform'
 import { conviteGuardado } from '../lib/convite'
 import useTemaClaro from '../lib/useTemaClaro'
 
@@ -38,6 +38,7 @@ const cleanEmail = value => value.trim().toLowerCase()
 export default function Auth() {
   useTemaClaro()
   const { setHoldRedirect } = useAuth()
+  const toque = useIsTouchInput()
   // Quem acabou de apagar a conta cai aqui. Sem uma palavra, a tela de login
   // depois da exclusão parece o app tendo deslogado sozinho — e a dúvida que
   // sobra é justamente "apagou mesmo?".
@@ -280,7 +281,10 @@ export default function Auth() {
               onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
               required
-              autoFocus
+              // No celular o foco abriria o teclado assim que o app aparece,
+              // cobrindo metade da tela antes de a pessoa escolher onde tocar.
+              // Com teclado físico ele só poupa um clique.
+              autoFocus={!toque}
             />
           </div>
           <div className="form-group">

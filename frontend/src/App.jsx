@@ -13,11 +13,13 @@ import Todos from './pages/conversa/Todos'
 import Timeline from './pages/conversa/Timeline'
 import Chat from './pages/conversa/Chat'
 import Perguntar from './pages/Perguntar'
+import Transcrevendo from './pages/Transcrevendo'
 import Mini from './pages/Mini'
 import Aviso from './pages/Aviso'
 import AssinaturaSucesso from './pages/AssinaturaSucesso'
 import AssinaturaCancelada from './pages/AssinaturaCancelada'
 import { GravacaoProvider } from './contexts/GravacaoContext'
+import { TranscricoesProvider } from './contexts/TranscricoesContext'
 import { ReuniaoProvider } from './contexts/ReuniaoContext'
 import { isStandalonePwa, isTauriApp, isNative } from './lib/platform'
 import { useReguaDePlanos } from './lib/planos'
@@ -28,6 +30,12 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/auth" replace />
 }
 
+// A casca do app logado. É UMA só para a home, as abas de captura, o
+// Perguntar e as conversas: antes a home tinha o seu <Layout> e as conversas
+// outro, e ir de uma para a outra remontava a casca inteira. A lateral voltava
+// a "Carregando…", buscava e decifrava a lista de novo e perdia a rolagem: era
+// a tela piscando a cada conversa aberta.
+//
 // Quem não está logado vê a landing (caixa de instalar/entrar) na raiz, em vez
 // de ser jogado direto para o formulário de login.
 //
@@ -36,11 +44,15 @@ function ProtectedRoute({ children }) {
 // que o convidado deixou para trás fica numa entrada própria, marcada com
 // `vitrine` (ver Landing.usarSemConta): é ela que o voltar encontra. Sem a
 // marca, o convidado cai no app, como quem tem conta.
-function RootRoute() {
+const ROTAS_DA_VITRINE = ['/', '/audio', '/video']
+
+function AppShell() {
   const { user, loading } = useAuth()
   const location = useLocation()
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>
   if (user && !(user.is_anonymous && location.state?.vitrine)) return <Layout />
+  // Conversa e Perguntar pedem conta: sem sessão, vão ao login.
+  if (!ROTAS_DA_VITRINE.includes(location.pathname)) return <Navigate to="/auth" replace />
   // Dentro do app instalado (PWA, nativo Windows ou o app das lojas) não
   // existe "instalar de novo" — vai direto pro login. No iPhone isso é também
   // exigência de loja: a landing traz a tabela de preços, e preço de
@@ -89,12 +101,13 @@ function AppPrincipal() {
     <AuthProvider>
       <HashRouter>
         <DeepLinks />
-        {/* A gravação e o detector de reunião ficam acima das rotas de
-            propósito: a home e as telas de conversa estão em ramos diferentes
-            daqui de baixo, cada um com o seu próprio <Layout>, e navegar entre
-            elas desmonta um e monta o outro. Uma gravação de uma hora não pode
-            depender de a pessoa não abrir uma conversa no meio. */}
+        {/* A gravação, o detector de reunião e as transcrições em andamento
+            ficam acima das rotas de propósito: a casca do app desmonta ao ir
+            para o login ou para a volta do pagamento, e nenhum dos três pode
+            depender da tela aberta. Uma gravação de uma hora, ou uma
+            transcrição de dez minutos, não pode morrer numa navegação. */}
         <GravacaoProvider>
+        <TranscricoesProvider>
         <ReuniaoProvider>
         <Routes>
           <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
@@ -102,26 +115,22 @@ function AppPrincipal() {
               depois de confirmar precisa continuar nesta tela até o redirect. */}
           <Route path="/confirm" element={<ConfirmEmail />} />
           {/* Uma rota por origem de captura: a home é a de gravar, e as outras
-              duas são a mesma página com o painel trocado — a lista de
-              retomada é idêntica nas três. */}
-          <Route path="/" element={<RootRoute />}>
+              duas são a mesma página com o painel trocado. */}
+          <Route path="/" element={<AppShell />}>
             <Route index element={<Home mode="record" />} />
             <Route path="audio" element={<Home mode="file" />} />
             <Route path="video" element={<Home mode="url" />} />
-          </Route>
-          <Route path="/assinatura/sucesso" element={<ProtectedRoute><AssinaturaSucesso /></ProtectedRoute>} />
-          <Route path="/assinatura/cancelada" element={<ProtectedRoute><AssinaturaCancelada /></ProtectedRoute>} />
-          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             {/* O chat geral: uma pergunta, todas as conversas. Fora do
                 /conversa/:id de propósito — ele não fala de uma captura, fala
                 do acervo inteiro. */}
-            <Route path="/perguntar" element={<Perguntar />} />
+            <Route path="perguntar" element={<Perguntar />} />
+            {/* Uma transcrição ainda em andamento, aberta pela lateral: quem
+                espera nela é levado à conversa quando ela fica pronta. */}
+            <Route path="transcrevendo/:id" element={<Transcrevendo />} />
             {/* Rota própria por conversa: dá deep-link e faz o voltar do
-                navegador funcionar, o que o modelo antigo (tudo em state
-                dentro de uma pasta) não permitia. */}
-            {/* As quatro telas compartilham o dado carregado pelo
-                ConversaLayout, e cada uma tem endereço próprio. */}
-            <Route path="/conversa/:id" element={<ConversaLayout />}>
+                navegador funcionar. As telas compartilham o dado carregado
+                pelo ConversaLayout, e cada uma tem endereço próprio. */}
+            <Route path="conversa/:id" element={<ConversaLayout />}>
               <Route index element={<Conversa />} />
               <Route path="topico/:i" element={<Topico />} />
               <Route path="todos" element={<Todos />} />
@@ -129,9 +138,12 @@ function AppPrincipal() {
               <Route path="chat" element={<Chat />} />
             </Route>
           </Route>
+          <Route path="/assinatura/sucesso" element={<ProtectedRoute><AssinaturaSucesso /></ProtectedRoute>} />
+          <Route path="/assinatura/cancelada" element={<ProtectedRoute><AssinaturaCancelada /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </ReuniaoProvider>
+        </TranscricoesProvider>
         </GravacaoProvider>
       </HashRouter>
     </AuthProvider>

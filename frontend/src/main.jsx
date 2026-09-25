@@ -2,9 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+// Depois do index.css de propósito: as regras do celular valem por cima dele.
+import './celular.css'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
 import { isNative } from './lib/platform'
-import { getTheme, syncNativeChrome } from './lib/prefs'
+import { temaEfetivo, syncNativeChrome } from './lib/prefs'
 import { guardarConviteDaUrl } from './lib/convite'
 
 // Live update (OTA): o app baixa versões novas do site em segundo plano, para
@@ -31,7 +33,7 @@ if (!isNative() && 'serviceWorker' in navigator) {
 // O script no index.html já aplicou o tema ao documento antes do React montar;
 // a janela nativa precisa do mesmo aviso, senão abre com a barra de título do
 // tema errado até o usuário mexer nas configurações.
-syncNativeChrome(getTheme())
+syncNativeChrome(temaEfetivo())
 
 // Quem chegou pelo link de convite de um amigo (?c=codigo): o código fica
 // guardado até a pessoa criar a conta. Antes do React, porque o roteador lê o

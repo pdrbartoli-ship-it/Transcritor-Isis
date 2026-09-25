@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import MiniRecorder from '../components/recorder/MiniRecorder'
 import { listenRecordingState, listenRecordingLevel, sendRecordingCommand, guardarPosicaoMini } from '../lib/miniRecorder'
 import { isTauriApp } from '../lib/platform'
-import { getTheme } from '../lib/prefs'
+import { temaEfetivo } from '../lib/prefs'
 
 // O que roda DENTRO da janelinha do app nativo. Ela não grava nada e não fala
 // com o Supabase nem com o backend: recebe o estado da janela principal e
@@ -17,7 +17,7 @@ export default function Mini() {
   // A janela nasce com o tema salvo; sem isto ela abriria clara em cima de um
   // app escuro.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', getTheme())
+    document.documentElement.setAttribute('data-theme', temaEfetivo())
     document.body.classList.add('mini-body')
   }, [])
 

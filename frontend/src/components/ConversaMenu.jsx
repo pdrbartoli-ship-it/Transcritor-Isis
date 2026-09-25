@@ -200,7 +200,7 @@ export default function ConversaMenu({ menu, onClose, onChanged, onDeleted }) {
   )
 }
 
-function RenameModal({ conversation, onClose, onSaved }) {
+export function RenameModal({ conversation, onClose, onSaved }) {
   const [title, setTitle] = useState(displayTitle(conversation))
   const [salvando, setSalvando] = useState(false)
   const inputRef = useRef(null)
@@ -253,7 +253,7 @@ function RenameModal({ conversation, onClose, onSaved }) {
   )
 }
 
-function DeleteModal({ conversation, onClose, onConfirm }) {
+export function DeleteModal({ conversation, onClose, onConfirm }) {
   const [apagando, setApagando] = useState(false)
   const confirmRef = useRef(null)
 

@@ -3,19 +3,41 @@
 // resumos diferentes sem o usuário entender por quê. Hoje o resumo é sempre
 // neutro e em bullets, e o que sobra aqui é tema e idioma.
 
-import { isTauriApp, isStandalonePwa } from './platform'
+import { SystemBars, SystemBarsStyle } from '@capacitor/core'
+import { isTauriApp, isStandalonePwa, isNative } from './platform'
+
+// Três escolhas: claro, escuro, ou seguir o aparelho. Quem nunca escolheu
+// segue o aparelho: no iPhone e no Android o modo escuro é do sistema, e um
+// app que abre claro às onze da noite no meio de tudo escuro é o que parece
+// app feito às pressas.
+export const TEMA_AUTO = 'auto'
+const TEMAS = [TEMA_AUTO, 'light', 'dark']
 
 // Theme is stored separately so the boot script in index.html can read it
 // before React mounts (avoids a flash of the wrong theme).
 export function getTheme() {
-  try { return localStorage.getItem('dito-theme') || 'light' } catch { return 'light' }
+  try {
+    const salvo = localStorage.getItem('dito-theme')
+    return TEMAS.includes(salvo) ? salvo : TEMA_AUTO
+  } catch {
+    return TEMA_AUTO
+  }
+}
+
+function escuroNoAparelho() {
+  try { return window.matchMedia('(prefers-color-scheme: dark)').matches } catch { return false }
+}
+
+// O que vai de fato para a tela: "auto" vira claro ou escuro na hora.
+export function temaEfetivo(theme = getTheme()) {
+  if (theme === 'light' || theme === 'dark') return theme
+  return escuroNoAparelho() ? 'dark' : 'light'
 }
 
 export function setTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme)
   try { localStorage.setItem('dito-theme', theme) } catch {}
-  syncBrowserChrome(theme)
-  syncNativeChrome(theme)
+  dentroDoApp = true
+  aplicarTema(temaEfetivo(theme))
 }
 
 // Cor da barra do PWA instalado. O Chrome pinta a barra de título da janela
@@ -32,7 +54,17 @@ export function syncBrowserChrome(theme) {
 // No app de Windows a barra de título é desenhada pelo sistema, não pela
 // página: no tema escuro sobrava uma faixa clara em cima de um app escuro.
 // setTheme() da janela é o que faz o Windows repintar a barra junto.
+//
+// No celular é a barra de status: o app desenha por baixo dela, e as letras
+// dela (relógio, bateria) seguem o aparelho, não o Dito. Com o Dito no escuro
+// e o iPhone no claro, o relógio saía preto sobre o fundo escuro. O controle
+// já vem no Capacitor 8, sem plugin a instalar.
 export function syncNativeChrome(theme) {
+  if (isNative()) {
+    SystemBars.setStyle({ style: theme === 'dark' ? SystemBarsStyle.Dark : SystemBarsStyle.Light })
+      .catch(() => { /* versão nativa antiga: a barra fica como o aparelho quiser */ })
+    return
+  }
   if (!isTauriApp()) return
   import('@tauri-apps/api/window')
     .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(theme))
@@ -59,6 +91,10 @@ function ehVitrine() {
   return !isTauriApp() && !isStandalonePwa()
 }
 
+// Se a tela aberta é a do app (e não a vitrine): é o que decide se a troca de
+// claro para escuro no aparelho, com o Dito aberto, deve repintar a tela.
+let dentroDoApp = false
+
 function aplicarTema(theme) {
   document.documentElement.setAttribute('data-theme', theme)
   syncBrowserChrome(theme)
@@ -67,6 +103,7 @@ function aplicarTema(theme) {
 
 export function aplicarTemaDaVitrine() {
   if (!ehVitrine()) return
+  dentroDoApp = false
   aplicarTema('light')
 }
 
@@ -75,8 +112,17 @@ export function aplicarTemaDaVitrine() {
 // remontava. Vale em qualquer plataforma — dentro do app empacotado é o mesmo
 // tema que o script do index.html já tinha aplicado.
 export function aplicarTemaDoUsuario() {
-  aplicarTema(getTheme())
+  dentroDoApp = true
+  aplicarTema(temaEfetivo())
 }
+
+// O aparelho trocou de claro para escuro (o iPhone faz isso sozinho ao
+// anoitecer) com o Dito aberto: quem está no automático acompanha na hora.
+try {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (dentroDoApp && getTheme() === TEMA_AUTO) aplicarTema(temaEfetivo())
+  })
+} catch { /* navegador sem matchMedia: fica o tema da abertura */ }
 
 
 // ── Idioma ────────────────────────────────────────────────

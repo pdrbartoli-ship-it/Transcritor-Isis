@@ -12,10 +12,10 @@ import MiniRecorder from '../components/recorder/MiniRecorder'
 // áudio, e o Rust continuava gravando sozinho — a gravação seguinte falhava com
 // "já existe uma gravação em andamento".
 //
-// Acima das ROTAS, e não dentro do Layout: a home e as telas de conversa estão
-// em ramos diferentes do roteador, cada um com o seu próprio <Layout>. Ir de
-// uma para a outra desmonta um Layout e monta outro, então um provedor lá
-// dentro morreria exatamente na navegação que ele existe para sobreviver.
+// Acima das ROTAS, e não dentro do Layout: a casca do app desmonta ao ir para
+// o login ou para a volta do pagamento, e uma gravação não pode depender de a
+// pessoa não sair da casca no meio. (Até 25/09/2026 a home e as conversas
+// tinham cada uma o seu <Layout>, e bastava abrir uma conversa.)
 //
 // A janelinha flutuante vem junto pelo mesmo motivo: ela mostra a gravação, e
 // não a tela. Presa ao painel, ela sumia quando a pessoa saía da home.

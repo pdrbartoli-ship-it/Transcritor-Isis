@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconMic, IconClock, IconClose } from '../components/Icons'
 import { AVISO_W, ouvirAviso, responderAviso } from '../lib/avisoWindow'
-import { getTheme } from '../lib/prefs'
+import { temaEfetivo } from '../lib/prefs'
 import { montarConvite, montarAvisoSaldo, montarParouPorSaldo } from '../lib/reuniao'
 
 // O que roda DENTRO da janelinha de aviso do app nativo. Como a janelinha de
@@ -20,7 +20,7 @@ export default function Aviso() {
   // A janela nasce com o tema salvo; sem isto ela abriria clara em cima de um
   // app escuro.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', getTheme())
+    document.documentElement.setAttribute('data-theme', temaEfetivo())
     document.body.classList.add('mini-body')
   }, [])
 

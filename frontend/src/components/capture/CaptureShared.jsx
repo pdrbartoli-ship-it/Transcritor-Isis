@@ -4,6 +4,8 @@ import { formatTime } from './estimate'
 import { MODOS, MODO_SIMPLES, MODO_COMPLETA, modoRecomendado } from './modos'
 import { planoPorId } from '../../lib/planos'
 import { duracaoDoLink } from '../../lib/api'
+import { useIsTouchInput } from '../../lib/platform'
+import { perceptual } from '../recorder/MiniRecorder'
 import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile, IconLock } from '../Icons'
 
 // Peças visuais idênticas nas duas plataformas. O que diverge (arrastar
@@ -22,14 +24,14 @@ import { IconPause, IconPlay, IconPopOut, IconCaretDown, IconFile, IconLock } fr
 // CSS): é o que faz a troca de "gravando" para "processando" continuar no
 // mesmo lugar, em vez de a tela pular de um alvo redondo grande para uma
 // caixa retangular pequena flutuando no meio do vazio — que era o "estranho".
-export function ProcessingBox() {
+export function ProcessingBox({ titulo = 'Transcrevendo e resumindo…' }) {
   return (
     <div className="hero-record">
       <div className="processing-orb">
         <span className="processing-ring" />
         <span className="spinner" />
       </div>
-      <p className="processing-title">Transcrevendo e resumindo…</p>
+      <p className="processing-title">{titulo}</p>
     </div>
   )
 }
@@ -57,7 +59,14 @@ export function minutosDaCaptura(duracaoSec) {
 // `duracaoSec` põe no próprio botão quanto a captura vai consumir. Foi a
 // escolha no lugar de um "Consumir X minutos?" antes do envio: a mesma
 // informação, sem cobrar um clique a mais de quem já decidiu.
-export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, loading, conferindo, disabled }) {
+export function TranscribeButton(props) {
+  // No celular o botão dividido vira as duas opções à vista: a setinha era
+  // menor que o dedo, e uma lista pendurada num botão é peça de computador.
+  const toque = useIsTouchInput()
+  return toque ? <EscolhaDeTranscricao {...props} /> : <BotaoDividido {...props} />
+}
+
+function BotaoDividido({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, loading, conferindo, disabled }) {
   // O plano vem do Layout. Enquanto não chega, nada fica trancado: quem paga
   // não pode ver um cadeado piscando, e o backend atende como simples quem
   // pedir a completa sem ter direito a ela.
@@ -128,6 +137,9 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
                   // planos), e anunciá-la como desabilitada mentiria para quem
                   // usa leitor de tela. O "Planos pagos" do selo já está no nome.
                   className={[m === modo && 'on', travada && 'travada'].filter(Boolean).join(' ')}
+                  // Onde o app não vende (iPhone) não há planos para abrir, e
+                  // a opção trancada ficaria respondendo ao clique com nada.
+                  disabled={travada && !abrirPlano}
                   onClick={() => {
                     setAberto(false)
                     // Trancada não é parede: o clique leva aos planos, que é
@@ -150,6 +162,159 @@ export function TranscribeButton({ recomendado = MODO_COMPLETA, duracaoSec = nul
           })}
         </ul>
       )}
+    </div>
+  )
+}
+
+// A escolha à vista, para o celular: as duas opções lado a lado, uma linha
+// dizendo o que a escolhida entrega, e o botão de transcrever na largura toda,
+// no lugar do botão dividido. Um toque só para quem aceita a recomendação,
+// como antes.
+function EscolhaDeTranscricao({ recomendado = MODO_COMPLETA, duracaoSec = null, onSubmit, conferindo, disabled }) {
+  const { plano, abrirPlano } = useOutletContext() || {}
+  const completaLiberada = !plano || planoPorId(plano).completa
+  const sugerido = completaLiberada ? recomendado : MODO_SIMPLES
+  const [modo, setModo] = useState(sugerido)
+  useEffect(() => { setModo(sugerido) }, [sugerido])
+  const minutos = minutosDaCaptura(duracaoSec)
+
+  return (
+    <div className="escolha-transcricao">
+      <div className="escolha-opcoes" role="radiogroup" aria-label="Tipo de transcrição">
+        {[MODO_SIMPLES, MODO_COMPLETA].map(m => {
+          const trancada = m === MODO_COMPLETA && !completaLiberada
+          return (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={m === modo}
+              className={`escolha-opcao ${m === modo ? 'on' : ''} ${trancada ? 'trancada' : ''}`}
+              // No iPhone não há planos para abrir: a opção fica visível, mas
+              // não finge que responde ao toque.
+              disabled={trancada && !abrirPlano}
+              onClick={() => {
+                if (trancada) { abrirPlano?.(); return }
+                setModo(m)
+              }}
+            >
+              {trancada && <IconLock width={13} height={13} />}
+              {m === MODO_SIMPLES ? 'Simples' : 'Completa'}
+            </button>
+          )
+        })}
+      </div>
+      <p className="escolha-dica">
+        {MODOS[modo].hint}
+        {!completaLiberada && ' A completa está nos planos pagos.'}
+      </p>
+      <button
+        type="button"
+        className="btn-primary escolha-enviar"
+        onClick={() => onSubmit(modo)}
+        disabled={disabled || conferindo}
+      >
+        {conferindo
+          ? <><span className="spinner spinner-sm" /> Conferindo o saldo…</>
+          : <>Transcrever{minutos && <span className="split-minutos"> · {minutos} min</span>}</>}
+      </button>
+    </div>
+  )
+}
+
+// Jogar uma gravação fora não tem volta: o primeiro toque pergunta, e só o
+// segundo descarta. Antes "Regravar" apagava a reunião com um toque só, ao
+// lado do botão de transcrever.
+function BotaoDescartar({ onConfirmar, disabled }) {
+  const [perguntando, setPerguntando] = useState(false)
+  useEffect(() => {
+    if (!perguntando) return
+    const timer = setTimeout(() => setPerguntando(false), 5000)
+    return () => clearTimeout(timer)
+  }, [perguntando])
+
+  if (perguntando) {
+    return (
+      <p className="descartar-pergunta">
+        Descartar esta gravação?
+        <button type="button" className="btn-link perigo" onClick={onConfirmar}>Descartar</button>
+        <button type="button" className="btn-link" onClick={() => setPerguntando(false)}>Manter</button>
+      </p>
+    )
+  }
+  return (
+    <button type="button" className="btn-link discreto" onClick={() => setPerguntando(true)} disabled={disabled}>
+      Descartar
+    </button>
+  )
+}
+
+// A onda da voz na tela de gravar: o histórico do nível do microfone, da
+// esquerda para a direita, como no gravador do celular. Lê o mesmo nível da
+// janelinha flutuante, e pelo mesmo motivo não é uma animação em laço: em
+// silêncio ela fica parada, e é assim que se percebe um microfone mudo.
+const BARRAS_DA_ONDA = 28
+const PASSO_DA_ONDA_MS = 70
+
+export function Onda({ getLevel, paused }) {
+  const barras = useRef([])
+  useEffect(() => {
+    const historico = new Array(BARRAS_DA_ONDA).fill(0)
+    let mostrado = 0
+    // setInterval, e não requestAnimationFrame: o quadro de animação para
+    // quando a janela sai da frente, e a onda voltaria parada no tempo.
+    const timer = setInterval(() => {
+      const alvo = paused ? 0 : perceptual(getLevel?.() || 0)
+      mostrado = alvo > mostrado ? alvo : mostrado + (alvo - mostrado) * 0.35
+      historico.push(mostrado)
+      historico.shift()
+      historico.forEach((valor, i) => {
+        const barra = barras.current[i]
+        if (barra) barra.style.transform = `scaleY(${Math.max(0.06, Math.min(1, valor))})`
+      })
+    }, PASSO_DA_ONDA_MS)
+    return () => clearInterval(timer)
+  }, [getLevel, paused])
+
+  return (
+    <div className={`onda ${paused ? 'pausada' : ''}`} aria-hidden="true">
+      {Array.from({ length: BARRAS_DA_ONDA }, (_, i) => (
+        <span key={i} ref={el => { barras.current[i] = el }} />
+      ))}
+    </div>
+  )
+}
+
+// Gravar é um modo: tempo grande, a onda, e os controles embaixo, no alcance
+// do polegar. O botão do meio é o de parar, com o quadrado que todo gravador
+// usa, em vez de continuar mostrando um microfone.
+export function GravandoAgora({ recordingTime, isPaused, getLevel, onStop, onPause, onResume, mini, dica }) {
+  return (
+    <div className="gravando-agora">
+      <p className="gravando-estado">
+        <span className={`rec-dot ${isPaused ? 'paused' : ''}`} /> {isPaused ? 'Pausado' : 'Gravando'}
+      </p>
+      <p className="gravando-tempo">{formatTime(recordingTime)}</p>
+      <Onda getLevel={getLevel} paused={isPaused} />
+      <div className="gravando-controles">
+        <button type="button" className="gravando-lateral" onClick={isPaused ? onResume : onPause}>
+          {isPaused ? <IconPlay width={20} height={20} /> : <IconPause width={20} height={20} />}
+          <span>{isPaused ? 'Retomar' : 'Pausar'}</span>
+        </button>
+        <button type="button" className="gravando-parar" onClick={onStop} aria-label="Parar a gravação">
+          <span className="gravando-quadrado" />
+        </button>
+        {/* "Destacar" só existe onde a janelinha existe de verdade (app de
+            Windows, ou Chrome e Edge no computador). No celular o lugar fica
+            vazio, para o botão de parar continuar no meio. */}
+        {mini?.supported && !mini.isOpen ? (
+          <button type="button" className="gravando-lateral" onClick={mini.open}>
+            <IconPopOut width={20} height={20} />
+            <span>Destacar</span>
+          </button>
+        ) : <span className="gravando-lateral vazio" aria-hidden="true" />}
+      </div>
+      {dica && <p className="mic-hint">{dica}</p>}
     </div>
   )
 }
@@ -199,45 +364,20 @@ export function LinhaConsumo({ duracaoSec, calculando }) {
   )
 }
 
-// Controles que só existem com uma gravação em andamento: pausar/retomar e
-// destacar numa janelinha flutuante. Antes o botão grande era tudo — começar e
-// encerrar — e não havia como interromper sem encerrar de vez.
-//
-// "Destacar" só aparece onde a janelinha existe de verdade (app nativo, ou
-// Chrome/Edge no desktop). No app nativo ela também aparece sozinha quando o
-// Dito é minimizado; o botão é para quem quer deixá-la à vista antes disso.
-export function RecordingControls({ paused, onPause, onResume, mini }) {
-  return (
-    <div className="record-controls">
-      <button className="btn-ghost btn-sm" onClick={paused ? onResume : onPause}>
-        {paused
-          ? <><IconPlay width={14} height={14} /> Retomar</>
-          : <><IconPause width={14} height={14} /> Pausar</>}
-      </button>
-      {mini?.supported && !mini.isOpen && (
-        <button className="btn-ghost btn-sm" onClick={mini.open}>
-          <IconPopOut width={14} height={14} /> Destacar
-        </button>
-      )}
-    </div>
-  )
-}
-
 export function RecordingReview({ recordingTime, onSubmit, onReset, loading }) {
   return (
-    <>
-      <p className="record-label">Gravação concluída · {formatTime(recordingTime)}</p>
-      <div className="record-actions">
-        <TranscribeButton
-          recomendado={modoRecomendado({ origem: 'record', durationSec: recordingTime })}
-          duracaoSec={recordingTime}
-          onSubmit={onSubmit}
-          loading={loading}
-        />
-        <button className="btn-ghost" onClick={onReset} disabled={loading}>Regravar</button>
-      </div>
+    <div className="revisao">
+      <p className="revisao-titulo">Gravação concluída</p>
+      <p className="revisao-tempo">{formatTime(recordingTime)}</p>
+      <TranscribeButton
+        recomendado={modoRecomendado({ origem: 'record', durationSec: recordingTime })}
+        duracaoSec={recordingTime}
+        onSubmit={onSubmit}
+        loading={loading}
+      />
       <LinhaConsumo duracaoSec={recordingTime} />
-    </>
+      <BotaoDescartar onConfirmar={onReset} disabled={loading} />
+    </div>
   )
 }
 
@@ -256,16 +396,17 @@ export function FileReview({ pendingFile, onSubmit, onReset, loading }) {
       <p className="text-muted text-sm">
         {durationSec ? formatTime(Math.round(durationSec)) : formatBytes(file.size)}
       </p>
-      <div className="record-actions">
-        <TranscribeButton
-          recomendado={modoRecomendado({ origem: 'file', durationSec })}
-          duracaoSec={durationSec}
-          onSubmit={onSubmit}
-          loading={loading}
-        />
-        <button className="btn-ghost" onClick={onReset} disabled={loading}>Trocar arquivo</button>
-      </div>
+      <TranscribeButton
+        recomendado={modoRecomendado({ origem: 'file', durationSec })}
+        duracaoSec={durationSec}
+        onSubmit={onSubmit}
+        loading={loading}
+      />
       <LinhaConsumo duracaoSec={durationSec} />
+      {/* Trocar não perde nada (o arquivo continua no aparelho), então não
+          pergunta; e é texto, não um segundo botão disputando com o de
+          transcrever. */}
+      <button type="button" className="btn-link discreto" onClick={onReset} disabled={loading}>Trocar arquivo</button>
     </div>
   )
 }
@@ -326,6 +467,8 @@ function useDuracaoDoLink(url, ativa = true) {
 
 export function UrlForm({ url, setUrl, onSubmit, loading }) {
   const { saldo, abrirPlano } = useOutletContext() || {}
+  const toque = useIsTouchInput()
+  const campoRef = useRef(null)
   const comLimite = saldo?.limite != null
   const semSaldo = comLimite && saldo.usados >= saldo.limite
   const restam = comLimite ? Math.max(0, Math.round(saldo.limite - saldo.usados)) : null
@@ -359,27 +502,55 @@ export function UrlForm({ url, setUrl, onSubmit, loading }) {
       // Não cabe: fica parado, e a linha abaixo já explica (a duração chegou ao
       // estado junto com esta resposta).
       if (naoCabe(segundos)) return
+      onSubmit(modo, segundos)
+      return
     }
-    onSubmit(modo)
+    // A duração vai junto: enquanto a transcrição não termina, ela conta como
+    // saldo já comprometido.
+    onSubmit(modo, duracaoSec)
+  }
+
+  // Colar num toque: no celular, segurar o campo até aparecer o "Colar" é o
+  // passo que mais erra. Sem permissão para ler a área de transferência (ou
+  // num navegador que não deixa), o foco vai para o campo, e o colar de
+  // sempre continua valendo.
+  async function colar() {
+    try {
+      const texto = await navigator.clipboard.readText()
+      const link = (String(texto).match(/https?:\/\/\S+/) || [])[0]
+      if (!link) { campoRef.current?.focus(); return }
+      aoColar()
+      setUrl(link)
+    } catch {
+      campoRef.current?.focus()
+    }
   }
 
   return (
     <>
-      <div className="url-form">
-        <input
-          type="url"
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          onPaste={aoColar}
-          placeholder="Cole um link do YouTube"
-          disabled={loading || conferindo}
-          onKeyDown={e => {
-            // Sem <form> em volta (o botão dividido tem um botão dentro do outro,
-            // e um submit implícito dispararia o modo errado), então o Enter
-            // precisa ser ligado à mão — é como quem cola um link espera enviar.
-            if (e.key === 'Enter' && url.trim() && !loading && !conferindo) enviar(modoRecomendado({ origem: 'url' }))
-          }}
-        />
+      <div className={`url-form ${toque ? 'toque' : ''}`}>
+        <div className="url-campo">
+          <input
+            ref={campoRef}
+            type="url"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onPaste={aoColar}
+            placeholder="Cole um link do YouTube"
+            disabled={loading || conferindo}
+            onKeyDown={e => {
+              // Sem <form> em volta (o botão dividido tem um botão dentro do outro,
+              // e um submit implícito dispararia o modo errado), então o Enter
+              // precisa ser ligado à mão — é como quem cola um link espera enviar.
+              if (e.key === 'Enter' && url.trim() && !loading && !conferindo) enviar(modoRecomendado({ origem: 'url' }))
+            }}
+          />
+          {!url.trim() && navigator.clipboard?.readText && (
+            <button type="button" className="url-colar" onClick={colar} disabled={loading || conferindo}>
+              Colar
+            </button>
+          )}
+        </div>
         {/* Sem saldo, o caminho de saída é assinar — mas onde o app não vende
             (iPhone) não existe esse caminho, e o botão de transcrever fica
             apenas travado: a linha acima já diz que os minutos acabaram. */}
