@@ -71,8 +71,16 @@ workflows:
       - name: Preparar o cofre de chaves da máquina
         script: keychain initialize
 
-      - name: Buscar (ou criar) o certificado e o perfil na Apple
-        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+      # Dois perfis: o do app e o da extensão de compartilhar
+      # (frontend/ios/App/Compartilhar), que é um pacote à parte para a Apple.
+      # Os dois só se criam depois de o grupo de apps
+      # (group.br.com.albiecloud.dito) estar ligado nos dois identificadores,
+      # no site de desenvolvedor da Apple (passo a passo em APPSTORE.md). Sem
+      # isso a montagem para no "Gerar o pacote", com o perfil sem o grupo.
+      - name: Buscar (ou criar) o certificado e os perfis na Apple
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID.compartilhar" --type IOS_APP_STORE --create
 
       - name: Instalar o certificado no cofre
         script: keychain add-certificates

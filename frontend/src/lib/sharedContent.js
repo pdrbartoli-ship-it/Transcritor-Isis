@@ -1,11 +1,17 @@
 import { registerPlugin, Capacitor } from '@capacitor/core'
 import { isNative } from './platform'
+import { lerArquivoNativo } from './gravadorNativo'
 
 const SharedContent = registerPlugin('SharedContent')
 
-// O plugin é só do Android. No iPhone, ouvir por ele gerava um erro de
-// "plugin não implementado" a cada abertura do app.
+// O plugin existe no Android e, desde a montagem de 26/09/2026, no iPhone
+// (que recebe pela extensão de compartilhar). Nas montagens antigas de
+// iPhone ele não existe, e ouvir por ele gerava um erro de "plugin não
+// implementado" a cada abertura do app.
 const temPlugin = () => isNative() && Capacitor.isPluginAvailable('SharedContent')
+
+// O Dito aparece no "Compartilhar" dos outros apps neste aparelho.
+export const recebeCompartilhado = temPlugin
 
 // O YouTube compartilha título e link juntos ("Vídeo tal\nhttps://youtu.be/x"),
 // e o WhatsApp às vezes acrescenta texto. Só a URL interessa ao /process-url.
@@ -58,12 +64,10 @@ export function onSharedContent(callback) {
   return () => { handle.then(h => h.remove()).catch(() => {}) }
 }
 
-// O arquivo foi copiado para o cache do app pelo lado nativo; convertFileSrc dá
-// uma URL que a WebView consegue ler, e daí ele vira um File comum — o mesmo
-// que o seletor de arquivos produz, para reusar todo o fluxo de captura.
+// O arquivo foi copiado para dentro do app pelo lado nativo, e daqui ele vira
+// um File comum, o mesmo que o seletor de arquivos produz, para reusar todo o
+// fluxo de captura.
 export async function sharedFileToFile({ path, name }) {
-  const response = await fetch(Capacitor.convertFileSrc(path))
-  if (!response.ok) throw new Error('Não foi possível ler o arquivo compartilhado.')
-  const blob = await response.blob()
+  const blob = await lerArquivoNativo(path)
   return new File([blob], name, { type: blob.type || '' })
 }

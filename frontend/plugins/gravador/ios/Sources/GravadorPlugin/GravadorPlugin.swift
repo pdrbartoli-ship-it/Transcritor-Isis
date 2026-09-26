@@ -29,7 +29,8 @@ public class GravadorPlugin: CAPPlugin, CAPBridgedPlugin, AVAudioRecorderDelegat
         CAPPluginMethod(name: "retomar", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "encerrar", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "estado", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "descartar", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "descartar", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ler", returnType: CAPPluginReturnPromise)
     ]
 
     private static let chave = "dito.gravador"
@@ -143,6 +144,45 @@ public class GravadorPlugin: CAPPlugin, CAPBridgedPlugin, AVAudioRecorderDelegat
             if self.situacao == "encerrado" || self.situacao == "parado" { self.limpar() }
             call.resolve(self.resumo())
         }
+    }
+
+    /// Um pedaço de um arquivo do app, em base64. É a reserva da leitura pela
+    /// página (arquivoDoAparelho.js): se o WebView não conseguir abrir o
+    /// arquivo pelo endereço dele, a página o busca aos pedaços por aqui. Lê
+    /// só o que mora dentro do próprio app ou da pasta do grupo de apps.
+    @objc func ler(_ call: CAPPluginCall) {
+        guard let caminho = call.getString("caminho") else {
+            call.reject("Falta o caminho.")
+            return
+        }
+        let inicio = UInt64(max(0, call.getInt("inicio") ?? 0))
+        let tamanho = min(max(1, call.getInt("tamanho") ?? 524_288), 2_097_152)
+        let url = URL(fileURLWithPath: caminho).standardizedFileURL
+        guard Self.podeLer(url) else {
+            call.reject("Arquivo fora do app.")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let alca = try FileHandle(forReadingFrom: url)
+                defer { try? alca.close() }
+                let total = alca.seekToEndOfFile()
+                alca.seek(toFileOffset: min(inicio, total))
+                let dados = alca.readData(ofLength: tamanho)
+                call.resolve(["dados": dados.base64EncodedString(), "total": Int(total)])
+            } catch {
+                call.reject("Não foi possível ler o arquivo.", "FALHOU", error)
+            }
+        }
+    }
+
+    private static func podeLer(_ url: URL) -> Bool {
+        var raizes = [URL(fileURLWithPath: NSHomeDirectory())]
+        if let grupo = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.br.com.albiecloud.dito") {
+            raizes.append(grupo)
+        }
+        let caminho = url.resolvingSymlinksInPath().path
+        return raizes.contains { caminho.hasPrefix($0.resolvingSymlinksInPath().path + "/") }
     }
 
     // MARK: - Gravação

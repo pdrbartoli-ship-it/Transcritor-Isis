@@ -4,6 +4,7 @@ import { ACCEPTED_FILES, formatTime } from './estimate'
 import { RecordingReview, FileReview, UrlForm, GravandoAgora, MODE_TITLE } from './CaptureShared'
 import { usePlatform } from '../../lib/platform'
 import { temGravadorNativo } from '../../lib/gravadorNativo'
+import { recebeCompartilhado } from '../../lib/sharedContent'
 
 // Com o gravador nativo, a gravação continua com a tela travada ou em outro
 // app, e a frase diz isso. Nos apps de loja anteriores a ele a gravação ainda
@@ -103,13 +104,17 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
               onReset={() => { clearFile(); fileRef.current.value = '' }}
               loading={loading}
             />
-          ) : isNative && isAndroid ? (
-            // No Android o Dito aparece no "Compartilhar" do WhatsApp: é o
-            // caminho curto, e a aba o ensina antes de oferecer o arquivo.
+          ) : recebeCompartilhado() ? (
+            // O Dito aparece no "Compartilhar" do WhatsApp: é o caminho curto,
+            // e a aba o ensina antes de oferecer o arquivo. No iPhone o
+            // compartilhar do WhatsApp fica depois do Encaminhar, e só existe
+            // nas montagens com a extensão (26/09/2026 em diante).
             <>
               <ol className="passos-whatsapp">
                 <li>No WhatsApp, toque e segure o áudio</li>
-                <li>Toque em <strong>Compartilhar</strong></li>
+                {isAndroid
+                  ? <li>Toque em <strong>Compartilhar</strong></li>
+                  : <li>Toque em <strong>Encaminhar</strong> e no botão de compartilhar, no canto de baixo</li>}
                 <li>Escolha o <strong>Dito</strong></li>
               </ol>
               <button className="btn-link" onClick={() => !loading && fileRef.current?.click()} disabled={loading}>

@@ -25,7 +25,7 @@ import { planoPorId } from '../lib/planos'
 import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
 import { aoPedirConvite } from '../lib/conviteModal'
-import { podeVender, usePlatform } from '../lib/platform'
+import { podeVender, usePlatform, isStandalonePwa, isTauriApp } from '../lib/platform'
 import { useConvite, useSeloNovo } from '../lib/convite'
 import { iniciarNotificacoes, esquecerAparelho } from '../lib/notificacoes'
 import { pedirAcoesDaConversa } from '../lib/acoesDaConversa'
@@ -85,7 +85,9 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const navigationType = useNavigationType()
-  const { isMobile } = usePlatform()
+  const { isMobile, isWeb } = usePlatform()
+  // O site aberto no navegador, e não o app instalado (lojas, Windows, PWA).
+  const naWeb = isWeb && !isStandalonePwa() && !isTauriApp()
   // Quem entrou pelo "Usar o Dito" da landing, sem conta (signInAnonymously).
   const convidado = !!user?.is_anonymous
   const { itens: emAndamento, naoLidas, versaoLista, minutosEmAndamento } = useTranscricoes()
@@ -291,7 +293,10 @@ export default function Layout() {
     return () => { active = false; unsubscribe() }
   }, [navigate])
 
-  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+  // Qualquer navegação fecha a lateral, inclusive para a tela que já está
+  // aberta: com o pathname, tocar em "Transcrever" estando na home não mudava
+  // nada e a lateral ficava presa na frente.
+  useEffect(() => { setDrawerOpen(false) }, [location.key])
 
   // "Ver planos" clicado na janelinha de aviso de reunião. Ela vive fora do
   // Layout, e este é o ponto onde o modal existe.
@@ -572,6 +577,15 @@ export default function Layout() {
                   Entre para ter {planoPorId('gratuito').minutos} minutos grátis por mês e ver suas conversas em qualquer aparelho.
                 </p>
                 <button className="btn-secondary" onClick={() => navigate('/auth')}>Entrar</button>
+                {/* O mesmo "Voltar para o site" do computador (ver o rodapé
+                    abaixo). Faltava aqui, e no celular o convidado só saía do
+                    app criando conta. Dentro do app instalado não há site
+                    para onde voltar. */}
+                {naWeb && (
+                  <button className="foot-convite-site" onClick={() => navigate('/', { state: { vitrine: true } })}>
+                    Voltar para o site
+                  </button>
+                )}
               </div>
             ) : (
               // A conta vira um botão redondo com a inicial, como no Claude: o

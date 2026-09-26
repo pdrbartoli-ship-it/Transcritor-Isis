@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Dito</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Quando o Dito aparece na lista de compartilhar: áudio e vídeo
+			     (inclusive o áudio de voz do WhatsApp, que é Opus e nem sempre
+			     tem tipo conhecido, daí o "opus", o "ogg" e o "dyn."), link e
+			     texto (o YouTube manda o link como os dois). -->
+			<key>NSExtensionActivationRule</key>
+			<string>SUBQUERY (
+    extensionItems,
+    $item,
+    SUBQUERY (
+        $item.attachments,
+        $anexo,
+        ANY $anexo.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audiovisual-content"
+        || ANY $anexo.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+        || ANY $anexo.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+        || ANY $anexo.registeredTypeIdentifiers CONTAINS[c] "opus"
+        || ANY $anexo.registeredTypeIdentifiers CONTAINS[c] "ogg"
+        || ANY $anexo.registeredTypeIdentifiers BEGINSWITH "dyn."
+    ).@count &gt;= 1
+).@count &gt;= 1</string>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+	</dict>
+</dict>
+</plist>

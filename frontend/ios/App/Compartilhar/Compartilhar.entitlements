@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>aps-environment</key>
-	<string>production</string>
-	<!-- A pasta que o app divide com a extensão de compartilhar: é por ela
-	     que o áudio do WhatsApp chega ao Dito. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.br.com.albiecloud.dito</string>

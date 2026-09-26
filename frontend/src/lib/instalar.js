@@ -30,6 +30,26 @@ export function abrirLojaWindows() {
   window.open(STORE_URL, '_blank', 'noopener')
 }
 
+// As páginas do Dito nas lojas de celular. Ficam vazias enquanto o app não
+// estiver público na loja: em 26/09/2026 o iPhone está só no TestFlight e o
+// Android em teste fechado, e um link de loja antes disso abre "app
+// indisponível" para quem clica. Vazio, o celular segue para a landing, como
+// sempre foi. Preencher é o que liga o convite direto para a loja.
+//   iPhone:  'https://apps.apple.com/br/app/id<número do App Store Connect>'
+//   Android: 'https://play.google.com/store/apps/details?id=br.com.albiecloud.dito'
+const LOJA_IPHONE_URL = ''
+const LOJA_ANDROID_URL = ''
+
+// A loja do aparelho de quem está lendo, ou null quando não há loja para ele
+// (computador, ou app ainda não publicado). É o aparelho de quem abre o link
+// que decide, e não o de quem mandou: quem convida pelo iPhone pode ter um
+// amigo no Android.
+export function lojaDoCelular(aparelho = aparelhoDoVisitante()) {
+  if (aparelho === 'ios') return LOJA_IPHONE_URL || null
+  if (aparelho === 'android') return LOJA_ANDROID_URL || null
+  return null
+}
+
 // Em que aparelho a pessoa está lendo a landing. É só para escolher o que
 // oferecer no "Instalar grátis": no Windows existe instalador de verdade, no
 // resto o Dito se instala como app pelo próprio navegador.

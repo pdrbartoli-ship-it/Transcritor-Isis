@@ -6,7 +6,7 @@ import {
 } from '../components/Icons'
 import InstalarModal from '../components/InstalarModal'
 import InstalarWindows from '../components/InstalarWindows'
-import { STORE_URL, aparelhoDoVisitante, baixarInstaladorWindows } from '../lib/instalar'
+import { STORE_URL, aparelhoDoVisitante, baixarInstaladorWindows, lojaDoCelular } from '../lib/instalar'
 import useTemaClaro from '../lib/useTemaClaro'
 import { setTheme } from '../lib/prefs'
 import { supabase } from '../lib/supabase'
@@ -175,7 +175,11 @@ export default function Landing() {
   const [guiaWindows, setGuiaWindows] = useState(false)
   const [aparelho] = useState(aparelhoDoVisitante)
   const instalar = () => {
-    if (aparelho === 'windows') {
+    // No celular com o app já na loja, instalar é a página da loja.
+    const loja = lojaDoCelular(aparelho)
+    if (loja) {
+      window.location.href = loja
+    } else if (aparelho === 'windows') {
       baixarInstaladorWindows('landing')
       setGuiaWindows(true)
     } else {

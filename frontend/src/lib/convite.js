@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { lerConvite, marcarConviteVisto, aceitarConvite } from './api'
+import { lojaDoCelular } from './instalar'
+import { isNative } from './platform'
 
 // O convite premiado, do lado do app.
 //
@@ -18,6 +20,11 @@ const CODIGO_VALIDO = /^[a-z0-9]{4,16}$/
 // Chamado no boot (main.jsx), antes do roteador. O `?c=` sai do endereço
 // logo em seguida: ele não diz nada a quem está lendo a página, e ficaria
 // para trás em qualquer link que a pessoa copiasse dali.
+//
+// O link é um só para todo mundo, e o destino sai do aparelho de quem abre:
+// no computador, a landing; no celular, a página do Dito na loja, onde se
+// instala (ver lojaDoCelular, que devolve null enquanto o app não estiver
+// público na loja, e aí o celular também fica na landing).
 export function guardarConviteDaUrl() {
   try {
     const url = new URL(window.location.href)
@@ -26,6 +33,8 @@ export function guardarConviteDaUrl() {
     localStorage.setItem(CHAVE_CODIGO, JSON.stringify({ codigo, em: Date.now() }))
     url.searchParams.delete('c')
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    const loja = isNative() ? null : lojaDoCelular()
+    if (loja) window.location.replace(loja)
   } catch {
     // Modo anônimo sem storage: o convite se perde, e a pessoa entra normal.
   }

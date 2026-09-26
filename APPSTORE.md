@@ -84,15 +84,31 @@ consequência de salvar um arquivo — a build começa quando você aperta.
       `APP_STORE_APPLE_ID`, no grupo `dito`.
    4. "Start new build" e esperar. A primeira leva uns 15 minutos.
 3. ~~Um iPhone para o teste pelo TestFlight.~~ Confirmado em 22/09/2026.
-4. **Confirmar a declaração de criptografia.** Marcamos que o Dito usa só
+4. **Ligar o grupo de apps, para o Dito aparecer no compartilhar** (uma vez
+   só, antes da primeira montagem com a extensão, de 26/09/2026). No
+   [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list),
+   em Certificates, Identifiers & Profiles → Identifiers:
+   1. Trocar o filtro do canto (App IDs) para **App Groups** → **+** →
+      descrição "Dito", identificador `group.br.com.albiecloud.dito`.
+   2. Voltar a **App IDs** → abrir `br.com.albiecloud.dito` → marcar **App
+      Groups** → **Configure** → escolher o grupo acima → Save. A Apple avisa
+      que os perfis ficam inválidos; o Codemagic cria perfis novos sozinho.
+   3. **+** → App IDs → App → descrição "Dito Compartilhar", Bundle ID
+      explícito `br.com.albiecloud.dito.compartilhar` → marcar **App Groups**
+      → Continue → Register. Depois abrir esse identificador, **Configure**
+      no App Groups, escolher o mesmo grupo e salvar.
+5. **Confirmar a declaração de criptografia.** Marcamos que o Dito usa só
    criptografia isenta (AES padrão do sistema e HTTPS). É declaração legal, não
    ajuste técnico.
 
 ### Técnico, depois da conta ligada
 
-1. **Compartilhar de outros apps** — no Android o Dito aparece no menu de
-   compartilhar. No iPhone isso é uma extensão separada; ficou fora da primeira
-   versão.
+1. ~~**Compartilhar de outros apps**~~ Feito em 26/09/2026: extensão em
+   `frontend/ios/App/Compartilhar`, posta no projeto por
+   `frontend/ios/adicionar-extensao.rb`. Ela guarda o áudio ou o link na pasta
+   do grupo de apps e abre o Dito por `dito://compartilhar`; quem recebe no
+   app é o `SharedContentPlugin` (em `frontend/plugins/gravador`). Depende do
+   passo 4 acima.
 2. **Capturas de tela** do iPhone para a página da loja
    (`e2e-store-screenshots.mjs` já faz isso para o Android).
 3. **Conta de teste para o revisor**, com saldo, e a nota explicando que o Dito
