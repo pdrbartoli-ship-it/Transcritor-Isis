@@ -13,6 +13,7 @@ fn main() {
     "set_background_mode",
     "start_with_windows_state",
     "set_start_with_windows",
+    "salvar_transcricao",
   ]);
   tauri_build::try_build(tauri_build::Attributes::new().app_manifest(comandos))
     .expect("falha ao preparar o build do Tauri");

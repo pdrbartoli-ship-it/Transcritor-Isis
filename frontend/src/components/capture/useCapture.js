@@ -39,7 +39,7 @@ export function useCapture() {
   // decide qual modo aparece recomendado.
   const [pendingFile, setPendingFile] = useState(null) // { file, durationSec }
 
-  const { recordedBlob, recordingTime, resetRecording } = gravacao
+  const { recordedBlob, recordedNiveis, recordingTime, resetRecording } = gravacao
 
   // Erro é um campo só para quem desenha: a tela não tem por que saber se o
   // problema foi do microfone (gravação) ou da escolha do arquivo.
@@ -60,6 +60,7 @@ export function useCapture() {
       modo: mode,
       arquivo: new File([recordedBlob], filename, { type: recordedBlob.type }),
       duracaoS: duracao,
+      niveis: recordedNiveis,
       rotulo: `Gravação de ${formatTime(duracao)}`,
     })
     limparErro(null)

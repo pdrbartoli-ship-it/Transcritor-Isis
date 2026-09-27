@@ -192,6 +192,7 @@ export function useDeteccaoReuniao({ userId, convidado, avisar, abrirPlano }) {
         modo: modoRecomendado({ origem: 'record', durationSec: duracao }),
         arquivo: new File([blob], `gravacao.${extensionFor(blob.type)}`, { type: blob.type }),
         duracaoS: duracao,
+        niveis: grav.recordedNiveis,
         rotulo: `Gravação de ${formatTime(duracao)}`,
       })
       grav.resetRecording()

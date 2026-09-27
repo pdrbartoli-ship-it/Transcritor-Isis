@@ -7,7 +7,12 @@
 // { autoconvert: true, .. }` deixa o próprio engine de áudio do Windows (modo
 // compartilhado) fazer o resample/downmix pra esse formato — por isso não
 // precisamos rodar resample manual (rubato) nem downmix estéreo→mono aqui.
+//
+// O .wav sai com os dois lados misturados, mas o volume de cada um é anotado a
+// cada 250 ms (ver niveis.rs) e vai junto para o servidor, que é quem diz que
+// trecho foi da pessoa que gravou e que trecho foi dos outros.
 mod consentimento;
+mod niveis;
 
 use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender};
 use hound::{SampleFormat, WavSpec, WavWriter};
@@ -21,6 +26,8 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use wasapi::{DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
+
+use niveis::Niveis;
 
 // 16 kHz é a taxa nativa do Whisper — ele reamostra tudo para cá de qualquer
 // jeito, então gravar em 48 kHz só produzia arquivo três vezes maior sem uma
@@ -57,7 +64,7 @@ pub struct RecordingHandle {
     pause_flag: Arc<AtomicBool>,
     mic_handle: Option<JoinHandle<()>>,
     system_handle: Option<JoinHandle<()>>,
-    mixer_handle: Option<JoinHandle<Result<(), String>>>,
+    mixer_handle: Option<JoinHandle<Result<String, String>>>,
 }
 
 impl RecordingHandle {
@@ -86,7 +93,9 @@ impl RecordingHandle {
         self.pause_flag.load(Ordering::SeqCst)
     }
 
-    pub fn stop(mut self) -> Result<(), String> {
+    /// Devolve os níveis de cada lado (ver niveis.rs), que o JS manda junto
+    /// com o .wav.
+    pub fn stop(mut self) -> Result<String, String> {
         self.stop_flag.store(true, Ordering::SeqCst);
         if let Some(h) = self.mic_handle.take() {
             let _ = h.join();
@@ -98,7 +107,7 @@ impl RecordingHandle {
             Some(h) => h
                 .join()
                 .map_err(|_| "thread de mixagem entrou em pânico".to_string())?,
-            None => Ok(()),
+            None => Ok(String::new()),
         }
     }
 }
@@ -417,7 +426,7 @@ fn mixer_loop(
     app: AppHandle,
     max_seconds: Option<u64>,
     teve_som: Arc<AtomicBool>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let spec = WavSpec {
         channels: CHANNELS,
         sample_rate: SAMPLE_RATE,
@@ -433,6 +442,7 @@ fn mixer_loop(
     // segundo para alimentar cinco barrinhas, e o olho não vê diferença.
     let mut level_peak: f32 = 0.0;
     let mut last_level_at = Instant::now();
+    let mut niveis = Niveis::novo(SAMPLE_RATE);
 
     // O teto em amostras escritas — é o único relógio honesto aqui: o que o
     // backend vai medir é a duração do arquivo, e o que entra no arquivo é
@@ -492,6 +502,7 @@ fn mixer_loop(
         for i in 0..len {
             let mic_sample = mic_samples.get(i).copied().unwrap_or(0.0);
             let sys_sample = sys_samples.get(i).copied().unwrap_or(0.0);
+            niveis.somar(mic_sample, sys_sample);
             let mixed = (mic_sample + sys_sample).clamp(-1.0, 1.0);
             level_peak = level_peak.max(mixed.abs());
             if mixed.abs() > LIMIAR_SILENCIO {
@@ -520,5 +531,5 @@ fn mixer_loop(
     }
 
     writer.finalize().map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(niveis.terminar())
 }

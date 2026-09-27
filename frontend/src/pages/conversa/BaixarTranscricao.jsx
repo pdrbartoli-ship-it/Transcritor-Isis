@@ -1,4 +1,6 @@
+import { invoke } from '@tauri-apps/api/core'
 import { track } from '../../lib/analytics'
+import { isTauriApp } from '../../lib/platform'
 import { showToast } from '../../lib/toast'
 import { buildTranscriptFile, downloadOrShareText, safeFilename } from './shared'
 
@@ -12,7 +14,22 @@ import { buildTranscriptFile, downloadOrShareText, safeFilename } from './shared
 export async function baixarTranscricao(conversation) {
   track('download_transcricao')
   const filename = safeFilename(conversation.title)
-  const result = await downloadOrShareText(filename, buildTranscriptFile(conversation))
+  const conteudo = buildTranscriptFile(conversation)
+
+  // No app de Windows o arquivo vai para Downloads e o Explorador abre com ele
+  // selecionado (src-tauri/src/arquivo.rs). Um instalador antigo não tem o
+  // comando: a chamada falha e o download de sempre assume.
+  if (isTauriApp()) {
+    try {
+      await invoke('salvar_transcricao', { nome: filename, texto: conteudo })
+      showToast('Transcrição salva em Downloads')
+      return
+    } catch {
+      // Segue para o download comum.
+    }
+  }
+
+  const result = await downloadOrShareText(filename, conteudo)
   if (result === 'shared') {
     showToast('Transcrição compartilhada')
   } else if (result === 'downloaded') {

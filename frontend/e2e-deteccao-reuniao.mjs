@@ -78,6 +78,14 @@ console.log('saldo 200 min →', folgado.variante, '|', folgado.corpo, '| teto',
 if (folgado.variante !== 'convite') throw new Error('esperava convite')
 if (/min/.test(folgado.corpo)) throw new Error('o convite folgado não deve falar de saldo')
 if (folgado.pendente.tetoS !== 200 * 60 - 30) throw new Error('teto errado para 200 min')
+if (folgado.titulo !== 'Reunião no Zoom') throw new Error(`título errado: ${folgado.titulo}`)
+
+// Navegador com o microfone aberto por um minuto sem título de reunião: o Rust
+// manda o nome do navegador no lugar do app (estado.rs), e o aviso diz
+// "Chamada", porque não dá para saber qual é a reunião.
+const chamada = await simular(14, 'chrome')
+console.log('chamada no navegador →', chamada?.titulo)
+if (chamada?.titulo !== 'Chamada no Chrome') throw new Error('o aviso genérico do navegador deveria dizer "Chamada no Chrome"')
 
 // Saldo médio: o número real aparece, e o teto para 30 s antes do fim.
 usados = 238

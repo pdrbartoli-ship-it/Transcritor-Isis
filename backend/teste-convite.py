@@ -295,7 +295,7 @@ r = client.post("/convite/estado", headers=H("tok-dono"))
 j = r.json()
 check("cria o código na primeira vez", r.status_code == 200 and len(j["codigo"]) == main.TAMANHO_CODIGO, r.text[:200])
 check("link aponta para o site com ?c=", j["link"] == f"{main.FRONTEND_URL}/?c={j['codigo']}", j["link"])
-check("regras vêm do servidor", j["regras"] == {"capturas": 3, "minutos": 25, "perguntas": 2, "apoiador": 5}, j["regras"])
+check("regras vêm do servidor", j["regras"] == {"capturas": 1, "minutos": 25, "perguntas": 2, "apoiador": 5}, j["regras"])
 check("sem amigos, sem novidade", j["validos"] == 0 and j["pendentes"] == 0 and j["novidade"] is None)
 codigo = j["codigo"]
 check("o mesmo código na segunda vez", client.post("/convite/estado", headers=H("tok-dono")).json()["codigo"] == codigo)
@@ -319,18 +319,17 @@ check("aceitar de novo não duplica", len(db["convites"]) == 1)
 check("pendente aparece para o dono", client.post("/convite/estado", headers=H("tok-dono")).json()["pendentes"] == 1)
 
 # ─────────────────────────────────────────────────────────────
-print("\n== 5. três transcrições premiam quem convidou (Grátis) ==")
-rodar(main.contar_captura_para_convite("amigo-1"))
-rodar(main.contar_captura_para_convite("amigo-1"))
-check("duas capturas: ainda não premia", not any(n == "premiar_convite_minutos" for n, _ in rpcs) and not pushes)
+print("\n== 5. a primeira transcrição premia quem convidou (Grátis) ==")
+# Desde 26/09 o convite vale com uma transcrição só (CONVITE_META_CAPTURAS = 1).
+check("antes da primeira captura: ainda não premia", not any(n == "premiar_convite_minutos" for n, _ in rpcs) and not pushes)
 rodar(main.contar_captura_para_convite("amigo-1"))
 premios = [a for n, a in rpcs if n == "premiar_convite_minutos"]
-check("terceira captura: bônus de 25 min e 2 perguntas para o dono",
+check("primeira captura: bônus de 25 min e 2 perguntas para o dono",
       premios == [{"p_user_id": "dono-1", "p_minutos": 25, "p_perguntas": 2, "p_periodo_fim": None}], premios)
 check("convite marcado com prêmio em minutos", db["convites"][0]["premio"] == "minutos" and db["convites"][0]["valido_em"])
 check("dono sem celular cadastrado: sem notificação", not pushes, pushes)
 rodar(main.contar_captura_para_convite("amigo-1"))
-check("quarta captura não premia de novo", len([n for n, _ in rpcs if n == "premiar_convite_minutos"]) == 1)
+check("segunda captura não premia de novo", len([n for n, _ in rpcs if n == "premiar_convite_minutos"]) == 1)
 check("quem não entrou por convite: nada acontece",
       rodar(main.contar_captura_para_convite("dono-1")) is None and not pushes)
 

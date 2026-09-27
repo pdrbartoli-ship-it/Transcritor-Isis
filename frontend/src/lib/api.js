@@ -224,7 +224,14 @@ function comNome(formData) {
   if (nome) formData.append('nome', nome)
 }
 
-export async function transcribeFile(file, mode = MODO_COMPLETA, origem = 'file') {
+// Os níveis de cada lado de uma gravação do app de Windows (ver useGravacao):
+// com eles o servidor sabe que trecho foi de quem gravou e que trecho foi dos
+// outros da chamada.
+function comNiveis(formData, niveis) {
+  if (niveis) formData.append('niveis', niveis)
+}
+
+export async function transcribeFile(file, mode = MODO_COMPLETA, origem = 'file', niveis = null) {
   await assertReadable(file)
   if (file.size > MAX_UPLOAD_BYTES) {
     const gb = (file.size / (1024 ** 3)).toFixed(1)
@@ -241,6 +248,7 @@ export async function transcribeFile(file, mode = MODO_COMPLETA, origem = 'file'
   // Uma gravação feita aqui e um áudio de WhatsApp pedem leituras diferentes.
   formData.append('origem', origem)
   comNome(formData)
+  comNiveis(formData, niveis)
   return comTeto(
     signal => postWithRetry('/transcribe', formData, { signal }).then(handleResponse),
     CAPTURA_TIMEOUT_MS,
@@ -266,7 +274,7 @@ export async function processUrl(url, mode = MODO_COMPLETA) {
 // depois, cifrado para a chave dela (ver chaveTranscricao.js). Um servidor
 // antigo responde 404, e um que não achou a chave pública, 409: nos dois casos
 // quem chama volta para o caminho de sempre, com o app aberto.
-export async function criarTranscricao({ arquivo, url, origem, modo = MODO_COMPLETA, duracaoS = null }) {
+export async function criarTranscricao({ arquivo, url, origem, modo = MODO_COMPLETA, duracaoS = null, niveis = null }) {
   const formData = new FormData()
   if (arquivo) {
     await assertReadable(arquivo)
@@ -284,6 +292,7 @@ export async function criarTranscricao({ arquivo, url, origem, modo = MODO_COMPL
   formData.append('mode', modo)
   formData.append('language', getIdioma())
   comNome(formData)
+  comNiveis(formData, niveis)
   if (duracaoS) formData.append('duracao_s', String(Math.round(duracaoS)))
   return comTeto(
     signal => postWithRetry('/transcricoes', formData, { signal }).then(handleResponse),

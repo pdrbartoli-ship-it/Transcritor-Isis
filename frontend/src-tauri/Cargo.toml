@@ -51,14 +51,18 @@ winreg = "0.52"
 #
 # ApplicationModel/Foundation são WinRT: é de lá que sai a StartupTask, o único
 # jeito de o Dito iniciar com o Windows dentro do pacote MSIX (ver inicio.rs).
-# Packaging_Appx é o que responde se estamos dentro de um pacote.
+# Packaging_Appx é o que responde se estamos dentro de um pacote. Registry (e
+# Security, que o CreateEventW pede) é o aviso de que alguém abriu ou soltou o
+# microfone, sem o detector precisar perguntar a cada segundo (meeting/registro.rs).
 windows = { version = "0.61", features = [
   "ApplicationModel",
   "Foundation",
   "Security_Authorization_AppCapabilityAccess",
   "Win32_Foundation",
+  "Win32_Security",
   "Win32_Storage_Packaging_Appx",
   "Win32_System_Com",
+  "Win32_System_Registry",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }

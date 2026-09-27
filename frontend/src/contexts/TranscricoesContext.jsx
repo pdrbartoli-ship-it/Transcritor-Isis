@@ -221,6 +221,7 @@ export function TranscricoesProvider({ children }) {
         try {
           const { id: jobId } = await criarTranscricao({
             arquivo: item.arquivo, url: item.url, origem: item.origem, modo: item.modo, duracaoS: item.duracaoS,
+            niveis: item.niveis,
           })
           atualizar(item.id, { estado: 'processando', jobId, enviadaEm: Date.now() })
           // O momento em que "avisar quando ficar pronta" faz sentido. Só
@@ -237,7 +238,7 @@ export function TranscricoesProvider({ children }) {
 
       const result = item.url
         ? await processUrl(item.url, item.modo)
-        : await transcribeFile(item.arquivo, item.modo, item.origem)
+        : await transcribeFile(item.arquivo, item.modo, item.origem, item.niveis)
       await concluir(item, result)
     } catch (err) {
       atualizar(item.id, { estado: 'erro', erro: err.message, erroStatus: err.status || null })

@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager, State};
 
+use crate::arquivo;
 use crate::audio::{self, RecordingHandle};
 use crate::inicio;
 use crate::meeting::{self, Detector};
@@ -62,6 +63,10 @@ pub fn start_recording(
 pub struct FimDaGravacao {
     pub caminho: String,
     pub teve_som: bool,
+    /// O volume do microfone e o do som do computador a cada 250 ms (ver
+    /// audio/niveis.rs). Vai junto com o .wav para o servidor separar a voz de
+    /// quem gravou da voz dos outros.
+    pub niveis: String,
 }
 
 #[tauri::command]
@@ -78,8 +83,8 @@ pub fn stop_recording(state: State<RecordingState>) -> Result<FimDaGravacao, Str
 
     let caminho = handle.output_path().to_string_lossy().to_string();
     let teve_som = handle.teve_som();
-    handle.stop()?;
-    Ok(FimDaGravacao { caminho, teve_som })
+    let niveis = handle.stop()?;
+    Ok(FimDaGravacao { caminho, teve_som, niveis })
 }
 
 /// Pausa/retoma a gravação em andamento. Devolve o estado resultante, para o
@@ -140,4 +145,18 @@ pub fn start_with_windows_state(app: AppHandle) -> Option<bool> {
 #[tauri::command]
 pub async fn set_start_with_windows(app: AppHandle, enabled: bool) -> Result<bool, String> {
     inicio::definir_pela_pessoa(&app, enabled)
+}
+
+/// "Baixar a transcrição" no app: salva em Downloads (com " (2)" se o nome já
+/// existir) e abre o Explorador com o arquivo selecionado. Devolve o caminho.
+/// Num executável antigo este comando não existe, e a página cai no download
+/// de sempre (ver BaixarTranscricao.jsx). Assíncrono para gravar o arquivo
+/// fora da thread da janela.
+#[tauri::command]
+pub async fn salvar_transcricao(app: AppHandle, nome: String, texto: String) -> Result<String, String> {
+    let pasta = app.path().download_dir().map_err(|e| e.to_string())?;
+    let caminho = arquivo::salvar_sem_sobrescrever(&pasta, &arquivo::nome_seguro(&nome), texto.as_bytes())
+        .map_err(|e| format!("Não foi possível salvar em Downloads: {e}"))?;
+    arquivo::mostrar_na_pasta(&caminho);
+    Ok(caminho.to_string_lossy().into_owned())
 }

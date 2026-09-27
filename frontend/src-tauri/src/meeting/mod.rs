@@ -19,12 +19,12 @@ mod registro;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use estado::{Evento, Maquina, Uso, POLL_MS};
+use estado::{normalizar_exe, Evento, Maquina, Uso, POLL_MS};
 
 #[derive(Serialize, Clone)]
 struct InicioDeReuniao {
@@ -72,12 +72,20 @@ impl Detector {
     }
 }
 
+/// Depois de um aviso do registro, o detector espera um instante antes de ler:
+/// abrir o microfone mexe em mais de um valor seguido, e ler entre um e outro
+/// veria o estado pela metade.
+#[cfg(windows)]
+const JUNTAR_AVISOS_MS: u64 = 100;
+
 fn rodar(app: AppHandle, ligado: Arc<AtomicBool>) {
-    let mut maquina = Maquina::nova(POLL_MS);
+    let mut maquina = Maquina::default();
     let mut estava_ligado = true;
+    let relogio = Instant::now();
+    let espera = Espera::nova();
 
     loop {
-        thread::sleep(Duration::from_millis(POLL_MS));
+        espera.proxima();
 
         if !ligado.load(Ordering::SeqCst) {
             // Religado depois, o detector não pode acordar no meio de uma
@@ -90,7 +98,16 @@ fn rodar(app: AppHandle, ligado: Arc<AtomicBool>) {
         }
         estava_ligado = true;
 
-        for evento in maquina.avancar(&ler_usos()) {
+        let agora = relogio.elapsed().as_millis() as u64;
+        let eventos = maquina.avancar(agora, &ler_usos());
+        // Uma linha por decisão no arquivo de log do app
+        // (%LOCALAPPDATA%\com.dito.app\logs): quem abriu o microfone, se o
+        // título casou, quando a reunião começou e terminou. Nunca o título.
+        for nota in maquina.tirar_notas() {
+            log::info!("detector de reunião: {nota}");
+        }
+
+        for evento in eventos {
             match evento {
                 Evento::Started { id, app: qual, titulo } => {
                     let _ = app.emit("meeting-started", InicioDeReuniao { id, app: qual, titulo });
@@ -106,6 +123,48 @@ fn rodar(app: AppHandle, ligado: Arc<AtomicBool>) {
     }
 }
 
+/// Até o próximo passo do detector: o aviso do Windows de que o microfone
+/// mudou, ou a leitura de reserva, o que vier primeiro. Antes era sempre uma
+/// espera fixa de 2 s, e o aviso saía até 2 s mais tarde do que podia.
+#[cfg(windows)]
+struct Espera(Option<registro::Vigia>);
+
+#[cfg(windows)]
+impl Espera {
+    fn nova() -> Self {
+        let vigia = registro::Vigia::novo();
+        if vigia.is_none() {
+            log::warn!("detector de reunião: sem aviso do registro, só a leitura a cada {POLL_MS} ms");
+        }
+        Espera(vigia)
+    }
+
+    fn proxima(&self) {
+        match &self.0 {
+            Some(vigia) => {
+                if vigia.esperar(POLL_MS as u32) {
+                    thread::sleep(Duration::from_millis(JUNTAR_AVISOS_MS));
+                }
+            }
+            None => thread::sleep(Duration::from_millis(POLL_MS)),
+        }
+    }
+}
+
+#[cfg(not(windows))]
+struct Espera;
+
+#[cfg(not(windows))]
+impl Espera {
+    fn nova() -> Self {
+        Espera
+    }
+
+    fn proxima(&self) {
+        thread::sleep(Duration::from_millis(POLL_MS));
+    }
+}
+
 #[cfg(windows)]
 fn ler_usos() -> Vec<Uso> {
     let abertos = registro::em_uso();
@@ -113,14 +172,17 @@ fn ler_usos() -> Vec<Uso> {
         return Vec::new();
     }
     // Os títulos só são lidos quando há algum microfone aberto: varrer todas as
-    // janelas a cada dois segundos sem necessidade seria pagar caro por nada.
+    // janelas a cada leitura sem necessidade seria pagar caro por nada.
     let titulos = janelas::titulos_por_executavel();
     abertos
         .into_iter()
-        .map(|exe| Uso {
-            titulos: titulos.get(&exe).cloned().unwrap_or_default(),
-            exe,
-            em_uso: true,
+        .map(|nome| {
+            let exe = normalizar_exe(&nome);
+            Uso {
+                titulos: titulos.get(&exe).cloned().unwrap_or_default(),
+                exe,
+                em_uso: true,
+            }
         })
         .collect()
 }

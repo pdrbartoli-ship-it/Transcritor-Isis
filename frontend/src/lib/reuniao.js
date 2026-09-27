@@ -32,12 +32,25 @@ export const SEM_SALDO_POR_DIA = 1
 // Quanto tempo os avisos sem botão (saldo acabando) ficam na tela.
 export const AVISO_PASSAGEM_S = 10
 
-// O nome que aparece no título. Vem do evento do Rust, que só classifica em
-// três; qualquer outra coisa não vira reunião.
+// O nome que aparece no título. Vem do evento do Rust, que classifica em três
+// apps de reunião; qualquer outra coisa não vira reunião.
 export const NOME_APP = { zoom: 'Zoom', teams: 'Teams', meet: 'Google Meet' }
 
+// O navegador que ficou um minuto com o microfone aberto sem mostrar título de
+// reunião (Meet numa aba de trás, chamada no WhatsApp Web). O Rust manda o nome
+// dele no lugar do app, e o aviso diz "Chamada", porque não dá para saber qual
+// é. Os nomes são os de NAVEGADORES em src-tauri/src/meeting/estado.rs.
+export const NOME_NAVEGADOR = {
+  chrome: 'Chrome', edge: 'Edge', firefox: 'Firefox', brave: 'Brave',
+  opera: 'Opera', vivaldi: 'Vivaldi', arc: 'Arc',
+}
+
 export function nomeDoApp(app) {
-  return NOME_APP[app] || 'reunião'
+  return NOME_APP[app] || NOME_NAVEGADOR[app] || 'reunião'
+}
+
+export function tituloDoAviso(app) {
+  return NOME_NAVEGADOR[app] ? `Chamada no ${NOME_NAVEGADOR[app]}` : `Reunião no ${nomeDoApp(app)}`
 }
 
 const ACOES_CONVITE = [
@@ -66,7 +79,7 @@ export function variantePorSaldo(restanteMin) {
 // Monta o que a janelinha desenha. Ela é burra de propósito: recebe título,
 // corpo e botões prontos, e devolve o id do que foi clicado.
 export function montarConvite({ variante, app, restanteMin }) {
-  const titulo = `Reunião no ${nomeDoApp(app)}`
+  const titulo = tituloDoAviso(app)
   const minutos = Math.floor(restanteMin ?? 0)
 
   if (variante === 'sem-saldo') {

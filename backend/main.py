@@ -1176,6 +1176,14 @@ def bloco_de_contexto(contexto: dict | None) -> str:
             f"- Quem gravou se chama {contexto['nome']}. Quando der para saber qual voz é a dela "
             "(ela se apresenta, é chamada assim, ou é quem conduz a conversa), use esse nome."
         )
+    if contexto.get("canais"):
+        quem = contexto.get("nome") or "quem gravou"
+        linhas.append(
+            "- As vozes foram separadas pela origem do som. As linhas marcadas (Você) saíram do "
+            f"microfone de {quem} e são SEMPRE dessa pessoa. As marcadas (Outros) saíram do som do "
+            "computador e são das outras pessoas da chamada, que podem ser mais de uma: separe-as "
+            "pelo que dizem. Linhas sem marca não deu para separar."
+        )
     if not linhas:
         return ""
     return "Contexto da gravação (não é parte do que foi dito):\n" + "\n".join(linhas) + "\n\n"
@@ -1397,25 +1405,43 @@ def format_duration(total_seconds: float) -> str:
         return f"~{hours}h{mins:02d}min"
 
 
+# Como a origem de cada trecho aparece para a IA numa gravação do app de
+# Windows (ver marcar_canais). A explicação vai no bloco de contexto.
+ROTULO_DO_CANAL = {"voce": "(Você) ", "outros": "(Outros) "}
+
+
 def format_timed_transcript(segments: list[dict], window: int = 30) -> str:
     """Transcrição com marcadores de tempo, agrupada em janelas de ~30s.
 
     Marcar cada segmento do Whisper (2-8s) custaria muito token para pouca
     precisão; a janela de 30s dá ao modelo referência suficiente para montar
-    capítulos e recortes, com ~3% de overhead."""
+    capítulos e recortes, com ~3% de overhead.
+
+    Quando os trechos sabem de que lado vieram (`canal`), a linha também fecha
+    na troca de lado e ganha o rótulo dele: é o marcador de tempo exato de cada
+    troca de voz que a IA precisa para as speaker_turns."""
     if not segments:
         return ""
 
-    lines, bucket, bucket_start = [], [], None
+    lines, bucket, bucket_start, canal = [], [], None, None
+
+    def fechar():
+        rotulo = ROTULO_DO_CANAL.get(canal, "")
+        lines.append(f"[{format_timestamp(bucket_start or 0)}] {rotulo}{' '.join(bucket)}")
+
     for seg in segments:
+        if bucket and seg.get("canal") != canal:
+            fechar()
+            bucket, bucket_start = [], None
         if bucket_start is None:
             bucket_start = seg["start"]
+            canal = seg.get("canal")
         bucket.append(seg["text"])
         if seg["end"] - bucket_start >= window:
-            lines.append(f"[{format_timestamp(bucket_start)}] {' '.join(bucket)}")
+            fechar()
             bucket, bucket_start = [], None
     if bucket:
-        lines.append(f"[{format_timestamp(bucket_start or 0)}] {' '.join(bucket)}")
+        fechar()
     return "\n".join(lines)
 
 
@@ -1729,9 +1755,13 @@ async def extract_insights(
             instrucoes_insights(idioma), f"{cabecalho}Transcrição:\n{body}", INSIGHTS_SCHEMA,
             effort=effort or INSIGHTS_EFFORT,
         )
-        return normalize_insights(insights, segments), tin, tout, cache_read, cache_write, modelo
+        resultado = (normalize_insights(insights, segments), tin, tout, cache_read, cache_write, modelo)
+    else:
+        resultado = await extract_insights_long(body, segments, idioma, contexto)
 
-    return await extract_insights_long(body, segments, idioma, contexto)
+    if contexto and contexto.get("canais"):
+        return (aplicar_canais(resultado[0], segments, contexto.get("nome")), *resultado[1:])
+    return resultado
 
 
 SIMPLE_SUMMARY_SCHEMA = {
@@ -1955,6 +1985,185 @@ def join_chunks(results: list[tuple[str, list[dict]]]) -> tuple[str, list[dict]]
             texts.append(text)
         segments.extend(segs)
     return " ".join(texts), segments
+
+
+# ── Quem falou, numa gravação do app de Windows ─────────────────────────────
+#
+# O gravador do Windows mistura o microfone e o som do computador num .wav só,
+# e manda junto o volume de cada lado a cada 250 ms (src-tauri/src/audio/
+# niveis.rs). É o jeito barato de separar as vozes numa chamada: o que sai do
+# microfone é quem gravou, o que sai do computador são os outros. Sem segunda
+# passada do Whisper e sem custo de IA.
+#
+# Formato: "250:" e depois dois caracteres por janela (microfone, computador),
+# cada um um degrau de 0 a 63 no alfabeto base64 de URL, de -72 dBFS a 0 dBFS.
+NIVEIS_ALFABETO = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+NIVEIS_DEGRAU = {c: i for i, c in enumerate(NIVEIS_ALFABETO)}
+NIVEIS_PISO_DB = -72.0
+# 8 horas em janelas de 250 ms são 230 mil caracteres.
+NIVEIS_MAX = 400_000
+# O som do computador é limpo: silêncio digital quando ninguém fala do outro
+# lado. Acima disto, alguém está falando na chamada.
+LIMIAR_OUTROS_DB = -50.0
+# O microfone sempre tem o rumor da sala. Conta como voz o que passa este tanto
+# acima do piso dele, ou o que passa de -35 dBFS de qualquer jeito.
+FOLGA_MICROFONE_DB = 12.0
+TETO_LIMIAR_MICROFONE_DB = -35.0
+# Se os outros quase não falaram (gravação presencial, ou nenhuma chamada no
+# computador), o microfone tem todas as vozes da sala, e dizer que tudo é de
+# quem gravou seria errado. Abaixo disto, a separação fica com a IA, como antes.
+MIN_FRACAO_OUTROS = 0.03
+
+
+def ler_niveis(bruto: str | None) -> tuple[float, list[float], list[float]] | None:
+    """(tamanho da janela em segundos, dB do microfone, dB do computador), ou
+    None quando não veio nada ou o texto não está no formato."""
+    if not bruto or len(bruto) > NIVEIS_MAX:
+        return None
+    cabeca, _, pares = bruto.partition(":")
+    try:
+        janela_ms = int(cabeca)
+        degraus = [NIVEIS_DEGRAU[c] for c in pares]
+    except (ValueError, KeyError):
+        return None
+    if not 50 <= janela_ms <= 2000 or not degraus or len(degraus) % 2:
+        return None
+    em_db = [NIVEIS_PISO_DB + d * (-NIVEIS_PISO_DB) / 63 for d in degraus]
+    return janela_ms / 1000, em_db[0::2], em_db[1::2]
+
+
+def marcar_canais(segments: list[dict], niveis: str | None) -> bool:
+    """Põe `canal` ("voce" ou "outros") em cada trecho do Whisper cujo lado dá
+    para saber. Devolve se marcou alguma coisa.
+
+    Um trecho é dos outros quando o som do computador tinha voz; é de quem
+    gravou quando só o microfone tinha. O som do computador manda porque é
+    limpo: sem fone de ouvido, a voz dos outros vaza para o microfone (o eco),
+    mas nunca o contrário. Por isso eco não vira "você"."""
+    lido = ler_niveis(niveis)
+    if not lido or not segments:
+        return False
+    janela, mic, sis = lido
+    total = len(sis)
+
+    outros_falando = [db >= LIMIAR_OUTROS_DB for db in sis]
+    if sum(outros_falando) < MIN_FRACAO_OUTROS * total:
+        return False
+
+    piso = sorted(mic)[len(mic) // 5]
+    limiar_mic = min(piso + FOLGA_MICROFONE_DB, TETO_LIMIAR_MICROFONE_DB)
+    so_voce = [m >= limiar_mic and not o for m, o in zip(mic, outros_falando)]
+
+    marcou = False
+    for seg in segments:
+        i0 = max(0, int(seg["start"] / janela))
+        i1 = min(total, max(i0 + 1, int(-(-seg["end"] // janela))))
+        outros = sum(outros_falando[i0:i1])
+        voce = sum(so_voce[i0:i1])
+        if not outros and not voce:
+            continue
+        seg["canal"] = "voce" if voce > outros else "outros"
+        marcou = True
+    return marcou
+
+
+def falante_em(turns: list[dict], segundos: float) -> str | None:
+    """A mesma regra da tela (speakerAt, em conversa/shared.js): o dono de uma
+    fala é a última marca de troca antes dela."""
+    atual = None
+    for t in turns:
+        if t.get("start", 0) > segundos + 0.5:
+            break
+        atual = t.get("speaker")
+    return atual
+
+
+def aplicar_canais(insights: dict, segments: list[dict], nome: str | None) -> dict:
+    """Refaz as trocas de voz a partir dos canais, depois da IA.
+
+    A IA recebe os rótulos (Você)/(Outros) e quase sempre acerta, mas a regra
+    prometida é mais firme: tudo o que saiu do microfone é de quem gravou. Aqui
+    ela vale sem exceção. Do lado dos outros, quem é quem continua sendo da IA
+    (dois participantes do outro lado só se separam pelo que dizem).
+
+    O nome de quem gravou é o das Configurações; sem ele, o que a IA descobriu
+    com segurança (alguém o chamou pelo nome); sem nenhum dos dois, "Você"."""
+    marcados = [s for s in segments if s.get("canal")]
+    if not marcados or not insights:
+        return insights
+    turnos_ia = insights.get("speaker_turns") or []
+    locutores = insights.get("speakers") or []
+
+    def contar(canal: str, fora: tuple = ()) -> list[tuple[str, int]]:
+        votos: dict[str, int] = defaultdict(int)
+        for s in marcados:
+            if s["canal"] == canal:
+                quem = falante_em(turnos_ia, s["start"])
+                if quem and quem not in fora:
+                    votos[quem] += 1
+        return sorted(votos.items(), key=lambda kv: -kv[1])
+
+    votos_voce = contar("voce")
+    voz_ia = votos_voce[0][0] if votos_voce else None
+    ficha_ia = next((l for l in locutores if (l.get("name") or l.get("label")) == voz_ia), None)
+    nome_seguro_da_ia = voz_ia if ficha_ia and ficha_ia.get("name") and ficha_ia.get("confidence") == "alta" else None
+    voce = nome or nome_seguro_da_ia or "Você"
+
+    # Para o trecho dos outros que a IA deu à voz do microfone (ou a ninguém):
+    # quem ela mais pôs do lado dos outros; senão, qualquer outra pessoa que ela
+    # tenha achado na conversa; senão, um "Participante" para renomear depois.
+    candidatos = (
+        [quem for quem, _ in contar("outros", fora=(voz_ia, voce))]
+        + [t.get("speaker") for t in turnos_ia]
+        + [l.get("name") or l.get("label") for l in locutores]
+    )
+    outros_padrao = next((q for q in candidatos if q and q not in (voz_ia, voce)), "Participante")
+
+    turnos, atual = [], None
+    for s in sorted(segments, key=lambda s: s["start"]):
+        canal = s.get("canal")
+        if canal == "voce":
+            quem = voce
+        else:
+            quem = falante_em(turnos_ia, s["start"])
+            if canal == "outros" and quem in (None, voz_ia, voce):
+                quem = outros_padrao
+            elif quem == voz_ia:
+                quem = voce
+        if quem and quem != atual:
+            turnos.append({"start": s["start"], "speaker": quem})
+            atual = quem
+
+    # A lista de locutores segue as trocas novas: quem sumiu delas sai, a voz
+    # do microfone ganha o nome de quem gravou, e quem entrou sem ficha ganha
+    # uma, com um rótulo que ainda não está em uso.
+    usados = list(dict.fromkeys(t["speaker"] for t in turnos))
+    fichas = []
+    for l in locutores:
+        chave = l.get("name") or l.get("label")
+        if chave == voz_ia and voz_ia is not None:
+            fichas.append({**l, "name": voce, "confidence": "alta"})
+        elif chave in usados:
+            fichas.append(l)
+    rotulos = {l.get("label") for l in fichas}
+    for quem in usados:
+        if any((l.get("name") or l.get("label")) == quem for l in fichas):
+            continue
+        n = len(fichas) + 1
+        while f"Locutor {n}" in rotulos:
+            n += 1
+        rotulos.add(f"Locutor {n}")
+        fichas.append({
+            "label": f"Locutor {n}", "name": quem,
+            "confidence": "alta" if quem == voce else "baixa",
+        })
+    fichas = [l for l in fichas if (l.get("name") or l.get("label")) in usados]
+
+    todos = [
+        {**t, "owners": [voce if o == voz_ia else o for o in (t.get("owners") or [])]}
+        for t in insights.get("todos") or []
+    ]
+    return {**insights, "speaker_turns": turnos, "speakers": fichas, "todos": todos}
 
 
 async def process_audio_path(input_path: str, filename: str) -> tuple[str, list[dict], int, str, float]:
@@ -2297,6 +2506,7 @@ async def transcribe(
     language: str = Form(IDIOMA_AUTO),
     origem: str = Form("file"),
     nome: str | None = Form(None),
+    niveis: str | None = Form(None),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -2328,6 +2538,7 @@ async def transcribe(
                 contexto={
                     "origem": origem if origem in ORIGENS_DE_CAPTURA else "file",
                     "nome": normalizar_nome(nome),
+                    "canais": marcar_canais(segments, niveis),
                 },
             )
         finally:
@@ -2485,6 +2696,7 @@ async def criar_transcricao(
     language: str = Form(IDIOMA_AUTO),
     duracao_s: int | None = Form(None),
     nome: str | None = Form(None),
+    niveis: str | None = Form(None),
     user_id: str | None = Depends(guarda_de_captura),
 ):
     if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
@@ -2520,7 +2732,10 @@ async def criar_transcricao(
             return await analisar_transcricao(
                 modo, full_transcript, segments, num_chunks, duration_str, audio_seconds,
                 user_id=user_id, idioma=idioma,
-                contexto={"origem": origem, "nome": normalizar_nome(nome)},
+                contexto={
+                    "origem": origem, "nome": normalizar_nome(nome),
+                    "canais": marcar_canais(segments, niveis),
+                },
             )
         # A mesma chave de /transcribe: o mesmo áudio mandado pelos dois
         # caminhos ao mesmo tempo (o app caindo de um para o outro) é um
@@ -3001,8 +3216,12 @@ async def insights(request: InsightsRequest, user_id: str | None = Depends(guard
             ),
         )
 
+    # Uma gravação do Windows que saiu simples guarda de que lado veio cada
+    # trecho; reanalisada, as vozes continuam separadas do mesmo jeito.
+    canais = any(isinstance(s, dict) and s.get("canal") in ROTULO_DO_CANAL for s in request.segments)
     data, in_tokens, out_tokens, cache_read, cache_write, modelo = await extract_insights(
         request.transcript, request.segments, idioma=normalizar_idioma(request.language),
+        contexto={"canais": True} if canais else None,
     )
     return InsightsResponse(
         insights=data,

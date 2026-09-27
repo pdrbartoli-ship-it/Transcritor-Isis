@@ -34,6 +34,10 @@ export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}
   // nesse intervalo — parecia que a gravação tinha se perdido.
   const [isFinalizing, setIsFinalizing] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState(null)
+  // Só no app de Windows: o volume do microfone e o do som do computador a
+  // cada 250 ms, que o servidor usa para separar a voz de quem gravou da voz
+  // dos outros (src-tauri/src/audio/niveis.rs). Vai junto com o áudio.
+  const [recordedNiveis, setRecordedNiveis] = useState(null)
   const [recordingTime, setRecordingTime] = useState(0)
   const [erro, setErro] = useState(null)
 
@@ -203,6 +207,7 @@ export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}
 
   function resetRecording() {
     setRecordedBlob(null)
+    setRecordedNiveis(null)
     setRecordingTime(0)
     setIsRecording(false)
     setIsPaused(false)
@@ -496,6 +501,9 @@ export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}
           return
         }
         const bytes = await readFile(caminho)
+        // Instaladores antigos não mandam os níveis: a transcrição sai como
+        // antes, com a IA separando as vozes só pelo texto.
+        setRecordedNiveis(typeof fim === 'string' ? null : fim.niveis || null)
         setRecordedBlob(new Blob([bytes], { type: 'audio/wav' }))
       } catch (err) {
         setErro(typeof err === 'string' ? err : 'Não foi possível finalizar a gravação.')
@@ -537,7 +545,7 @@ export function useGravacao({ userId, convidado = false, aoEncerrarDeFora } = {}
   stopRef.current = stopRecording
 
   return {
-    isRecording, isPaused, isFinalizing, recordedBlob, recordingTime, getLevel,
+    isRecording, isPaused, isFinalizing, recordedBlob, recordedNiveis, recordingTime, getLevel,
     erro, setErro,
     avisoSaldo, paradaPorSaldo, avisoGravacao,
     // Os instantes crus vazam de propósito: a janelinha flutuante calcula o
