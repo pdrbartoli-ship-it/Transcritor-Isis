@@ -111,11 +111,11 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
             // nas montagens com a extensão (26/09/2026 em diante).
             <>
               <ol className="passos-whatsapp">
-                <li>No WhatsApp, toque e segure o áudio</li>
+                <li><span>No WhatsApp, toque e segure o áudio</span></li>
                 {isAndroid
-                  ? <li>Toque em <strong>Compartilhar</strong></li>
-                  : <li>Toque em <strong>Encaminhar</strong> e no botão de compartilhar, no canto de baixo</li>}
-                <li>Escolha o <strong>Dito</strong></li>
+                  ? <li><span>Toque em <strong>Compartilhar</strong></span></li>
+                  : <li><span>Toque em <strong>Encaminhar</strong> e no botão de compartilhar, no canto de baixo</span></li>}
+                <li><span>Escolha o <strong>Dito</strong></span></li>
               </ol>
               <button className="btn-link" onClick={() => !loading && fileRef.current?.click()} disabled={loading}>
                 Ou escolha um arquivo do celular
@@ -145,6 +145,15 @@ export default function CaptureNative({ capture, variant, mode = 'record', mini,
         <div className="capture-mode">
           <p className="capture-mode-title">{MODE_TITLE.url}</p>
           <UrlForm url={url} setUrl={setUrl} onSubmit={handleUrl} loading={loading} />
+          {/* O painel de compartilhar do YouTube é dele: mostra só os apps que
+              ele escolhe, e o resto do aparelho fica atrás do "Mais". */}
+          {recebeCompartilhado() && !url.trim() && (
+            <p className="text-muted text-sm passos-video">
+              {isAndroid
+                ? <>Ou, no YouTube, toque em <strong>Compartilhar</strong> e escolha o <strong>Dito</strong>.</>
+                : <>Ou, no YouTube, toque em <strong>Compartilhar</strong>, depois em <strong>Mais</strong>, e escolha o <strong>Dito</strong>.</>}
+            </p>
+          )}
         </div>
       )}
 

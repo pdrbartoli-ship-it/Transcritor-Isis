@@ -6,6 +6,7 @@ import { askAcervo, embeddar, entenderPergunta } from '../lib/api'
 import { track } from '../lib/analytics'
 import ChatTextarea from '../components/chat/ChatTextarea'
 import MarkdownText from '../components/chat/MarkdownText'
+import CopiarResposta from '../components/chat/CopiarResposta'
 import FeedbackModal from '../components/FeedbackModal'
 import SemSaldo from '../components/SemSaldo'
 import { IconClock, IconFlag, IconSend } from '../components/Icons'
@@ -569,15 +570,18 @@ export default function Perguntar() {
                         {m.busca && (
                           <p className="acervo-procura">{textoDaProcura(m.busca, m.fontes)}</p>
                         )}
-                        <button
-                          type="button"
-                          className="btn-sinalizar-resposta"
-                          onClick={() => setReportando(true)}
-                          title="Sinalizar conteúdo da IA"
-                          aria-label="Sinalizar conteúdo da IA"
-                        >
-                          <IconFlag width={13} height={13} />
-                        </button>
+                        <div className="resposta-acoes">
+                          <CopiarResposta texto={m.texto} origem="perguntar" />
+                          <button
+                            type="button"
+                            className="btn-sinalizar-resposta"
+                            onClick={() => setReportando(true)}
+                            title="Sinalizar conteúdo da IA"
+                            aria-label="Sinalizar conteúdo da IA"
+                          >
+                            <IconFlag width={13} height={13} />
+                          </button>
+                        </div>
                       </div>
                     </>
                   ) : m.texto}

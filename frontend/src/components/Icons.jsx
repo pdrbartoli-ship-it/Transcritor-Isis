@@ -80,6 +80,9 @@ export const IconMore = (p) => (
 export const IconDownload = (p) => (
   <svg {...base} {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
 )
+export const IconCopy = (p) => (
+  <svg {...base} {...p}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>
+)
 export const IconCheck = (p) => (
   <svg {...base} {...p}><polyline points="20 6 9 17 4 12" /></svg>
 )

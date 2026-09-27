@@ -8,6 +8,7 @@ import { CapacitorUpdater } from '@capgo/capacitor-updater'
 import { isNative } from './lib/platform'
 import { temaEfetivo, syncNativeChrome } from './lib/prefs'
 import { guardarConviteDaUrl } from './lib/convite'
+import { iniciarTeclado } from './lib/teclado'
 
 // Live update (OTA): o app baixa versões novas do site em segundo plano, para
 // que correções de tela e de lógica não dependam de reinstalar o APK. Só
@@ -34,6 +35,9 @@ if (!isNative() && 'serviceWorker' in navigator) {
 // a janela nativa precisa do mesmo aviso, senão abre com a barra de título do
 // tema errado até o usuário mexer nas configurações.
 syncNativeChrome(temaEfetivo())
+
+// No iPhone, o app encolhe junto com o teclado (ver lib/teclado.js).
+iniciarTeclado()
 
 // Quem chegou pelo link de convite de um amigo (?c=codigo): o código fica
 // guardado até a pessoa criar a conta. Antes do React, porque o roteador lê o

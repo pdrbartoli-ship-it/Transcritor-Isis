@@ -3,7 +3,7 @@
 // IA de novo, então abrir um tópico, uma tarefa ou um intervalo é instantâneo
 // e não custa nada.
 
-import { isNative, platformName } from '../../lib/platform'
+import { isNative } from '../../lib/platform'
 
 export function formatTimestamp(seconds) {
   const total = Math.max(0, Math.floor(seconds || 0))
@@ -82,16 +82,19 @@ export function downloadText(filename, content) {
   URL.revokeObjectURL(url)
 }
 
-// No Android o link de download some numa pasta que o usuário não sabe achar
-// dentro da WebView. A folha de compartilhamento nativa (Web Share API, já
-// suportada pelo WebView do sistema) resolve isso de graça: o próprio usuário
-// escolhe "Salvar em Arquivos", "Abrir com" etc. Nas outras plataformas o
-// download comum já deixa o navegador/SO oferecer onde salvar.
+// Nos apps de celular o link de download não serve: no Android o arquivo some
+// numa pasta que ninguém sabe achar, e no iPhone ele não vai a lugar nenhum
+// (o app não tem para onde baixar). A folha de compartilhar do sistema (Web
+// Share API, que os dois WebViews já trazem) resolve de graça: dali a pessoa
+// escolhe "Salvar em Arquivos", o WhatsApp, o e-mail. No navegador o download
+// comum já deixa o sistema oferecer onde salvar.
 export async function downloadOrShareText(filename, content) {
-  if (isNative() && platformName() === 'android') {
+  if (isNative() && navigator.share) {
     try {
       const file = new File([content], filename, { type: 'text/plain' })
-      if (navigator.canShare?.({ files: [file] })) {
+      // Sem o canShare, tenta assim mesmo: o share recusa sozinho, e o
+      // download comum assume.
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: filename })
         return 'shared'
       }

@@ -271,7 +271,9 @@ export default function Layout() {
     const timer = setTimeout(async () => {
       try {
         const found = await searchConversations(user.id, query)
-        if (runRef.current === run) setResults(found)
+        // O termo vai junto: o grifo é o do que achou estes resultados, e não
+        // o do que já está digitado enquanto a próxima busca não volta.
+        if (runRef.current === run) setResults({ ...found, termo: query })
       } finally {
         if (runRef.current === run) setSearching(false)
       }
@@ -816,11 +818,20 @@ function ContaSheet({ email, apoiador, vendeAqui, onClose, onSettings, onFeedbac
   )
 }
 
+// O termo buscado, grifado onde aparece: é o que diz de relance por que
+// aquela conversa está na lista. Sem diferenciar maiúscula, como a busca.
+function Grifo({ texto, termo }) {
+  if (!texto || !termo) return texto || null
+  const escapado = termo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const partes = String(texto).split(new RegExp(`(${escapado})`, 'gi'))
+  return partes.map((parte, i) => (i % 2 ? <mark key={i} className="grifo">{parte}</mark> : parte))
+}
+
 // Duas seções, na ordem em que o usuário pensa: o que ele lembra do título
 // primeiro, o que só foi dito em algum ponto depois — com o trecho em volta,
 // para ele ver por que aquela conversa apareceu.
 function SearchResults({ results, searching, onOpen }) {
-  const { titles, transcripts } = results
+  const { titles, transcripts, termo } = results
   if (searching && !titles.length && !transcripts.length) {
     return <p className="sidebar-empty">Buscando…</p>
   }
@@ -835,7 +846,7 @@ function SearchResults({ results, searching, onOpen }) {
           {titles.map(c => (
             <button key={c.id} className="sidebar-item" onClick={() => onOpen(c.id)} title={displayTitle(c)}>
               <KindIcon sourceType={c.source_type} />
-              <span className="sidebar-item-text">{displayTitle(c)}</span>
+              <span className="sidebar-item-text"><Grifo texto={displayTitle(c)} termo={termo} /></span>
             </button>
           ))}
         </>
@@ -846,7 +857,7 @@ function SearchResults({ results, searching, onOpen }) {
           {transcripts.map(c => (
             <button key={c.id} className="sidebar-item tall" onClick={() => onOpen(c.id)} title={displayTitle(c)}>
               <span className="sidebar-item-text">{displayTitle(c)}</span>
-              <span className="sidebar-item-sub">{c.excerpt}</span>
+              <span className="sidebar-item-sub"><Grifo texto={c.excerpt} termo={termo} /></span>
               <span className="sidebar-item-sub muted">{formatCapturedAt(c.created_at)}</span>
             </button>
           ))}

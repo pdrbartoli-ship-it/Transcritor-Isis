@@ -7,6 +7,7 @@ import { track } from '../../lib/analytics'
 import ChatTextarea from '../../components/chat/ChatTextarea'
 import SemSaldo from '../../components/SemSaldo'
 import MarkdownText from '../../components/chat/MarkdownText'
+import CopiarResposta from '../../components/chat/CopiarResposta'
 import { IconSend, IconMessage } from '../../components/Icons'
 import ConversaHeader from './ConversaHeader'
 import { cifrarMensagem, decifrarMensagens } from '../../lib/cofre'
@@ -253,7 +254,14 @@ export default function Chat() {
             className={`message ${m.role}${m.id && m.id === focar ? ' message-focada' : ''}`}
           >
             <div className="bubble">
-              {m.role === 'assistant' ? <MarkdownText text={m.content} /> : m.content}
+              {m.role === 'assistant' ? (
+                <>
+                  <MarkdownText text={m.content} />
+                  <div className="resposta-acoes">
+                    <CopiarResposta texto={m.content} origem="conversa" />
+                  </div>
+                </>
+              ) : m.content}
             </div>
           </div>
         ))}

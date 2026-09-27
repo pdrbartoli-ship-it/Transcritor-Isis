@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconClose, IconSelo } from './Icons'
+import { IconCheck, IconClose, IconCopy, IconSelo } from './Icons'
 import { TEXTO_CONVITE, linkCurto } from '../lib/convite'
 import { pedirNotificacoes } from '../lib/notificacoes'
 
@@ -83,8 +83,15 @@ export default function ConviteModal({ convite, onAtualizar, onClose }) {
                 onFocus={e => e.target.select()}
                 aria-label="Seu link de convite"
               />
-              {/* Sem a folha de compartilhar, copiar é o gesto principal. */}
-              <button type="button" className={podeCompartilhar ? 'btn-ghost' : 'btn-primary'} onClick={copiar}>
+              {/* Sem a folha de compartilhar, copiar é o gesto principal. Com
+                  ela, é o segundo, mas continua com cara de botão: o contorno
+                  apagado de antes não parecia clicável no iPhone. */}
+              <button
+                type="button"
+                className={podeCompartilhar ? `btn-secondary convite-copiar${copiado ? ' feito' : ''}` : 'btn-primary'}
+                onClick={copiar}
+              >
+                {podeCompartilhar && (copiado ? <IconCheck width={16} height={16} /> : <IconCopy width={16} height={16} />)}
                 {copiado ? 'Copiado' : 'Copiar'}
               </button>
             </div>

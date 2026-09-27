@@ -487,3 +487,84 @@ html, body { overscroll-behavior: none; }
 @media (max-width: 760px) {
   .gaveta-convite .foot-convite-site { min-height: 44px; margin-top: 4px; font-size: 14px; }
 }
+
+/* ── Teclado do iPhone ─────────────────────────────────────
+   lib/teclado.js põe em --teclado a altura do teclado no instante em que ele
+   começa a subir ou descer, e o app encolhe na mesma duração: a barra de
+   perguntar sobe junto com o teclado, sempre por cima dele. As peças fixas na
+   tela (a lateral, as folhas, os avisos) sobem junto.
+
+   A altura do teclado já inclui a faixa do indicador de início, que o app
+   reserva embaixo (--sab). Descontá-la deixa a barra com a folga de sempre
+   acima do teclado, sem saltar quando a faixa deixa de estar à vista. */
+:root { --teclado: 0px; --teclado-sobe: 0px; }
+html.teclado-ios { --teclado-sobe: max(0px, calc(var(--teclado) - var(--sab))); }
+html.teclado-ios #root {
+  height: calc(100% - var(--teclado-sobe));
+  /* O login é mais alto que o que sobra acima do teclado; sem a rolagem do
+     documento (desligada no iPhone), quem rola é esta caixa. */
+  overflow-y: auto;
+  transition: height .28s cubic-bezier(.2, .8, .2, 1);
+}
+html.teclado-ios .modal-overlay {
+  bottom: var(--teclado-sobe);
+  transition: bottom .28s cubic-bezier(.2, .8, .2, 1);
+}
+@media (max-width: 760px) {
+  /* A altura de 100% (index.css) venceria o `bottom`: com as duas, a caixa
+     fica com a altura e ignora onde deveria terminar. */
+  html.teclado-ios .sidebar {
+    height: auto; bottom: var(--teclado-sobe);
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1), bottom .28s cubic-bezier(.2, .8, .2, 1);
+  }
+  html.teclado-ios .toast-stack { bottom: calc(96px + var(--sab) + var(--teclado-sobe)); }
+  html.teclado-ios .premio-aviso { bottom: calc(16px + var(--sab) + var(--teclado-sobe)); }
+}
+
+/* ── Passos numerados (WhatsApp) ──────────────────────────
+   O texto de cada passo vai num <span> só: solto no <li>, que é flex, cada
+   pedaço (o texto, o negrito, o resto) virava uma coluna, e a frase saía
+   partida em três blocos desalinhados. */
+.passos-whatsapp li > span { min-width: 0; }
+.passos-video { margin: 4px 0 0; text-align: center; }
+
+/* ── Ações embaixo da resposta ────────────────────────────
+   Copiar fica à vista, como no Claude: é o que mais se faz com uma resposta.
+   A bandeira continua apagada ao lado. */
+.resposta-acoes { display: flex; align-items: center; gap: 2px; margin-left: -6px; }
+.resposta-rodape .resposta-acoes { margin-left: auto; }
+.resposta-rodape .resposta-acoes .btn-sinalizar-resposta { margin-left: 0; }
+.message.assistant > .bubble > .resposta-acoes { margin-top: 8px; }
+.btn-copiar-resposta {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border: none; border-radius: 6px; background: none;
+  color: var(--text-muted); cursor: pointer; transition: color .15s, background .15s;
+}
+.btn-copiar-resposta:hover, .btn-copiar-resposta:focus-visible { color: var(--text); background: var(--hover); }
+.btn-copiar-resposta.feito { color: var(--accent); }
+@media (pointer: coarse) {
+  .btn-copiar-resposta { width: 40px; height: 40px; }
+}
+
+/* ── Termo buscado, grifado nos resultados ────────────────── */
+mark.grifo {
+  background: var(--accent-soft); color: var(--text);
+  font-weight: 600; border-radius: 3px; padding: 0 1px;
+}
+
+/* ── Link do convite ──────────────────────────────────────
+   O "Copiar" era um contorno apagado ao lado do campo, e não parecia botão.
+   Agora é cheio, com o ícone, e fica verde quando copia. */
+.convite-link .convite-copiar {
+  flex-shrink: 0; min-width: 104px; justify-content: center;
+  background: var(--surface-2); border-color: var(--border); color: var(--text); font-weight: 600;
+}
+.convite-link .convite-copiar.feito { color: var(--accent); border-color: var(--accent); }
+@media (hover: none) {
+  .convite-link .convite-copiar:hover:not(:disabled) { background: var(--surface-2); }
+  .convite-link .convite-copiar:active { background: var(--hover); }
+}
+@media (max-width: 760px) {
+  .convite-link input { min-height: 46px; }
+  .convite-link .convite-copiar { min-height: 46px; }
+}
