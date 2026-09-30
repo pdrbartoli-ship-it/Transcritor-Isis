@@ -119,6 +119,10 @@ https://dito.albiecloud.com/privacidade.html
 A conta já tem três conversas de demonstração e saldo do plano grátis para
 gravar e perguntar.
 
+Para o revisor testar a compra, ela precisa estar no plano grátis no momento do
+envio. Se um teste anterior deixou um plano pago nela, o revisor não encontra os
+botões de assinar — que é exatamente o que ele foi procurar nas duas recusas.
+
 ### Notas
 
 ```
@@ -126,7 +130,11 @@ O Dito grava e transcreve conversas (reuniões, consultas, aulas). O microfone s
 
 A conta de teste já tem conversas de exemplo. Para testar: toque no microfone, fale por alguns segundos, toque em finalizar e aguarde o resumo. Depois, abra a conversa e faça uma pergunta sobre ela.
 
-O app não vende nada dentro dele: não há compra nem assinatura no iPhone. A conta usa o plano grátis.
+Os quatro planos pagos podem ser comprados dentro do app, por In-App Purchase, em "Meu plano" (menu lateral, ou o ícone de conta no celular): Iniciante e Avançado, mensal e anual. A mesma tela tem "Restaurar compras", a frase da renovação automática e os links dos termos de uso e da política de privacidade.
+
+O Dito também é um serviço multiplataforma: a mesma conta é usada no navegador e no aplicativo de Windows, e uma assinatura feita fora do app é reconhecida aqui, como permite a regra 3.1.3(b). Nada dentro do app leva a comprar por fora: não há link, botão nem menção a outra forma de pagamento. Quem já assina por fora vê "Plano atual"; quem não assina compra aqui, pela Apple.
+
+A conta de teste está no plano grátis, então todos os botões de compra aparecem para o revisor.
 
 Para apagar a conta: menu lateral, Configurações, seção Conta, Apagar minha conta.
 

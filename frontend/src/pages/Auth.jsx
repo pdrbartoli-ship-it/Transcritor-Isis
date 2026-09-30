@@ -26,7 +26,17 @@ const ERROR_PT = {
 
 function translateError(message) {
   if (ERROR_PT[message]) return ERROR_PT[message]
-  if (/network|fetch/i.test(message)) return 'Sem conexão com o servidor. Verifique sua internet.'
+  // "Failed to fetch" chega aqui por dois motivos que o navegador não separa:
+  // máquina sem rede, ou conexão até o Supabase barrada no caminho (antivírus
+  // que inspeciona HTTPS, VPN, proxy, filtro de DNS). Mandar "verifique sua
+  // internet" para quem está com a internet boa manda a pessoa caçar o
+  // problema errado: em 28/09/2026 um certificado trocado no caminho travou o
+  // login e esta tela culpou a internet, que estava funcionando.
+  if (/network|fetch/i.test(message)) {
+    return navigator.onLine
+      ? 'Sua internet está funcionando, mas algo bloqueou a conexão com o servidor do Dito. Costuma ser antivírus com verificação de HTTPS, VPN, proxy ou filtro de DNS da rede. Teste pelos dados do celular.'
+      : 'Sem conexão com a internet. Verifique sua rede e tente de novo.'
+  }
   return message
 }
 
@@ -44,6 +54,10 @@ export default function Auth() {
   // sobra é justamente "apagou mesmo?".
   const { state } = useLocation()
   const contaApagada = Boolean(state?.contaApagada)
+  // Quem assinou por dentro do app de celular ainda tem uma assinatura viva na
+  // loja depois de apagar a conta. Só ela pode cancelar, e é aqui que a pessoa
+  // fica sabendo — não há mais nenhuma tela nossa para avisar depois desta.
+  const cancelarNaLoja = state?.cancelarNaLoja || null
   const [mode, setMode] = useState('signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -310,6 +324,16 @@ export default function Auth() {
           {contaApagada && !error && !message && (
             <div className="alert alert-success">
               Sua conta foi apagada. Obrigado por ter usado o Dito.
+            </div>
+          )}
+          {contaApagada && cancelarNaLoja && (
+            <div className="alert alert-warn">
+              Sua assinatura foi comprada {cancelarNaLoja === 'apple' ? 'na App Store' : 'no Google Play'} e
+              continua ativa: só ela pode cancelar. Abra{' '}
+              {cancelarNaLoja === 'apple'
+                ? 'Ajustes → seu nome → Assinaturas'
+                : 'a Play Store → Pagamentos e assinaturas'}{' '}
+              e cancele o Dito para não ser cobrado de novo.
             </div>
           )}
           {error && <div className="alert alert-error">{error}</div>}

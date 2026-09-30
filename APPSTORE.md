@@ -6,6 +6,13 @@ Acompanhamento do app de iPhone. O plano em linguagem não técnica está em
 Decisões tomadas em 22/09/2026: **opção A** (o app de iPhone não vende; quem
 quiser plano pago assina pelo site) e conta de desenvolvedor já criada.
 
+**A opção A caiu em 30/09/2026**, depois da segunda recusa: a regra 3.1.3(b)
+permite a conta valer em todos os aparelhos, mas exige que os mesmos planos
+TAMBÉM possam ser comprados por dentro do app. O app de iPhone passou a vender,
+pela compra da Apple, com preço mais alto para cobrir a comissão. O plano e o
+raciocínio estão em
+[app-store-atualizacao-30.09.md](app-store-atualizacao-30.09.md).
+
 ## O que já está pronto ✅
 
 ### Exclusão de conta dentro do app
@@ -30,17 +37,39 @@ apagar, sem falar com o suporte. Antes isso era feito à mão, pela skill
 
 Vale para as duas lojas e para o site: a Play Store exige o mesmo.
 
-### O app de iPhone não vende
+### ~~O app de iPhone não vende~~ Agora vende, pela Apple
 
-- `platform.js` → `podeVender()` — uma chave só, `false` no iOS. É aqui que a
-  compra da Apple será ligada no dia em que existir.
-- Some no iPhone: "Meu plano" na lateral, o modal de planos, e todo botão "Ver
-  planos" (aviso de saldo, chat esgotado, transcrição completa, captura sem
-  saldo). Onde o botão sumiu, a mensagem que explica continua.
-- `App.jsx` — dentro do app empacotado a landing não abre mais, vai direto ao
-  login. A landing traz a tabela de preços, e preço que não passa pela Apple
-  não pode aparecer dentro do app. Isso mudou também para o Android, onde a
-  landing aparecia sem motivo.
+Implementado em 30/09/2026. `podeVender()` continua sendo a chave única, mas
+agora só desliga a venda num build de iPhone **sem a chave da loja** — sem ela
+a compra não funciona, e uma tela de planos que não compra é pior do que
+nenhuma.
+
+- `frontend/src/lib/compraLoja.js` — tudo o que é específico de loja mora aqui:
+  configuração, leitura de preço, compra, restauração e o endereço onde a
+  assinatura é cancelada. Quem fala com a App Store e com a Play Store é o
+  RevenueCat (`@revenuecat/purchases-capacitor`): um plugin para as duas lojas e
+  um webhook só para o servidor. **Falta colar as chaves públicas** em `CHAVES`,
+  no topo do arquivo.
+- `PlanModal.jsx` — no celular, o preço exibido é o que a loja responde (a Apple
+  aplica imposto e câmbio), a compra é a da loja, e a tela tem "Restaurar
+  compras", a frase da renovação automática e os links de termos e privacidade,
+  que a Apple exige na mesma tela da oferta. Quem assinou pela loja é mandado
+  para os ajustes do aparelho; quem assinou pelo site, para o Portal do Stripe.
+- `backend/main.py` → `POST /billing/webhook-loja` — irmão do webhook do
+  Stripe, grava na mesma tabela com o mesmo vocabulário de status. Cancelar na
+  loja é desligar a renovação, então o plano só cai no vencimento; reembolso cai
+  na hora; cartão recusado vira `past_due` e mantém a carência. Gravação que
+  falha devolve 503 para o RevenueCat reentregar — responder 200 sem gravar
+  perderia uma compra paga.
+- `supabase/assinatura_loja.sql` — as colunas `origem` e `loja_assinatura_id`.
+  **Precisa ser rodado à mão no SQL Editor.** O app e o servidor funcionam antes
+  disso (tratam tudo como Stripe, como antes), mas ninguém consegue comprar pela
+  loja até ele rodar.
+- `App.jsx` — dentro do app empacotado a landing não abre, vai direto ao login.
+  A landing traz a tabela de preços do site, e preço que não passa pela Apple
+  não pode aparecer dentro do app. Continua valendo, e agora importa mais: é o
+  que impede o app de mostrar o preço menor de fora.
+- A landing avisa, fora do app, que pelo iPhone a assinatura sai mais cara.
 
 ### Projeto iOS
 

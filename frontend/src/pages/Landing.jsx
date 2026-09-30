@@ -446,6 +446,15 @@ export default function Landing() {
             Cancele quando quiser, direto no seu plano. O pagamento é processado pelo Stripe
             e o Dito nunca vê o número do seu cartão.
           </p>
+          {/* Não é exigência da Apple — dentro do app ela nem seria permitida
+              (a landing por isso não abre no app nativo, ver App.jsx). É
+              proteção contra o chamado de quem assinou pelo iPhone e depois viu
+              outro preço aqui. Fora do app, dizer isto é permitido sem pedir
+              nada a ninguém. */}
+          <p className="lp-precos-nota">
+            Estes são os preços para quem assina pelo site. Pelo aplicativo do iPhone a
+            assinatura sai mais cara, porque a Apple cobra uma taxa sobre cada cobrança.
+          </p>
         </section>
 
         {/* ── Convite: o que se ganha trazendo alguém ─────────── */}

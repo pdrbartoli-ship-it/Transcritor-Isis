@@ -47,8 +47,14 @@ export default function SettingsModal({
   async function confirmarExclusao() {
     setErro('')
     setPasso('apagando')
+    let cancelarNaLoja = null
     try {
-      await apagarConta()
+      // Assinatura comprada numa loja o servidor não cancela: só quem comprou
+      // pode, nos ajustes do aparelho. A resposta diz qual loja era, para o
+      // aviso não mandar a pessoa para o lugar errado — e ele precisa aparecer,
+      // senão a cobrança continua todo mês numa conta que já não existe.
+      const resposta = await apagarConta()
+      cancelarNaLoja = resposta?.cancelar_na_loja || null
     } catch (e) {
       setErro(e.message || 'Não foi possível apagar sua conta agora. Tente de novo.')
       setPasso('confirmando')
@@ -61,7 +67,7 @@ export default function SettingsModal({
     try { await esquecerDoAparelho() } catch { /* aparelho sem IndexedDB */ }
     try { await apagarIndiceDoAcervo() } catch { /* idem */ }
     try { await supabase.auth.signOut() } catch { /* sessão já morta */ }
-    navigate('/auth', { replace: true, state: { contaApagada: true } })
+    navigate('/auth', { replace: true, state: { contaApagada: true, cancelarNaLoja } })
   }
 
   return (

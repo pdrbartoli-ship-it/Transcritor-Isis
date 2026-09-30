@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { isTauri } from '@tauri-apps/api/core'
+// Importação circular de propósito, no mesmo molde da de api.js com planos.js:
+// compraLoja.js só lê `isNative`/`platformName` daqui dentro de funções, e
+// `podeVender` só chama `chaveDaLoja` dentro de si — nenhum dos dois precisa do
+// outro no instante em que o módulo é avaliado.
+import { chaveDaLoja } from './compraLoja'
 
 // Onde o app está rodando. `isNative` distingue o app empacotado (Capacitor) do
 // site; `isMobile` é sobre o tamanho da tela — um celular no navegador é mobile
@@ -22,13 +27,18 @@ export const siteUrl = () => (isNative() ? SITE_URL : window.location.origin)
 
 // A App Store proíbe vender assinatura de serviço digital por fora do sistema
 // de compras da Apple, e proíbe até apontar o caminho de fora — um "assine no
-// site" dentro do app é recusa na revisão. Enquanto a compra da Apple não
-// existir, o app de iPhone não vende: quem quiser um plano pago escolhe no
-// site, pelo navegador, e o app respeita o plano que já está na conta.
+// site" dentro do app é recusa na revisão. Até esta versão o app de iPhone
+// simplesmente não vendia, e quem queria um plano pago assinava no site.
 //
-// Uma função só, e não um `isIOS` espalhado pelas telas: no dia em que a
-// compra da Apple entrar, é aqui que ela é ligada.
-export const podeVender = () => platformName() !== 'ios'
+// Não bastou: a regra 3.1.3(b), que permite a conta valer em todos os
+// aparelhos, exige que os mesmos planos TAMBÉM possam ser comprados por dentro
+// do app. Foi essa palavra que custou dois envios. Agora o iPhone vende pela
+// compra da Apple (lib/compraLoja.js), e esta função é o interruptor.
+//
+// Ela continua devolvendo falso no iPhone quando a chave da loja não está no
+// build: sem ela a compra não funciona, e uma tela de planos que não compra é
+// pior do que nenhuma.
+export const podeVender = () => platformName() !== 'ios' || !!chaveDaLoja()
 
 export function isMobileViewport() {
   try { return window.matchMedia(MOBILE_QUERY).matches } catch { return false }

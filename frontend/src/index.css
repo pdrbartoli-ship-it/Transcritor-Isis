@@ -233,6 +233,10 @@ a.btn-primary, a.btn-secondary, a.btn-ghost { display: inline-block; box-sizing:
 .alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-top: 10px; }
 .alert-error { background: var(--danger-bg); color: var(--danger); }
 .alert-success { background: var(--success-bg); color: var(--success-text); }
+/* Aviso que não é erro nosso, mas exige uma ação de quem lê — o cancelamento da
+   assinatura na loja depois de apagar a conta. Usa os tons de texto normais
+   sobre o fundo de destaque: o vermelho do erro diria que algo deu errado. */
+.alert-warn { background: var(--hover); color: var(--text); border: 1px solid var(--border); }
 
 /* ── Forms ──────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -534,6 +538,9 @@ input::placeholder { color: var(--text-muted); }
 .lp-plano li svg { color: var(--accent); margin-top: 3px; }
 .lp-plano-btn { margin-top: auto; width: 100%; justify-content: center; padding: 11px 18px; border-radius: 999px; font-size: 14px; }
 .lp-precos-nota { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 26px; }
+/* A segunda nota (a do preço no iPhone) é continuação da primeira, não um
+   bloco novo: com os 26px de cima ela parecia uma seção solta. */
+.lp-precos-nota + .lp-precos-nota { margin-top: 8px; }
 
 /* ── CTA final ── */
 .lp-final {
@@ -975,8 +982,25 @@ input::placeholder { color: var(--text-muted); }
 }
 .faturamento-voltar:hover { color: var(--text); }
 .planos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
-.planos-gerenciar { display: flex; justify-content: center; margin-top: 16px; }
+.planos-gerenciar { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 16px; }
 .planos-gerenciar .btn-ghost { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+/* O rodapé da tela de planos no app de celular: a frase da renovação
+   automática, os termos de uso e a política de privacidade. A Apple exige as
+   três na mesma tela onde o plano é oferecido, e recusa o envio sem elas. Fica
+   pequeno e em cinza de propósito — é letra miúda de verdade, e não pode
+   competir com o preço. */
+.planos-legal { margin-top: 14px; font-size: 11px; line-height: 1.5; color: var(--text-muted); text-align: center; }
+.planos-legal p { margin: 0; }
+.planos-legal-links { margin-top: 6px; }
+.planos-legal a, .planos-legal-link { color: var(--text-muted); text-decoration: underline; }
+/* "Restaurar compras" é um botão (ele chama a loja), mas fica na mesma linha e
+   com a mesma aparência dos dois links ao lado — para quem lê, são três
+   caminhos do mesmo tipo. */
+.planos-legal-link {
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+}
+.planos-legal-link:disabled { cursor: default; opacity: 0.6; }
 .plano {
   display: flex; flex-direction: column; gap: 6px; text-align: left;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);

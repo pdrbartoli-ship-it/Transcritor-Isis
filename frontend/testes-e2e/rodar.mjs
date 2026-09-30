@@ -13,6 +13,7 @@ const SUITES = [
   ['05-mobile', () => import('./05-mobile.mjs')],
   ['06-privacidade', () => import('./06-privacidade.mjs')],
   ['07-idioma', () => import('./07-idioma.mjs')],
+  ['08-assinatura', () => import('./08-assinatura.mjs')],
 ]
 
 const filtro = process.argv.slice(2)

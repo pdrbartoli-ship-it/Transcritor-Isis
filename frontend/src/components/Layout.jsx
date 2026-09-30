@@ -26,6 +26,7 @@ import { useReuniao } from '../contexts/ReuniaoContext'
 import { aoPedirPlano } from '../lib/planoModal'
 import { aoPedirConvite } from '../lib/conviteModal'
 import { podeVender, usePlatform, isStandalonePwa, isTauriApp } from '../lib/platform'
+import { sairDaLoja } from '../lib/compraLoja'
 import { useConvite, useSeloNovo } from '../lib/convite'
 import { iniciarNotificacoes, esquecerAparelho } from '../lib/notificacoes'
 import { pedirAcoesDaConversa } from '../lib/acoesDaConversa'
@@ -109,10 +110,11 @@ export default function Layout() {
   const [showFeedback, setShowFeedback] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
   const [showConta, setShowConta] = useState(false)
-  // No iPhone o app não vende (ver `podeVender`): sem "Meu plano", sem "Ver
-  // planos" e sem o modal. `abrirPlano` vai nulo para as telas, e cada uma
-  // delas já sabe não desenhar o convite quando ele não existe — assim nenhum
-  // botão fica na tela sem fazer nada.
+  // Onde o app não vende (ver `podeVender` — hoje só um build de iPhone sem a
+  // chave da loja): sem "Meu plano", sem "Ver planos" e sem o modal.
+  // `abrirPlano` vai nulo para as telas, e cada uma delas já sabe não desenhar
+  // o convite quando ele não existe — assim nenhum botão fica na tela sem fazer
+  // nada.
   const vendeAqui = podeVender()
   const [saldo, setSaldo] = useState(null)
   // Sobe quando o saldo muda por fora de uma captura: o bônus de um convite
@@ -389,6 +391,10 @@ export default function Layout() {
     // conversas neste aparelho, e sem a chave eles nem seriam legíveis — mas
     // deixar o arquivo lá seria deixar o rastro do que foi dito.
     await apagarIndiceDoAcervo()
+    // A compra pela loja fica amarrada ao id de quem está logado. Sem desfazer
+    // essa amarração, o próximo login neste aparelho herdaria a assinatura de
+    // quem acabou de sair.
+    await sairDaLoja()
     await supabase.auth.signOut()
     navigate('/auth')
   }

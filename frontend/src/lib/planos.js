@@ -11,6 +11,7 @@
 // reinstalasse o programa na mão.
 import { useEffect, useSyncExternalStore } from 'react'
 import { API_URL } from './api'
+import { platformName } from './platform'
 
 export const PLANOS = [
   {
@@ -89,7 +90,12 @@ const assinar = ouvinte => {
 
 async function carregarPlanos() {
   try {
-    const res = await fetch(`${API_URL}/planos`, { cache: 'no-store' })
+    // A plataforma vai na pergunta porque a régua depende dela: quem compra
+    // dentro do app de celular paga mais, para cobrir a comissão da loja (15%
+    // na App Store do Brasil). O site e o app de Windows mandam `web` e
+    // recebem exatamente o que recebiam antes — no Windows a cobrança continua
+    // sendo a nossa, pelo Stripe, sem comissão.
+    const res = await fetch(`${API_URL}/planos?plataforma=${platformName()}`, { cache: 'no-store' })
     if (!res.ok) return
     const { planos } = await res.json()
     if (!Array.isArray(planos) || planos.length === 0) return

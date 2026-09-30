@@ -23,6 +23,7 @@
     "@capacitor/keyboard": "^8.0.5",
     "@capacitor/push-notifications": "^8.1.2",
     "@capgo/capacitor-updater": "^8.51.6",
+    "@revenuecat/purchases-capacitor": "^13.6.1",
     "@supabase/supabase-js": "^2.45.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
