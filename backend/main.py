@@ -261,7 +261,10 @@ PLANOS_STRIPE: dict[str, tuple[str, str]] = {
 # O token é um valor que nós inventamos e colamos nos dois lados: no painel do
 # RevenueCat, no campo Authorization do webhook, e aqui na env var. Vazio, o
 # endpoint recusa tudo — é o mesmo cuidado do STRIPE_WEBHOOK_SECRET.
-REVENUECAT_WEBHOOK_TOKEN = os.environ.get("REVENUECAT_WEBHOOK_TOKEN", "")
+# `.strip()` porque o campo de valor do Render é uma caixa de várias linhas: uma
+# quebra de linha no fim, invisível ao colar, fazia toda entrega do RevenueCat
+# ser recusada com 401 sem nenhuma pista do motivo.
+REVENUECAT_WEBHOOK_TOKEN = os.environ.get("REVENUECAT_WEBHOOK_TOKEN", "").strip()
 
 # Identificador de cada produto nas lojas → (plano, ciclo). Os nomes precisam
 # ser EXATAMENTE estes no App Store Connect e no Play Console: é por eles que o
@@ -4312,8 +4315,14 @@ async def billing_webhook_loja(request: Request):
     if not REVENUECAT_WEBHOOK_TOKEN:
         raise HTTPException(status_code=500, detail="Webhook de loja não configurado.")
 
-    enviado = request.headers.get("authorization", "")
-    if not secrets.compare_digest(enviado, REVENUECAT_WEBHOOK_TOKEN):
+    # Aceita o valor puro ou com "Bearer " na frente: o painel do RevenueCat não
+    # deixa claro qual dos dois ele espera, e nenhum dos dois é erro. Em bytes,
+    # porque `compare_digest` levanta TypeError em texto com acento — e isso
+    # viraria um 500 em vez de um 401.
+    enviado = request.headers.get("authorization", "").strip()
+    if enviado[:7].lower() == "bearer ":
+        enviado = enviado[7:].strip()
+    if not secrets.compare_digest(enviado.encode(), REVENUECAT_WEBHOOK_TOKEN.encode()):
         raise HTTPException(status_code=401, detail="Não autorizado.")
 
     try:
