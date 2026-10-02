@@ -144,6 +144,7 @@ export default function PlanModal({ onClose, inicial = null }) {
   // derivada do anual, e nunca escrita, para não poder divergir da cobrança.
   function precos(plano) {
     const daLoja = ciclo => produtos[idDoProduto(plano, ciclo)]
+    const moeda = daLoja('anual')?.currencyCode || daLoja('mensal')?.currencyCode || 'BRL'
     const mensal = daLoja('mensal')?.price ?? plano.mensal
     const anual = daLoja('anual')?.price ?? plano.anual
     return {
@@ -152,7 +153,11 @@ export default function PlanModal({ onClose, inicial = null }) {
       // O texto da loja já vem com o símbolo da moeda do país de quem compra.
       mensalTexto: daLoja('mensal')?.priceString || formatarPreco(mensal),
       anualTexto: daLoja('anual')?.priceString || (anual == null ? '' : formatarPreco(anual)),
-      porMes: anual == null ? null : anual / 12,
+      // A manchete "por mês" é derivada do anual, e por isso precisa sair na
+      // MESMA moeda que a loja respondeu. Formatar em reais um valor que veio em
+      // dólar (a loja de quem vê pode ser outra) mostrava "R$ 4,17" ao lado de
+      // "$4.99" na mesma tela: um número de uma moeda com o símbolo de outra.
+      porMesTexto: anual == null ? '' : formatarNaMoeda(anual / 12, moeda),
     }
   }
 
@@ -304,7 +309,7 @@ export default function PlanModal({ onClose, inicial = null }) {
                   <div className="plano-preco-bloco">
                     {pago ? (
                       <>
-                        <span className="plano-preco">{formatarPreco(preco.porMes)} <i>por mês</i></span>
+                        <span className="plano-preco">{preco.porMesTexto} <i>por mês</i></span>
                         <span className="plano-preco-nota">com cobrança anual</span>
                         <span className="plano-preco-nota">{preco.mensalTexto} cobrado mensalmente</span>
                       </>
@@ -416,6 +421,17 @@ export default function PlanModal({ onClose, inicial = null }) {
   )
 }
 
+// Valor na moeda que a loja informou. Reais saem como no resto do app (R$ 18,
+// R$ 24,99); outra moeda sai com o símbolo certo (US$ 4,17).
+function formatarNaMoeda(valor, moeda) {
+  if (moeda === 'BRL') return formatarPreco(valor)
+  try {
+    return valor.toLocaleString('pt-BR', { style: 'currency', currency: moeda })
+  } catch {
+    return `${valor.toFixed(2)} ${moeda}`
+  }
+}
+
 // O identificador do produto na loja. Vem do servidor (GET /planos), para o
 // nome existir num lugar só; o mapa local é o desenho inicial, para a tela
 // funcionar antes da primeira resposta.
@@ -446,7 +462,7 @@ function Faturamento({ plano, precos, ciclo, setCiclo, assinando, demorando, naL
           />
           <span className="faturamento-texto">
             <strong>Pagar por ano</strong>
-            <span>{formatarPreco(precos.porMes)} / mês</span>
+            <span>{precos.porMesTexto} / mês</span>
           </span>
           <span className="faturamento-selo">
             Economize {economiaAnual({ mensal: precos.mensal, anual: precos.anual })}%
