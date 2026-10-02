@@ -359,9 +359,11 @@ PRECOS_PLANO = {
 # Business Program, e a Apple não exige preço igual dentro e fora do app. Sem o
 # repasse, cada assinatura de iPhone valeria menos do que a mesma pelo site.
 #
-# O anual continua sendo o total do ano e mantém os mesmos 10% de desconto do
-# site, para a manchete "por mês" ser derivada e não escrita: 299,90/12 = 24,99
-# e 599,90/12 = 49,99.
+# O anual continua sendo o total do ano, para a manchete "por mês" ser derivada
+# e não escrita: 299,90/12 = 24,99 e 599,90/12 = 49,99. O Avançado mantém os
+# mesmos 10% de desconto do site. O Iniciante mensal ficou em 29,90 (e não 27,90)
+# por causa do líquido que a Apple mostrou no cadastro, então o desconto do
+# anual dele aparece como 16%.
 #
 # Estes números são o DESENHO: o que a pessoa paga de verdade é o preço do
 # produto no App Store Connect, e é ele que a tela mostra, perguntado ao StoreKit
@@ -370,7 +372,7 @@ PRECOS_PLANO = {
 # degraus cadastrados lá.
 PRECOS_PLANO_LOJA = {
     "gratuito": {"mensal": 0, "anual": None},
-    "iniciante": {"mensal": 27.90, "anual": 299.90},
+    "iniciante": {"mensal": 29.90, "anual": 299.90},
     "avancado": {"mensal": 54.90, "anual": 599.90},
 }
 
