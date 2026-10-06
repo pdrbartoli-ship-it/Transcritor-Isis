@@ -282,16 +282,11 @@ PRODUTOS_LOJA: dict[str, tuple[str, str]] = {
 LOJA_PARA_ORIGEM = {"APP_STORE": "apple", "MAC_APP_STORE": "apple", "PLAY_STORE": "google"}
 
 
-async def supabase_service_upsert(table: str, dados: dict) -> bool:
-    """Escreve no Supabase ignorando RLS, com a service role key. É o caminho
-    de escrita do backend para o que o usuário não pode editar (assinatura e
-    saldo); todo o resto é escrito pelo frontend via supabase-js sob RLS.
-
-    Devolve se a gravação deu certo. Quase todo mundo ignora — uma contagem de
-    uso perdida não vale derrubar a requisição —, mas o webhook das lojas olha:
-    perder a gravação lá é perder uma compra paga."""
+async def _supabase_service_upsert_resposta(table: str, dados: dict) -> httpx.Response:
+    """A gravação com service role, devolvendo a resposta inteira: o webhook das
+    lojas precisa distinguir "a conta não existe mais" de "o banco falhou"."""
     async with httpx.AsyncClient() as client:
-        resp = await client.post(
+        return await client.post(
             f"{SUPABASE_URL}/rest/v1/{table}",
             json=dados,
             headers={
@@ -302,6 +297,17 @@ async def supabase_service_upsert(table: str, dados: dict) -> bool:
             },
             timeout=10.0,
         )
+
+
+async def supabase_service_upsert(table: str, dados: dict) -> bool:
+    """Escreve no Supabase ignorando RLS, com a service role key. É o caminho
+    de escrita do backend para o que o usuário não pode editar (assinatura e
+    saldo); todo o resto é escrito pelo frontend via supabase-js sob RLS.
+
+    Devolve se a gravação deu certo. Quase todo mundo ignora — uma contagem de
+    uso perdida não vale derrubar a requisição. O webhook das lojas não usa esta:
+    ele precisa da resposta inteira (`_supabase_service_upsert_resposta`)."""
+    resp = await _supabase_service_upsert_resposta(table, dados)
     if resp.status_code >= 300:
         logger.error("Falha ao gravar em %s no Supabase: %s %s", table, resp.status_code, resp.text)
         return False
@@ -4281,26 +4287,183 @@ async def _gravar_assinatura(user_id: str, customer_id: str | None, sub: dict) -
 
 
 # ── Assinatura pelas lojas ────────────────────────────────────────────────
-# Eventos que deixam (ou mantêm) a assinatura valendo. `CANCELLATION` está
-# aqui de propósito: na Apple e no Google, cancelar é desligar a renovação
-# automática — quem cancela continua com o plano até o fim do período já pago,
-# e é isso que os dois contratos prometem. Quem encerra o acesso é a
-# `EXPIRATION`, que chega depois. Tirar o plano no cancelamento tomaria da
-# pessoa um mês que ela pagou.
-_EVENTOS_LOJA_ATIVO = {
-    "INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION",
-    "NON_RENEWING_PURCHASE", "SUBSCRIPTION_EXTENDED", "CANCELLATION",
-}
-# Acesso acabou. `SUBSCRIPTION_PAUSED` é a pausa do Google: a renovação para e
-# o acesso cai, e quando ela volta chega um `RENEWAL`.
-_EVENTOS_LOJA_ENCERRA = {"EXPIRATION", "SUBSCRIPTION_PAUSED"}
-# Cartão recusado. Vira `past_due`, o mesmo do Stripe — que NÃO é tratado como
-# gratuito por `ler_plano_e_assinatura`, e é isso que dá à pessoa o período de
-# carência que as duas lojas concedem enquanto tentam cobrar de novo.
-_EVENTOS_LOJA_ATRASO = {"BILLING_ISSUE"}
-# Reembolso. Chega como cancelamento, mas com este motivo, e aí o acesso
-# termina na hora: o dinheiro voltou.
-_MOTIVOS_DE_REEMBOLSO = {"CUSTOMER_SUPPORT"}
+# O aviso da loja diz QUE algo mudou, não o que vale agora. Até 05/10 o
+# servidor deduzia o plano do tipo de cada aviso, e foi aí que nasceram os
+# dois defeitos que o teste no TestFlight mostrou:
+#
+# - O `PRODUCT_CHANGE` de uma troca para baixo chega no momento da escolha, mas
+#   a Apple só troca na renovação. Gravar o produto novo na hora tirava da
+#   pessoa o Avançado que ela já tinha pago até o fim do mês.
+# - O `TRANSFER` não traz o produto, então quem ganhava a assinatura ficava sem
+#   o plano.
+#
+# Agora qualquer aviso só diz DE QUEM perguntar: o servidor pergunta ao
+# RevenueCat o estado atual dessa pessoa e grava o que está valendo de verdade.
+# É o uso que o próprio RevenueCat recomenda, e as regras da loja (troca para
+# baixo só na renovação, cancelamento valendo até o fim do período, devolução
+# na troca para cima) saem certas sem nenhuma regra nossa.
+#
+# A chave é a PÚBLICA do app de iPhone, a mesma que viaja dentro do app em
+# compraLoja.js: ela só lê o assinante, e a resposta traz as assinaturas de
+# todas as lojas do projeto. Uma env var deixa trocar sem deploy.
+REVENUECAT_CHAVE_PUBLICA = (
+    os.environ.get("REVENUECAT_CHAVE_PUBLICA", "").strip() or "appl_eetazejSkrolleMGVYwLwjgbkzD"
+)
+REVENUECAT_API = "https://api.revenuecat.com/v1"
+
+# Na troca de plano vale o mais alto que ainda não venceu: é o que a loja
+# entrega enquanto as duas assinaturas se sobrepõem.
+NIVEL_DO_PLANO = {"gratuito": 0, "iniciante": 1, "avancado": 2}
+
+# O id do usuário no Supabase. Qualquer outra coisa (o `$RCAnonymousID:` que o
+# RevenueCat inventa quando o app não disse quem é, ou os ids de mentira do
+# botão de teste do painel) não é ninguém aqui, e nem vale perguntar por ele.
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+class LojaIndisponivel(Exception):
+    """O RevenueCat ou o Supabase não responderam. Quem chama pede para tentar
+    de novo, e nada é gravado pela metade."""
+
+
+def _id_de_usuario(app_user_id: str | None) -> str | None:
+    """O `app_user_id` é o id do usuário no Supabase, mandado pelo app na hora de
+    configurar a compra."""
+    valor = (app_user_id or "").strip().lower()
+    return valor if _UUID.match(valor) else None
+
+
+def _data_da_loja(texto: str | None) -> datetime.datetime | None:
+    if not texto:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+async def _assinante_na_loja(user_id: str) -> dict:
+    """O que o RevenueCat sabe desta pessoa agora, em todas as lojas."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{REVENUECAT_API}/subscribers/{user_id}",
+                headers={"Authorization": f"Bearer {REVENUECAT_CHAVE_PUBLICA}"},
+                timeout=10.0,
+            )
+    except httpx.HTTPError as exc:
+        raise LojaIndisponivel(f"RevenueCat fora do ar: {exc}") from exc
+    if resp.status_code != 200:
+        raise LojaIndisponivel(f"RevenueCat respondeu {resp.status_code}: {resp.text[:200]}")
+    return resp.json().get("subscriber") or {}
+
+
+def _assinatura_vigente_na_loja(assinante: dict, agora: datetime.datetime) -> dict | None:
+    """A assinatura que vale agora: a de plano mais alto entre as que não
+    venceram e não foram devolvidas. Numa troca para baixo, o plano antigo
+    continua aqui até vencer, e por isso continua sendo o plano até lá.
+
+    Cobrança recusada não tira o plano na hora: as duas lojas dão um período de
+    carência enquanto tentam de novo, e ele vira `past_due`, como no Stripe."""
+    melhor = None
+    for produto, sub in (assinante.get("subscriptions") or {}).items():
+        plano, ciclo = PRODUTOS_LOJA.get(produto.split(":")[0], (None, None))
+        if not plano or sub.get("refunded_at"):
+            continue
+        fim = _data_da_loja(sub.get("expires_date"))
+        carencia = _data_da_loja(sub.get("grace_period_expires_date"))
+        vale_ate = max((d for d in (fim, carencia) if d), default=None)
+        # Sem data de vencimento é assinatura sem fim (cortesia), e vale.
+        if vale_ate and vale_ate <= agora:
+            continue
+        em_atraso = bool(sub.get("billing_issues_detected_at")) or bool(fim and fim <= agora)
+        candidata = {
+            "plano": plano,
+            "ciclo": ciclo,
+            "status": "past_due" if em_atraso else "active",
+            "origem": LOJA_PARA_ORIGEM.get((sub.get("store") or "").upper(), "apple"),
+            "fim": vale_ate,
+        }
+        chave = (NIVEL_DO_PLANO[plano], vale_ate or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+        if melhor is None or chave > melhor[0]:
+            melhor = (chave, candidata)
+    return melhor[1] if melhor else None
+
+
+async def sincronizar_assinatura_de_loja(user_id: str, transacao_original: str | None = None) -> dict:
+    """Grava na linha de `subscriptions` o que a loja diz que vale agora, e
+    devolve o resultado com o plano de antes (`antes`), para a tela saber se
+    algo mudou.
+
+    Levanta LojaIndisponivel quando não deu para perguntar ou para gravar."""
+    agora = datetime.datetime.now(tz=datetime.timezone.utc)
+    assinante = await _assinante_na_loja(user_id)
+    vigente = _assinatura_vigente_na_loja(assinante, agora)
+
+    atual = await ler_assinatura(user_id, "plano,ciclo,status,origem,current_period_end")
+    # Linha sem origem é anterior às lojas, e por isso é do Stripe.
+    origem_atual = (atual.get("origem") or "stripe") if atual else None
+    plano_atual = atual.get("plano") or "gratuito"
+    if atual.get("status") in ("canceled", "incomplete_expired", "unpaid"):
+        plano_atual = "gratuito"
+    resultado_atual = {
+        "plano": plano_atual,
+        "ciclo": atual.get("ciclo"),
+        "status": atual.get("status"),
+        "origem": origem_atual,
+        "current_period_end": atual.get("current_period_end"),
+        "antes": plano_atual,
+    }
+
+    # Trava: uma assinatura do Stripe que está valendo nunca é sobrescrita pela
+    # loja. Se as duas existem, é cobrança dupla, e quem resolve é uma pessoa:
+    # fica no log, e a pessoa continua com o plano que já tinha.
+    stripe_vigente = origem_atual == "stripe" and plano_atual != "gratuito"
+    if stripe_vigente:
+        if vigente:
+            logger.error("Assinatura de loja e do Stripe ao mesmo tempo para %s", user_id)
+        return resultado_atual
+    # Nunca assinou pela loja e não há nada valendo nela: nada a gravar.
+    if not vigente and origem_atual in (None, "stripe"):
+        return resultado_atual
+
+    dados = {"user_id": user_id, "updated_at": agora.isoformat()}
+    if vigente:
+        dados.update({
+            "origem": vigente["origem"],
+            "plano": vigente["plano"],
+            "ciclo": vigente["ciclo"],
+            "status": vigente["status"],
+            "current_period_end": vigente["fim"].isoformat() if vigente["fim"] else None,
+        })
+    else:
+        # Venceu, foi devolvida ou passou para outra conta do Dito. A linha fica
+        # (é o histórico), e o plano deixa de valer.
+        dados.update({"plano": "gratuito", "ciclo": None, "status": "canceled"})
+    # O id original não muda entre renovações: é por ele que uma conferência
+    # manual acha a compra na loja.
+    if transacao_original:
+        dados["loja_assinatura_id"] = transacao_original
+
+    resp = await _supabase_service_upsert_resposta("subscriptions", dados)
+    if resp.status_code >= 300:
+        # A conta foi apagada, e a assinatura da loja continua viva (só quem
+        # comprou pode cancelá-la). Não há a quem dar o plano, e responder erro
+        # fazia o RevenueCat reenviar o aviso para sempre.
+        if resp.status_code == 409 and "23503" in resp.text:
+            logger.info("Aviso de loja para conta que não existe mais: %s", user_id)
+            return {**resultado_atual, "plano": "gratuito", "conta_apagada": True}
+        logger.error("Falha ao gravar a assinatura de loja de %s: %s %s", user_id, resp.status_code, resp.text)
+        raise LojaIndisponivel("Não foi possível gravar a assinatura.")
+
+    return {
+        "plano": dados["plano"],
+        "ciclo": dados.get("ciclo"),
+        "status": dados["status"],
+        "origem": dados.get("origem", origem_atual),
+        "current_period_end": dados.get("current_period_end", atual.get("current_period_end")),
+        "antes": plano_atual,
+    }
 
 
 @app.post("/billing/webhook-loja")
@@ -4335,102 +4498,67 @@ async def billing_webhook_loja(request: Request):
     evento = corpo.get("event") or {}
     tipo = evento.get("type") or ""
 
-    # Uma compra move de dono quando a mesma assinatura é restaurada numa conta
-    # diferente. Quem perdeu precisa perder o plano também, senão duas contas
-    # ficam pagas com uma assinatura só.
+    # De quem perguntar. Na troca de dono (a mesma assinatura restaurada numa
+    # outra conta do Dito) são as duas pontas: quem perdeu precisa perder o
+    # plano, senão duas contas ficam pagas com uma assinatura só, e quem ganhou
+    # precisa ganhar.
     if tipo == "TRANSFER":
-        for antigo in evento.get("transferred_from") or []:
-            if _id_de_usuario(antigo) and not await _encerrar_assinatura_de_loja(antigo):
-                raise HTTPException(status_code=503, detail="Não foi possível transferir a assinatura agora.")
-        return {"received": True}
-
-    # `SUBSCRIBER_ALIAS`, `TEST` e o que a RevenueCat inventar depois: nada a
-    # gravar, e recusar um evento desconhecido só geraria reentrega eterna.
-    if tipo not in _EVENTOS_LOJA_ATIVO | _EVENTOS_LOJA_ENCERRA | _EVENTOS_LOJA_ATRASO:
-        logger.info("Evento de loja ignorado: %s", tipo or "sem tipo")
-        return {"received": True}
-
-    user_id = _id_de_usuario(evento.get("app_user_id")) or _id_de_usuario(evento.get("original_app_user_id"))
-    if not user_id:
-        # Compra feita sem conta identificada (o RevenueCat gera um
-        # `$RCAnonymousID:` quando o app não disse quem é). Não há a quem dar o
-        # plano, e pedir reentrega não faria o id aparecer.
-        logger.error("Evento de loja %s sem usuário do Dito: %s", tipo, evento.get("app_user_id"))
-        return {"received": True}
-
-    # No `PRODUCT_CHANGE` o produto que passa a valer é o novo; o `product_id`
-    # ainda é o antigo. Sem isto, trocar de plano gravaria o plano de origem.
-    produto = evento.get("new_product_id") or evento.get("product_id") or ""
-    # A Play Store devolve o id com o plano base entre dois-pontos
-    # ("produto:mensal"); o que nos interessa é a parte antes.
-    plano, ciclo = PRODUTOS_LOJA.get(produto.split(":")[0], (None, None))
-    if not plano:
-        logger.error("Evento de loja %s com produto desconhecido: %s", tipo, produto)
-        return {"received": True}
-
-    fim_ms = evento.get("expiration_at_ms")
-    fim = (
-        datetime.datetime.fromtimestamp(fim_ms / 1000, tz=datetime.timezone.utc)
-        if fim_ms else None
-    )
-    ja_venceu = bool(fim and fim <= datetime.datetime.now(tz=datetime.timezone.utc))
-
-    reembolso = tipo == "CANCELLATION" and (evento.get("cancel_reason") or "") in _MOTIVOS_DE_REEMBOLSO
-    if tipo in _EVENTOS_LOJA_ENCERRA or reembolso or ja_venceu:
-        status = "canceled"
-    elif tipo in _EVENTOS_LOJA_ATRASO:
-        status = "past_due"
+        donos = [*(evento.get("transferred_from") or []), *(evento.get("transferred_to") or [])]
     else:
-        status = "active"
+        donos = [evento.get("app_user_id") or evento.get("original_app_user_id")]
+    donos = list(dict.fromkeys(filter(None, map(_id_de_usuario, donos))))
 
-    origem = LOJA_PARA_ORIGEM.get(evento.get("store") or "", "apple")
+    if not donos:
+        # Botão de teste do painel, compra sem conta identificada, ou um tipo de
+        # aviso sem dono. Pedir reentrega não faria um dono aparecer.
+        logger.info("Evento de loja %s sem usuário do Dito: %s", tipo or "sem tipo", evento.get("app_user_id"))
+        return {"received": True}
+
     if evento.get("environment") == "SANDBOX":
         # O teste de compra no aparelho passa por aqui. Fica registrado para que
         # um plano que apareceu "de graça" tenha explicação no log.
-        logger.info("Compra de loja em SANDBOX para %s: %s", user_id, produto)
+        logger.info("Evento de loja %s em SANDBOX para %s", tipo, ", ".join(donos))
 
-    gravou = await supabase_service_upsert("subscriptions", {
-        "user_id": user_id,
-        "origem": origem,
-        # O id original é o que não muda entre renovações — é por ele que o
-        # `TRANSFER` e uma conferência manual acham a assinatura.
-        "loja_assinatura_id": evento.get("original_transaction_id") or evento.get("transaction_id"),
-        "plano": "gratuito" if status == "canceled" else plano,
-        "ciclo": None if status == "canceled" else ciclo,
-        "status": status,
-        "current_period_end": fim.isoformat() if fim else None,
-        "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-    })
-    # Aqui a pessoa JÁ PAGOU. Responder 200 sem ter gravado faria o RevenueCat
-    # dar a entrega por boa e nunca reenviar: a compra desapareceria sem erro em
-    # lugar nenhum, e o plano nunca chegaria. O 503 pede a reentrega, que ele faz
-    # com espera crescente. É também a rede de segurança da janela em que
-    # supabase/assinatura_loja.sql ainda não foi rodado — sem as colunas novas a
-    # gravação falha, e é melhor ela voltar depois do que se perder agora.
-    if not gravou:
-        raise HTTPException(status_code=503, detail="Não foi possível registrar a assinatura agora.")
+    transacao = None if tipo == "TRANSFER" else evento.get("original_transaction_id")
+    for dono in donos:
+        try:
+            await sincronizar_assinatura_de_loja(dono, transacao)
+        except LojaIndisponivel as exc:
+            # Aqui a pessoa pode JÁ TER PAGO. O 503 pede a reentrega, que o
+            # RevenueCat faz com espera crescente; responder 200 sem gravar faria
+            # a compra sumir sem erro em lugar nenhum.
+            logger.error("Webhook de loja %s para %s não sincronizou: %s", tipo, dono, exc)
+            raise HTTPException(status_code=503, detail="Não foi possível registrar a assinatura agora.")
     return {"received": True}
 
 
-def _id_de_usuario(app_user_id: str | None) -> str | None:
-    """O `app_user_id` é o id do usuário no Supabase, mandado pelo app na hora de
-    configurar a compra. Quando o app não disse quem é, o RevenueCat inventa um
-    `$RCAnonymousID:...` — que não é ninguém aqui."""
-    if not app_user_id or app_user_id.startswith("$RCAnonymousID:"):
-        return None
-    return app_user_id
-
-
-async def _encerrar_assinatura_de_loja(user_id: str) -> bool:
-    """Volta a conta para o gratuito sem apagar a linha: o histórico da
-    assinatura continua ali, e o plano deixa de valer."""
-    return await supabase_service_upsert("subscriptions", {
-        "user_id": user_id,
-        "plano": "gratuito",
-        "ciclo": None,
-        "status": "canceled",
-        "updated_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-    })
+# O app chama logo depois de comprar ou restaurar. Sem isto, a tela esperava o
+# aviso da loja chegar pelo webhook (até 30 s, e às vezes nunca, como quando o
+# plano não mudava) e dizia "seu plano aparece em alguns minutos". Com isto, o
+# servidor pergunta à loja na hora e a tela diz o que aconteceu.
+@app.post("/billing/sincronizar-loja")
+async def sincronizar_loja(request: Request):
+    cabecalho = request.headers.get("authorization") or ""
+    token = cabecalho[7:].strip() if cabecalho[:7].lower() == "bearer " else ""
+    try:
+        identidade = await validar_token_completo(token) if token else None
+    except LoginIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar seu login agora. Tente de novo em instantes.",
+        )
+    if not identidade:
+        raise HTTPException(status_code=401, detail="Entre na sua conta do Dito.")
+    user_id = _id_de_usuario(identidade[0])
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Conta inválida.")
+    try:
+        return await sincronizar_assinatura_de_loja(user_id)
+    except LojaIndisponivel:
+        raise HTTPException(
+            status_code=503,
+            detail="Não conseguimos confirmar com a loja agora. Sua compra está segura: tente de novo em instantes.",
+        )
 
 
 # ── Convite premiado ──────────────────────────────────────────────────────
