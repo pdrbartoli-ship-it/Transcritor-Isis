@@ -11,11 +11,17 @@
 // aqui.
 //
 // Tudo o que é específico de loja mora neste arquivo. As telas chamam
-// `lerProdutos`, `comprar`, `restaurar` e `urlDeGerenciamento`, e não sabem o
-// nome de nenhuma biblioteca.
+// `lerProdutos`, `comprar`, `restaurar`, `confirmarNaLoja` e `gerenciarNaLoja`,
+// e não sabem o nome de nenhuma biblioteca.
 import { Purchases, LOG_LEVEL } from '@revenuecat/purchases-capacitor'
+import { registerPlugin, Capacitor } from '@capacitor/core'
 import { isNative, platformName } from './platform'
-import { supabase } from './supabase'
+import { sincronizarLoja } from './api'
+
+// A tela de assinaturas da Apple, aberta por cima do app (AssinaturasPlugin.swift).
+// Só existe nos builds de iPhone a partir de 06/10; nos anteriores, e no
+// Android, vale o link da loja.
+const Assinaturas = registerPlugin('Assinaturas')
 
 // Chaves PÚBLICAS do RevenueCat (as que começam com `appl_` e `goog_`). São
 // feitas para viajar dentro do app, como a SUPABASE_ANON_KEY que já mora em
@@ -53,8 +59,15 @@ export const chaveDaLoja = () => CHAVES[platformName()] || ''
 // comissão nenhuma.
 export const lojaDisponivel = () => isNative() && !!chaveDaLoja()
 
-// O nome da loja como a pessoa a conhece, para os textos da tela.
-export const nomeDaLoja = () => (platformName() === 'ios' ? 'App Store' : 'Google Play')
+// O nome da loja como a pessoa a conhece, para os textos da tela. A App Store é
+// feminina e o Google Play é masculino, então os textos pedem o nome já com o
+// artigo: "na App Store", "no Google Play".
+const ehApple = () => platformName() === 'ios'
+export const nomeDaLoja = () => (ehApple() ? 'App Store' : 'Google Play')
+export const naLojaTexto = () => (ehApple() ? 'na App Store' : 'no Google Play')
+export const pelaLojaTexto = () => (ehApple() ? 'pela App Store' : 'pelo Google Play')
+export const aLojaTexto = () => (ehApple() ? 'a App Store' : 'o Google Play')
+export const nesteIdTexto = () => (ehApple() ? 'neste Apple ID' : 'nesta conta Google')
 
 // `configure` é caro e não pode rodar duas vezes; `logIn` é o jeito de trocar
 // de dono depois. Guardamos quem está configurado para que abrir o "Meu plano"
@@ -128,65 +141,82 @@ export class CompraCancelada extends Error {
   constructor() { super('Compra cancelada.') }
 }
 
+// Os códigos de erro do RevenueCat que pedem um texto nosso
+// (PURCHASES_ERROR_CODE no plugin).
+const ERRO_CANCELADA = '1'
+const ERRO_JA_COMPRADO = '6'
+const ERRO_AGUARDANDO = '20'
+
 export async function comprar(produto) {
-  if (!lojaDisponivel()) throw new Error(`A compra pelo ${nomeDaLoja()} não está disponível neste aparelho.`)
+  if (!lojaDisponivel()) throw new Error(`A compra ${pelaLojaTexto()} não está disponível neste aparelho.`)
   try {
     await Purchases.purchaseStoreProduct({ product: produto })
   } catch (err) {
-    if (err?.userCancelled || err?.code === '1' || /cancel/i.test(err?.message || '')) {
+    if (err?.userCancelled || err?.code === ERRO_CANCELADA || /cancel/i.test(err?.message || '')) {
       throw new CompraCancelada()
+    }
+    // Compra Solicitada, da família: alguém ainda precisa aprovar.
+    if (err?.code === ERRO_AGUARDANDO) {
+      throw new Error('A compra está aguardando aprovação. O plano entra assim que ela for aprovada.')
+    }
+    // O mesmo Apple ID já assina, por outra conta do Dito. Foi o que aconteceu
+    // no teste de 05/10: a assinatura é do Apple ID, não da conta.
+    if (err?.code === ERRO_JA_COMPRADO) {
+      throw new Error(`Este ${ehApple() ? 'Apple ID' : 'Google ID'} já tem uma assinatura do Dito. Toque em "Restaurar compras" para trazê-la para esta conta.`)
     }
     throw new Error(err?.message || 'Não foi possível concluir a compra. Nada foi cobrado.')
   }
 }
 
-// Exigência da Apple: quem trocou de aparelho, ou reinstalou, precisa de um
-// jeito de recuperar o que já pagou sem pagar de novo. Devolve quantas
-// assinaturas ativas a loja reconheceu.
+// Exigência da Apple: quem trocou de aparelho, reinstalou, ou comprou logado
+// em outra conta do Dito precisa de um jeito de recuperar o que já pagou sem
+// pagar de novo. Devolve quantas assinaturas ativas a loja reconheceu.
 export async function restaurar() {
   if (!lojaDisponivel()) return 0
   const { customerInfo } = await Purchases.restorePurchases()
   return (customerInfo?.activeSubscriptions || []).length
 }
 
-// Onde a assinatura da loja é trocada e cancelada. É a única tela onde isso
-// pode ser feito — o servidor não tem esse poder, e por isso não oferecemos um
-// botão nosso de cancelar para quem comprou aqui.
-export async function urlDeGerenciamento() {
-  if (!lojaDisponivel()) return null
+// Onde a assinatura da loja é trocada e cancelada: só a loja tem esse poder.
+// No iPhone, a tela da Apple por cima do app, que é a única que mostra também
+// as compras de teste (as do revisor). Sem ela (build antigo, Android), o link
+// que a loja informa. Resolve quando a pessoa fecha a tela da Apple.
+export async function gerenciarNaLoja() {
+  if (!lojaDisponivel()) throw new Error('Abra os ajustes do aparelho para gerenciar sua assinatura.')
+  if (ehApple() && Capacitor.isPluginAvailable('Assinaturas')) {
+    await Assinaturas.gerenciar()
+    return
+  }
+  let url = null
   try {
     const { customerInfo } = await Purchases.getCustomerInfo()
-    return customerInfo?.managementURL || null
+    url = customerInfo?.managementURL || null
   } catch {
-    return null
+    // Sem resposta da loja: cai no aviso abaixo.
   }
+  if (!url) throw new Error(`Abra os ajustes do aparelho para gerenciar sua assinatura ${naLojaTexto()}.`)
+  window.open(url, '_blank', 'noopener')
 }
 
-// Depois de comprar, o plano não está na conta ainda: a loja avisa o
-// RevenueCat, que avisa o nosso servidor, que grava no Supabase. São segundos,
-// mas a tela não pode dizer "pronto" antes de o plano existir de verdade — nem
-// ficar presa para sempre se o aviso se perder no caminho.
-const ESPERA_MS = 2000
-const TENTATIVAS = 15
-
+// Depois de comprar ou restaurar, o servidor pergunta à loja o que vale agora e
+// grava. A loja já sabe da compra quando `comprar` termina (o plugin entrega o
+// recibo antes de responder), então a resposta é imediata.
+//
 // Nunca lança, de propósito: quando esta função é chamada, a loja já cobrou. Um
-// erro de leitura subindo daqui faria a tela dizer que o pagamento não deu certo
-// depois de ele ter dado — e a pessoa compraria de novo. Sem resposta, devolve
-// null, e quem chama diz que o plano chega em alguns minutos.
-export async function esperarPlanoChegar(userId, planoAnterior) {
+// erro subindo daqui faria a tela dizer que o pagamento não deu certo depois de
+// ele ter dado, e a pessoa compraria de novo. Sem resposta, devolve null, e a
+// tela diz que a compra está confirmada e o plano chega sozinho.
+const TENTATIVAS = 3
+const ESPERA_MS = 1500
+
+export async function confirmarNaLoja() {
   for (let i = 0; i < TENTATIVAS; i++) {
-    await new Promise(r => setTimeout(r, ESPERA_MS))
     try {
-      const { data } = await supabase
-        .from('subscriptions')
-        .select('plano')
-        .eq('user_id', userId)
-        .maybeSingle()
-      const plano = data?.plano || 'gratuito'
-      if (plano !== planoAnterior && plano !== 'gratuito') return plano
+      return await sincronizarLoja()
     } catch {
-      // Rede oscilando no meio da espera. Continua tentando: o plano está
-      // chegando de qualquer forma, por um caminho que não depende desta tela.
+      // Servidor acordando ou loja oscilando. O aviso da loja pelo webhook
+      // chega de qualquer forma, por um caminho que não depende desta tela.
+      await new Promise(r => setTimeout(r, ESPERA_MS))
     }
   }
   return null

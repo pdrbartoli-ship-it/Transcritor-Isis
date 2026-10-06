@@ -1032,7 +1032,30 @@ input::placeholder { color: var(--text-muted); }
   min-height: 2.7em;
 }
 .plano-saldo > span { display: block; }
-@media (max-width: 620px) { .planos { grid-template-columns: 1fr; } }
+/* No celular os cards ficam um embaixo do outro, e o espaço guardado para
+   alinhar os três lado a lado virava buraco: a linha de saldo vazia nos cards
+   que não são o seu, e as duas notas vazias do Grátis. Ali elas somem, e a
+   letra sobe um degrau na escala, que 12 px numa tela de celular é pequeno. */
+@media (max-width: 620px) {
+  .planos { grid-template-columns: 1fr; }
+  .plano-saldo:empty, .plano-preco-nota[aria-hidden="true"] { display: none; }
+  .plano-saldo { min-height: 0; font-size: 13px; }
+  .plano li { font-size: 14px; }
+  .plano li svg { margin-top: 4px; }
+  .plano-preco-nota { font-size: 13px; }
+  .planos-legal { font-size: 12px; }
+}
+/* O que a loja diz que vai acontecer com a assinatura, acima dos cards. */
+.planos-estado { margin-top: 4px; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+.faturamento-muda ul { list-style: none; display: grid; gap: 6px; margin-top: 8px; }
+.faturamento-muda li {
+  display: grid; grid-template-columns: 14px 1fr; gap: 6px; align-items: start;
+  font-size: 13px; color: var(--text-muted); line-height: 1.4;
+}
+.faturamento-muda li svg { color: var(--accent); margin-top: 3px; }
+.cancelamento-texto { font-size: 14px; color: var(--text); line-height: 1.5; }
+.perigo-loja { display: flex; margin-top: 10px; }
+.settings-perigo .alert-warn { margin-bottom: 12px; }
 @keyframes modal-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }

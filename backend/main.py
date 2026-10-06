@@ -4385,6 +4385,9 @@ def _assinatura_vigente_na_loja(assinante: dict, agora: datetime.datetime) -> di
             "status": "past_due" if em_atraso else "active",
             "origem": LOJA_PARA_ORIGEM.get((sub.get("store") or "").upper(), "apple"),
             "fim": vale_ate,
+            # Cancelar na loja só desliga a renovação: o plano vale até `fim`.
+            # É o que a tela usa para dizer "cancelada, vale até".
+            "renova": not sub.get("unsubscribe_detected_at"),
         }
         chave = (NIVEL_DO_PLANO[plano], vale_ate or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
         if melhor is None or chave > melhor[0]:
@@ -4414,6 +4417,7 @@ async def sincronizar_assinatura_de_loja(user_id: str, transacao_original: str |
         "status": atual.get("status"),
         "origem": origem_atual,
         "current_period_end": atual.get("current_period_end"),
+        "renova": None,
         "antes": plano_atual,
     }
 
@@ -4464,6 +4468,7 @@ async def sincronizar_assinatura_de_loja(user_id: str, transacao_original: str |
         "status": dados["status"],
         "origem": dados.get("origem", origem_atual),
         "current_period_end": dados.get("current_period_end", atual.get("current_period_end")),
+        "renova": vigente["renova"] if vigente else None,
         "antes": plano_atual,
     }
 

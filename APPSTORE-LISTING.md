@@ -57,6 +57,12 @@ Suas conversas são cifradas no seu aparelho antes de sair dele. A chave fica s�
 
 Use também no navegador e no computador, com a mesma conta.
 
+PLANOS
+O Dito tem um plano grátis e dois planos pagos, Iniciante e Avançado, assinados dentro do app com cobrança mensal ou anual. A assinatura renova sozinha ao fim de cada período, pelo mesmo valor, e pode ser cancelada quando você quiser, até 24 horas antes da renovação, em Meu plano ou nos ajustes do aparelho.
+
+Termos de uso: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Política de privacidade: https://dito.albiecloud.com/privacidade.html
+
 O Dito é uma ferramenta de apoio à sua rotina. A responsabilidade pelo uso das informações e pelo consentimento de quem é gravado é sempre sua.
 ```
 
@@ -130,7 +136,9 @@ O Dito grava e transcreve conversas (reuniões, consultas, aulas). O microfone s
 
 A conta de teste já tem conversas de exemplo. Para testar: toque no microfone, fale por alguns segundos, toque em finalizar e aguarde o resumo. Depois, abra a conversa e faça uma pergunta sobre ela.
 
-Os quatro planos pagos podem ser comprados dentro do app, por In-App Purchase, em "Meu plano" (menu lateral, ou o ícone de conta no celular): Iniciante e Avançado, mensal e anual. A mesma tela tem "Restaurar compras", a frase da renovação automática e os links dos termos de uso e da política de privacidade.
+Os quatro planos pagos podem ser comprados dentro do app, por In-App Purchase, em "Meu plano" (menu lateral, ícone de conta no rodapé, Meu plano): Iniciante e Avançado, mensal e anual. A mesma tela tem "Restaurar compras", a frase da renovação automática e os links dos termos de uso e da política de privacidade.
+
+Depois de assinar, a mesma tela mostra "Fazer upgrade" ou "Mudar para o Iniciante" nos outros planos, e "Cancelar assinatura" embaixo, que abre a tela de assinaturas da Apple dentro do app. Trocar para um plano mais barato e cancelar só valem no fim do período já pago, e a tela diz isso antes de confirmar.
 
 O Dito também é um serviço multiplataforma: a mesma conta é usada no navegador e no aplicativo de Windows, e uma assinatura feita fora do app é reconhecida aqui, como permite a regra 3.1.3(b). Nada dentro do app leva a comprar por fora: não há link, botão nem menção a outra forma de pagamento. Quem já assina por fora vê "Plano atual"; quem não assina compra aqui, pela Apple.
 
@@ -148,7 +156,7 @@ As conversas são cifradas no aparelho antes de irem ao servidor.
 ## Privacidade do app (questionário)
 
 Precisa bater com o `PrivacyInfo.xcprivacy` do app, que declara exatamente
-estes quatro tipos. Respostas:
+estes cinco tipos. Respostas:
 
 - **Coleta dados?** Sim.
 - **Informações de contato → endereço de e-mail:** usado para a funcionalidade
@@ -159,4 +167,8 @@ estes quatro tipos. Respostas:
   cifrada.
 - **Dados de uso → interação com o produto:** análise (contagem de aberturas e
   capturas). Ligado à identidade. Não usado para rastreamento.
+- **Compras → histórico de compras:** usado para a funcionalidade do app (liberar
+  o plano comprado). Ligado à identidade. Não usado para rastreamento. Entrou
+  em 06/10, com a compra dentro do app (o RevenueCat guarda qual plano foi
+  comprado e quando).
 - **Rastreamento:** não.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getTheme, setTheme, getIdioma, setIdioma, getNome, setNome, IDIOMAS, TEMA_AUTO } from '../lib/prefs'
 import { IconClose, IconSun, IconMoon } from './Icons'
@@ -8,6 +8,8 @@ import { supabase } from '../lib/supabase'
 import { esquecerDoAparelho } from '../lib/chaves'
 import { apagarTudo as apagarIndiceDoAcervo } from '../lib/acervo/indice'
 import { apagarConta } from '../lib/api'
+import { lojaDisponivel, gerenciarNaLoja } from '../lib/compraLoja'
+import { platformName } from '../lib/platform'
 
 // Duas preferências de leitura, no mesmo lugar: como o app aparece (tema) e em
 // que língua ele escreve (idioma). Os ajustes de tom, formato e profundidade
@@ -37,6 +39,44 @@ export default function SettingsModal({
   const [passo, setPasso] = useState('fechado')
   const [digitado, setDigitado] = useState('')
   const [erro, setErro] = useState('')
+  // A loja onde a pessoa tem assinatura valendo ('apple' ou 'google'), ou null.
+  // Apagar a conta cancela a assinatura do site, mas a de loja só quem comprou
+  // pode cancelar: sem este aviso ANTES, a pessoa ficava sem conta e pagando. A
+  // Apple pede que ele venha antes de apagar, e não depois.
+  const [lojaVigente, setLojaVigente] = useState(null)
+  const [abrindoLoja, setAbrindoLoja] = useState(false)
+
+  useEffect(() => {
+    if (!user || user.is_anonymous) return
+    let ativo = true
+    supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const vale = data && data.plano !== 'gratuito'
+          && !['canceled', 'incomplete_expired', 'unpaid'].includes(data.status)
+        if (ativo && vale && ['apple', 'google'].includes(data.origem)) setLojaVigente(data.origem)
+      })
+      .catch(() => {})
+    return () => { ativo = false }
+  }, [user])
+
+  // Só dá para abrir a tela da loja no aparelho da mesma loja.
+  const lojaAqui = lojaDisponivel() && (lojaVigente === 'apple') === (platformName() === 'ios')
+
+  async function abrirAssinaturaNaLoja() {
+    setErro('')
+    setAbrindoLoja(true)
+    try {
+      await gerenciarNaLoja()
+    } catch (e) {
+      setErro(e.message || 'Não foi possível abrir as assinaturas agora.')
+    } finally {
+      setAbrindoLoja(false)
+    }
+  }
 
   function changeTheme(t) { setThemeState(t); setTheme(t) }
   function changeIdioma(i) { setIdiomaState(i); setIdioma(i) }
@@ -199,10 +239,29 @@ export default function SettingsModal({
                 <p className="hint">
                   Vamos apagar tudo que é seu: as conversas e as transcrições,
                   a chave que as abre, seus minutos do mês e o cadastro de{' '}
-                  <strong>{user.email}</strong>. Se você assina um plano, ele é
-                  cancelado agora e não haverá nova cobrança. Nada disso volta,
-                  nem por nós.
+                  <strong>{user.email}</strong>.{' '}
+                  {!lojaVigente && 'Se você assina um plano pelo site, ele é cancelado agora e não haverá nova cobrança. '}
+                  Nada disso volta, nem por nós.
                 </p>
+                {lojaVigente && (
+                  <div className="alert alert-warn">
+                    Sua assinatura {lojaVigente === 'apple' ? 'da App Store' : 'do Google Play'} não é
+                    cancelada quando a conta é apagada. Cancele antes, para não ser cobrado de novo
+                    {lojaAqui ? '.' : lojaVigente === 'apple'
+                      ? ': no iPhone, Ajustes, seu nome, Assinaturas.'
+                      : ': no celular, Play Store, Pagamentos e assinaturas.'}
+                    {lojaAqui && (
+                      <button
+                        type="button"
+                        className="btn-secondary perigo-loja"
+                        onClick={abrirAssinaturaNaLoja}
+                        disabled={abrindoLoja || passo === 'apagando'}
+                      >
+                        {abrindoLoja ? 'Abrindo…' : 'Gerenciar assinatura'}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <label className="hint" htmlFor="confirmar-exclusao">
                   Para confirmar, escreva {CONFIRMACAO} abaixo.
                 </label>

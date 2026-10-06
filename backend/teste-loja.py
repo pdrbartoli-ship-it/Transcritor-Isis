@@ -302,6 +302,10 @@ r = client.post("/billing/sincronizar-loja", headers={"Authorization": "Bearer t
 check("compra recém-feita: plano na hora", r.json()["plano"] == "avancado" and r.json()["antes"] == "gratuito", r.text)
 r = client.post("/billing/sincronizar-loja", headers={"Authorization": "Bearer tok-ana"})
 check("restaurar na mesma conta: já estava ativa", r.json()["plano"] == "avancado" and r.json()["antes"] == "avancado", r.text)
+check("assinatura ativa diz que renova", r.json()["renova"] is True, r.text)
+loja[ANA][P + "avancado.mensal"]["unsubscribe_detected_at"] = em(seconds=-1)
+r = client.post("/billing/sincronizar-loja", headers={"Authorization": "Bearer tok-ana"})
+check("cancelada continua no plano e diz que não renova", r.json()["plano"] == "avancado" and r.json()["renova"] is False, r.text)
 roteiro["revenuecat"] = "fora"
 r = client.post("/billing/sincronizar-loja", headers={"Authorization": "Bearer tok-ana"})
 check("loja fora do ar é 503 com texto claro", r.status_code == 503 and "loja" in r.json()["detail"], r.text)

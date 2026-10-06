@@ -420,6 +420,18 @@ export async function abrirPortalAssinatura() {
   )
 }
 
+// Depois de comprar ou restaurar pela loja: o servidor pergunta à loja o que
+// vale agora, grava e devolve. Substitui a espera pelo aviso da loja, que
+// demorava e às vezes nunca chegava (quando o plano não mudava). Devolve
+// { plano, ciclo, status, origem, current_period_end, renova, antes }.
+export async function sincronizarLoja() {
+  return postJsonComTeto(
+    '/billing/sincronizar-loja',
+    {},
+    'O servidor demorou demais para responder. Sua compra está segura: tente de novo em instantes.',
+  )
+}
+
 // Apagar a conta de vez: dados, cadastro e assinatura. Exigência das lojas —
 // quem cria conta dentro do app precisa poder apagá-la ali também.
 //

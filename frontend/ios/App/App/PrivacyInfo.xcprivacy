@@ -81,6 +81,22 @@
         <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
       </array>
     </dict>
+    <!-- Histórico de compras: desde 30/09 o iPhone vende por compra dentro do
+         app, e o RevenueCat guarda qual plano foi comprado e quando, ligado à
+         conta, para o servidor liberar o plano. Precisa bater com o
+         questionário de privacidade no App Store Connect. -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypePurchaseHistory</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
   </array>
 
   <key>NSPrivacyAccessedAPITypes</key>
