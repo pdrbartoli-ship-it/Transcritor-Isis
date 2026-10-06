@@ -90,7 +90,8 @@ async def handler(request: httpx.Request):
         assert request.headers["authorization"] == f"Bearer {main.REVENUECAT_CHAVE_PUBLICA}"
         if roteiro["revenuecat"] == "fora":
             return httpx.Response(500, json={"message": "erro interno"})
-        return httpx.Response(200, json={"subscriber": {
+        # Quem o RevenueCat nunca viu é criado na primeira consulta, com 201.
+        return httpx.Response(200 if user_id in loja else 201, json={"subscriber": {
             "original_app_user_id": user_id, "subscriptions": loja.get(user_id, {}),
         }})
     if path == "/auth/v1/user":

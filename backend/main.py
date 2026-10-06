@@ -4353,7 +4353,9 @@ async def _assinante_na_loja(user_id: str) -> dict:
             )
     except httpx.HTTPError as exc:
         raise LojaIndisponivel(f"RevenueCat fora do ar: {exc}") from exc
-    if resp.status_code != 200:
+    # 201 é a primeira consulta de quem o RevenueCat nunca viu: ele cria o
+    # cadastro vazio e responde com ele. Não é erro, é "não assina nada".
+    if resp.status_code not in (200, 201):
         raise LojaIndisponivel(f"RevenueCat respondeu {resp.status_code}: {resp.text[:200]}")
     return resp.json().get("subscriber") or {}
 
@@ -4554,7 +4556,8 @@ async def sincronizar_loja(request: Request):
         raise HTTPException(status_code=400, detail="Conta inválida.")
     try:
         return await sincronizar_assinatura_de_loja(user_id)
-    except LojaIndisponivel:
+    except LojaIndisponivel as exc:
+        logger.error("Sincronizar loja para %s falhou: %s", user_id, exc)
         raise HTTPException(
             status_code=503,
             detail="Não conseguimos confirmar com a loja agora. Sua compra está segura: tente de novo em instantes.",
